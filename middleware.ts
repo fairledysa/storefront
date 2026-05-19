@@ -16,12 +16,10 @@ function isLocalSubdomain(host: string) {
 }
 
 function getRootDomain() {
-  // الأفضل تخليه من env في الإنتاج
-  // مثال: ROOT_DOMAIN=madrar-ye.com
   return (
     process.env.ROOT_DOMAIN ||
     process.env.NEXT_PUBLIC_ROOT_DOMAIN ||
-    "madrar-ye.com"
+    "elyaia.com"
   )
     .toLowerCase()
     .trim();
@@ -32,7 +30,7 @@ function isRootOrWww(host: string, root: string) {
 }
 
 function isSubdomainOf(host: string, root: string) {
-  // store1.madrar-ye.com
+  // store1.elyaia.com.com
   return host.endsWith(`.${root}`) && host !== root && host !== `www.${root}`;
 }
 
@@ -70,7 +68,7 @@ export function middleware(req: NextRequest) {
 
   /* ------------------------------ Production ----------------------------- */
 
-  // ✅ 3) madrar-ye.com + www => Platform (Landing/Services)
+  // ✅ 3) elyaia.com + www => Platform (Landing/Services)
   if (isRootOrWww(host, ROOT_DOMAIN)) {
     if (!url.pathname.startsWith("/platform")) {
       const next = url.clone();
@@ -81,7 +79,7 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // ✅ 4) *.madrar-ye.com => Store (لا نسوي rewrite)
+  // ✅ 4) *.elyaia.com => Store (لا نسوي rewrite)
   if (isSubdomainOf(host, ROOT_DOMAIN)) {
     return NextResponse.next();
   }

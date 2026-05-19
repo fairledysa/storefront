@@ -4,45 +4,61 @@ import { headers } from "next/headers";
 
 import PlatformHome from "./platform/page";
 import StoreHomePage from "./(store)/page";
-
-// ✅ NEW: خذ ميتا المتجر من المصدر الصحيح (route)
 import { generateMetadata as generateStoreMetadata } from "./(store)/page";
 
 /* ---------------------------------- */
 /* helpers                            */
 /* ---------------------------------- */
+
 function cleanHost(raw: string) {
   return String(raw || "")
     .toLowerCase()
     .replace(/:\d+$/, "");
 }
 
-function isLocalRoot(host: string) {
-  return host === "localhost" || host === "127.0.0.1";
+function getRootDomain() {
+  return (
+    process.env.ROOT_DOMAIN ||
+    process.env.NEXT_PUBLIC_ROOT_DOMAIN ||
+    "elyaia.com"
+  )
+    .toLowerCase()
+    .trim();
+}
+
+function isPlatformHost(host: string) {
+  const root = getRootDomain();
+
+  return (
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === root ||
+    host === `www.${root}`
+  );
 }
 
 /* ---------------------------------- */
-/* META – المصدر النهائي              */
+/* META                               */
 /* ---------------------------------- */
+
 export async function generateMetadata(): Promise<Metadata> {
   const h = await headers();
   const host = cleanHost(h.get("host") || "");
 
-  // منصة (localhost)
-  if (isLocalRoot(host)) {
+  if (isPlatformHost(host)) {
     return {
       title: "منصة elyaia",
       description: "منصة تجارة إلكترونية",
     };
   }
 
-  // ✅ متجر: رجّع ميتا المتجر الفعلية (عشان تطلع في head)
   return await generateStoreMetadata();
 }
 
 /* ---------------------------------- */
 /* PAGE                               */
 /* ---------------------------------- */
+
 export default async function RootPage({
   searchParams,
 }: {
@@ -51,11 +67,9 @@ export default async function RootPage({
   const h = await headers();
   const host = cleanHost(h.get("host") || "");
 
-  // منصة
-  if (isLocalRoot(host)) {
+  if (isPlatformHost(host)) {
     return <PlatformHome />;
   }
 
-  // متجر
   return <StoreHomePage searchParams={searchParams} />;
 }
