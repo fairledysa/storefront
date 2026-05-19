@@ -1,0 +1,225 @@
+/* FILE: apps/storefront/src/themes/malak/styles/screens-desktop/maintenance.css */
+
+.mk-maintenance {
+  min-height: 72vh;
+  background:
+    radial-gradient(
+      circle at 20% 20%,
+      color-mix(in srgb, var(--mk-maint-primary, #111827) 7%, transparent),
+      transparent 34%
+    ),
+    var(--mk-maint-bg, #ffffff);
+  color: var(--mk-maint-text, #111827);
+}
+
+.mk-maintenance__wrap {
+  width: min(1120px, calc(100% - 32px));
+  min-height: 72vh;
+  margin-inline: auto;
+  display: grid;
+  place-items: center;
+  padding: 56px 0;
+}
+
+.mk-maintenance__card {
+  width: min(760px, 100%);
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--mk-maint-primary, #111827) 14%, #e5e7eb);
+  border-radius: 34px;
+  background: color-mix(in srgb, var(--mk-maint-bg, #ffffff) 92%, #ffffff);
+  box-shadow: 0 28px 90px rgb(15 23 42 / 0.09);
+}
+
+.mk-maintenance__brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 22px 24px;
+  border-bottom: 1px solid color-mix(in srgb, var(--mk-maint-primary, #111827) 10%, #e5e7eb);
+  background: color-mix(in srgb, var(--mk-maint-primary, #111827) 4%, #ffffff);
+}
+
+.mk-maintenance__logo {
+  width: 58px;
+  height: 58px;
+  object-fit: contain;
+  border-radius: 18px;
+  background: #ffffff;
+  border: 1px solid color-mix(in srgb, var(--mk-maint-primary, #111827) 10%, #e5e7eb);
+  padding: 8px;
+}
+
+.mk-maintenance__logoFallback {
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: var(--mk-maint-primary, #111827);
+  color: #ffffff;
+  font-size: 22px;
+  font-weight: 950;
+}
+
+.mk-maintenance__brandText {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.mk-maintenance__brandText strong {
+  color: var(--mk-maint-text, #111827);
+  font-size: 17px;
+  font-weight: 950;
+  line-height: 1.4;
+}
+
+.mk-maintenance__eyebrow {
+  color: var(--mk-maint-muted, #64748b);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.mk-maintenance__hero {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  padding: 48px 32px 36px;
+  text-align: center;
+}
+
+.mk-maintenance__icon {
+  width: 74px;
+  height: 74px;
+  display: grid;
+  place-items: center;
+  border-radius: 28px;
+  background: color-mix(in srgb, var(--mk-maint-primary, #111827) 9%, #ffffff);
+  border: 1px solid color-mix(in srgb, var(--mk-maint-primary, #111827) 16%, #e5e7eb);
+}
+
+.mk-maintenance__icon span {
+  width: 28px;
+  height: 28px;
+  border: 4px solid var(--mk-maint-primary, #111827);
+  border-top-color: transparent;
+  border-radius: 999px;
+  animation: mk-maintenance-spin 1.1s linear infinite;
+}
+
+.mk-maintenance__hero h1 {
+  margin: 0;
+  max-width: 620px;
+  color: var(--mk-maint-text, #111827);
+  font-size: clamp(28px, 4vw, 44px);
+  font-weight: 950;
+  letter-spacing: -0.04em;
+  line-height: 1.25;
+}
+
+.mk-maintenance__hero p {
+  margin: 0;
+  max-width: 610px;
+  color: var(--mk-maint-muted, #64748b);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 2;
+}
+
+.mk-maintenance__contacts {
+  padding: 0 32px 34px;
+}
+
+.mk-maintenance__contactsTitle {
+  margin-bottom: 12px;
+  color: var(--mk-maint-text, #111827);
+  font-size: 13px;
+  font-weight: 950;
+  text-align: center;
+}
+
+.mk-maintenance__contactsGrid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+.mk-maintenance__contact {
+  min-height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--mk-maint-primary, #111827) 14%, #e5e7eb);
+  background: #ffffff;
+  color: var(--mk-maint-text, #111827);
+  padding: 0 16px;
+  text-decoration: none;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.mk-maintenance__contact:hover {
+  transform: translateY(-1px);
+  border-color: var(--mk-maint-primary, #111827);
+  background: color-mix(in srgb, var(--mk-maint-primary, #111827) 5%, #ffffff);
+}
+
+.mk-maintenance__contact span {
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.mk-maintenance__contact small {
+  color: var(--mk-maint-muted, #64748b);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+@keyframes mk-maintenance-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 720px) {
+  .mk-maintenance__wrap {
+    width: min(100% - 20px, 560px);
+    min-height: 76vh;
+    padding: 24px 0;
+  }
+
+  .mk-maintenance__card {
+    border-radius: 28px;
+  }
+
+  .mk-maintenance__brand {
+    padding: 18px;
+  }
+
+  .mk-maintenance__hero {
+    padding: 36px 20px 28px;
+  }
+
+  .mk-maintenance__hero p {
+    font-size: 14px;
+  }
+
+  .mk-maintenance__contacts {
+    padding: 0 18px 24px;
+  }
+
+  .mk-maintenance__contactsGrid {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .mk-maintenance__contact {
+    width: 100%;
+    border-radius: 18px;
+  }
+}

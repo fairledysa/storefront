@@ -1,0 +1,32 @@
+/* FILE: apps/storefront/src/themes/malak/styles/foundation/z-index.css */
+
+.mk-overlay {
+  z-index: var(--mk-z-overlay);
+}
+
+footer,
+.mk-footer {
+  position: relative;
+  z-index: var(--mk-z-footer);
+}
+
+.mk-header {
+  z-index: var(--mk-z-header);
+}
+
+.mk-popover,
+.mk-mega {
+  z-index: var(--mk-z-popover);
+}
+
+.mk-home-topbar {
+  z-index: var(--mk-z-topbar);
+}
+
+.mk-tabbar {
+  z-index: var(--mk-z-tabbar);
+}
+
+.mk-search-ov {
+  z-index: var(--mk-z-search-overlay);
+}

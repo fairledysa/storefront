@@ -1,0 +1,469 @@
+// FILE: apps/storefront/src/app/(store)/api/checkout/confirm/route.ts
+
+import { NextResponse } from "next/server";
+import { supabaseAdmin } from "@/data/store/supabase.server";
+import {
+  cartSessionCookie,
+  getCartSessionId,
+  getOrCreateOpenCart,
+  getStoreIdOrThrow,
+} from "../../_cart/cart.server";
+import { buildCartSummary } from "../lib/summary";
+
+export const dynamic = "force-dynamic";
+
+function s(x: any) {
+  return String(x ?? "").trim();
+}
+
+function jsonError(error: string, status = 400, extra?: any) {
+  return NextResponse.json(
+    { ok: false, error, ...(extra ? { extra } : {}) },
+    {
+      status,
+      headers: { "Cache-Control": "no-store" },
+    },
+  );
+}
+
+function jsonOkWithCartCookie(args: {
+  session_id: string;
+  payload: Record<string, any>;
+}) {
+  const res = NextResponse.json(args.payload, {
+    headers: { "Cache-Control": "no-store" },
+  });
+
+  res.cookies.set(cartSessionCookie(args.session_id));
+  return res;
+}
+
+function isUuidLike(x: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    String(x || "").trim(),
+  );
+}
+
+function pickByCityScope(rate: any, cityId: string) {
+  const scope = s(rate?.scope);
+  const included: string[] = Array.isArray(rate?.included_city_ids)
+    ? rate.included_city_ids.map((x: any) => String(x))
+    : [];
+  const excluded: string[] = Array.isArray(rate?.excluded_city_ids)
+    ? rate.excluded_city_ids.map((x: any) => String(x))
+    : [];
+
+  if (!cityId) return false;
+  if (excluded.includes(cityId)) return false;
+  if (scope === "include_cities") return included.includes(cityId);
+
+  return true;
+}
+
+async function getCurrentCart(sb: any, args: { store_id: string; cart_id: string }) {
+  const r = await sb
+    .from("carts")
+    .select("id,store_id,status,address_id,shipping_id,payment_method,user_id")
+    .eq("id", args.cart_id)
+    .eq("store_id", args.store_id)
+    .maybeSingle();
+
+  return r;
+}
+
+async function getAddressCity(sb: any, address_id: string) {
+  const r = await sb
+    .from("customer_addresses")
+    .select("id,city_id")
+    .eq("id", address_id)
+    .limit(1)
+    .maybeSingle();
+
+  if (r.error) {
+    return { ok: false as const, error: r.error.message, city_id: null };
+  }
+
+  if (!r.data?.id) {
+    return { ok: false as const, error: "ADDRESS_NOT_FOUND", city_id: null };
+  }
+
+  return {
+    ok: true as const,
+    error: null,
+    city_id: s(r.data.city_id) || null,
+  };
+}
+
+async function validateShippingRate(args: {
+  sb: any;
+  store_id: string;
+  shipping_id: string;
+  city_id: string | null;
+}) {
+  const { sb, store_id, shipping_id, city_id } = args;
+
+  if (!shipping_id || !isUuidLike(shipping_id)) {
+    return { ok: false as const, error: "SHIPPING_NOT_FOUND" };
+  }
+
+  if (!city_id) {
+    return { ok: false as const, error: "NEED_ADDRESS_FOR_SHIPPING" };
+  }
+
+  const rateR = await sb
+    .from("store_shipping_rates")
+    .select(
+      "id,store_id,store_shipping_carrier_id,scope,included_city_ids,excluded_city_ids,enabled,status",
+    )
+    .eq("id", shipping_id)
+    .eq("store_id", store_id)
+    .maybeSingle();
+
+  if (rateR.error) return { ok: false as const, error: rateR.error.message };
+  if (!rateR.data?.id) return { ok: false as const, error: "SHIPPING_NOT_FOUND" };
+
+  const rateEnabled = rateR.data.enabled === true || rateR.data.enabled === 1;
+
+  if (!rateEnabled || s(rateR.data.status) !== "active") {
+    return { ok: false as const, error: "SHIPPING_NOT_AVAILABLE" };
+  }
+
+  if (!pickByCityScope(rateR.data, city_id)) {
+    return { ok: false as const, error: "SHIPPING_NOT_AVAILABLE_FOR_CITY" };
+  }
+
+  const carrierR = await sb
+    .from("store_shipping_carriers")
+    .select("id,store_id,enabled,is_enabled,status")
+    .eq("id", String(rateR.data.store_shipping_carrier_id))
+    .eq("store_id", store_id)
+    .maybeSingle();
+
+  if (carrierR.error) return { ok: false as const, error: carrierR.error.message };
+  if (!carrierR.data?.id) return { ok: false as const, error: "SHIPPING_NOT_FOUND" };
+
+  const carrierEnabled =
+    carrierR.data.enabled === true ||
+    carrierR.data.is_enabled === true ||
+    carrierR.data.enabled === 1;
+
+  if (!carrierEnabled || s(carrierR.data.status) !== "active") {
+    return { ok: false as const, error: "SHIPPING_NOT_AVAILABLE" };
+  }
+
+  return { ok: true as const };
+}
+
+function isProviderMethod(pm: string) {
+  return pm.startsWith("provider:");
+}
+
+function providerCode(pm: string) {
+  return pm.replace("provider:", "").trim();
+}
+
+async function validatePaymentMethod(args: {
+  sb: any;
+  store_id: string;
+  payment_method: string;
+  shipping_id: string;
+  city_id: string;
+}) {
+  const { sb, store_id, payment_method, shipping_id, city_id } = args;
+  const pm = s(payment_method);
+
+  if (!pm) return { ok: false as const, error: "PAYMENT_METHOD_REQUIRED" };
+
+  const shippingValid = await validateShippingRate({
+    sb,
+    store_id,
+    shipping_id,
+    city_id,
+  });
+
+  if (!shippingValid.ok) {
+    return shippingValid;
+  }
+
+  if (pm === "cod") {
+    const rateR = await sb
+      .from("store_shipping_rates")
+      .select(
+        "id,store_shipping_carrier_id,scope,included_city_ids,excluded_city_ids,enabled,status,cod_enabled",
+      )
+      .eq("id", shipping_id)
+      .eq("store_id", store_id)
+      .maybeSingle();
+
+    if (rateR.error) return { ok: false as const, error: rateR.error.message };
+    if (!rateR.data?.id) return { ok: false as const, error: "COD_NOT_AVAILABLE" };
+
+    if (rateR.data.cod_enabled !== true) {
+      return { ok: false as const, error: "COD_NOT_ENABLED" };
+    }
+
+    const carrierR = await sb
+      .from("store_shipping_carriers")
+      .select("id,type,enabled,is_enabled,status")
+      .eq("id", String(rateR.data.store_shipping_carrier_id))
+      .eq("store_id", store_id)
+      .maybeSingle();
+
+    if (carrierR.error) {
+      return { ok: false as const, error: carrierR.error.message };
+    }
+
+    if (!carrierR.data?.id) {
+      return { ok: false as const, error: "COD_NOT_AVAILABLE" };
+    }
+
+    const carrierEnabled =
+      carrierR.data.enabled === true ||
+      carrierR.data.is_enabled === true ||
+      carrierR.data.enabled === 1;
+
+    if (!carrierEnabled || s(carrierR.data.status) !== "active") {
+      return { ok: false as const, error: "COD_NOT_AVAILABLE" };
+    }
+
+    if (s(carrierR.data.type) === "pickup") {
+      return { ok: false as const, error: "COD_NOT_AVAILABLE_FOR_PICKUP" };
+    }
+
+    return { ok: true as const };
+  }
+
+  if (pm === "bank_transfer") {
+    const banksR = await sb
+      .from("store_bank_accounts")
+      .select("id,status")
+      .eq("store_id", store_id);
+
+    if (banksR.error) {
+      return { ok: false as const, error: banksR.error.message };
+    }
+
+    const hasActive = (banksR.data ?? []).some(
+      (b: any) => s(b.status) === "active",
+    );
+
+    if (!hasActive) {
+      return { ok: false as const, error: "BANK_TRANSFER_NOT_AVAILABLE" };
+    }
+
+    return { ok: true as const };
+  }
+
+  if (isProviderMethod(pm)) {
+    const code = providerCode(pm);
+
+    if (!code) {
+      return { ok: false as const, error: "PROVIDER_NOT_AVAILABLE" };
+    }
+
+    const pmR = await sb
+      .from("store_payment_methods")
+      .select("id,provider_code,enabled,status")
+      .eq("store_id", store_id)
+      .eq("provider_code", code)
+      .limit(1)
+      .maybeSingle();
+
+    if (pmR.error) {
+      return { ok: false as const, error: pmR.error.message };
+    }
+
+    const row = pmR.data;
+
+    if (!row?.id) {
+      return { ok: false as const, error: "PROVIDER_NOT_AVAILABLE" };
+    }
+
+    if (!Boolean(row.enabled) || s(row.status) !== "active") {
+      return { ok: false as const, error: "PROVIDER_NOT_AVAILABLE" };
+    }
+
+    return { ok: true as const };
+  }
+
+  return { ok: false as const, error: "PAYMENT_METHOD_INVALID" };
+}
+
+export async function POST(req: Request) {
+  try {
+    const sb: any = supabaseAdmin();
+    const store_id = await getStoreIdOrThrow();
+    const session_id = await getCartSessionId();
+    const cart: any = await getOrCreateOpenCart({ store_id, session_id });
+
+    const body = await req.json().catch(() => ({}));
+
+    const address_id_in = s(body?.address_id) || null;
+    const shipping_id_in = s(body?.shipping_id) || null;
+    const payment_method_in = s(body?.payment_method) || null;
+
+    if (!address_id_in && !shipping_id_in && !payment_method_in) {
+      return jsonError("PATCH_REQUIRED", 400);
+    }
+
+    const cart_id = s(cart?.id) || s(cart?.cart_id) || "";
+
+    if (!cart_id) {
+      return jsonError("CART_NOT_FOUND", 404);
+    }
+
+    const curR = await getCurrentCart(sb, { store_id, cart_id });
+
+    if (curR.error) {
+      return jsonError(curR.error.message, 500);
+    }
+
+    if (!curR.data?.id) {
+      return jsonError("CART_NOT_FOUND", 404);
+    }
+
+    if (s(curR.data.status) !== "open") {
+      return jsonError("CART_NOT_OPEN", 400);
+    }
+
+    const currentAddressId = curR.data.address_id
+      ? String(curR.data.address_id)
+      : null;
+    const currentShippingId = curR.data.shipping_id
+      ? String(curR.data.shipping_id)
+      : null;
+    const currentPaymentMethod = curR.data.payment_method
+      ? String(curR.data.payment_method)
+      : null;
+
+    const addressChanged = Boolean(
+      address_id_in && s(currentAddressId) !== s(address_id_in),
+    );
+
+    const shippingChanged = Boolean(
+      shipping_id_in && s(currentShippingId) !== s(shipping_id_in),
+    );
+
+    const finalAddressId = address_id_in ?? currentAddressId;
+    const finalShippingId =
+      shipping_id_in ?? (addressChanged ? null : currentShippingId);
+    const finalPaymentMethod =
+      payment_method_in ??
+      (addressChanged || shippingChanged ? null : currentPaymentMethod);
+
+    let city_id: string | null = null;
+
+    if (finalAddressId) {
+      const addr = await getAddressCity(sb, finalAddressId);
+
+      if (!addr.ok) {
+        return jsonError(addr.error || "ADDRESS_NOT_FOUND", 400);
+      }
+
+      city_id = addr.city_id;
+    }
+
+    if (shipping_id_in) {
+      const v = await validateShippingRate({
+        sb,
+        store_id,
+        shipping_id: shipping_id_in,
+        city_id,
+      });
+
+      if (!v.ok) {
+        return jsonError(v.error || "SHIPPING_NOT_AVAILABLE", 400);
+      }
+    }
+
+    if (payment_method_in) {
+      if (!finalAddressId || !city_id) {
+        return jsonError("NEED_ADDRESS_FOR_PAYMENT", 400);
+      }
+
+      if (!finalShippingId) {
+        return jsonError("NEED_SHIPPING_FOR_PAYMENT", 400);
+      }
+
+      const v = await validatePaymentMethod({
+        sb,
+        store_id,
+        payment_method: payment_method_in,
+        shipping_id: finalShippingId,
+        city_id,
+      });
+
+      if (!v.ok) {
+        return jsonError(v.error || "PAYMENT_METHOD_NOT_AVAILABLE", 400);
+      }
+    }
+
+    const patch: Record<string, any> = {
+      updated_at: new Date().toISOString(),
+      last_activity_at: new Date().toISOString(),
+    };
+
+    if (address_id_in) {
+      patch.address_id = address_id_in;
+    }
+
+    if (addressChanged && !shipping_id_in) {
+      patch.shipping_id = null;
+    }
+
+    if (shipping_id_in) {
+      patch.shipping_id = shipping_id_in;
+    }
+
+    if ((addressChanged || shippingChanged) && !payment_method_in) {
+      patch.payment_method = null;
+    }
+
+    if (payment_method_in) {
+      patch.payment_method = payment_method_in;
+    }
+
+    const uR = await sb
+      .from("carts")
+      .update(patch)
+      .eq("id", cart_id)
+      .eq("store_id", store_id)
+      .eq("status", "open")
+      .select("id,address_id,shipping_id,payment_method")
+      .maybeSingle();
+
+    if (uR.error) {
+      return jsonError("CONFIRM_UPDATE_FAILED", 500, {
+        error: uR.error.message,
+        cart_id,
+        patch,
+      });
+    }
+
+    if (!uR.data?.id) {
+      return jsonError("CART_NOT_FOUND", 404);
+    }
+
+    const summary = await buildCartSummary({
+      store_id,
+      cart_id: String(uR.data.id),
+    });
+
+    return jsonOkWithCartCookie({
+      session_id,
+      payload: {
+        ok: true,
+        cart: uR.data,
+        summary,
+        state: {
+          address_id: uR.data.address_id ?? null,
+          shipping_id: uR.data.shipping_id ?? null,
+          payment_method: uR.data.payment_method ?? null,
+          payment_ready: Boolean(uR.data.payment_method),
+        },
+      },
+    });
+  } catch (e: any) {
+    return jsonError(e?.message || "CONFIRM_FAILED", 500);
+  }
+}

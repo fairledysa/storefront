@@ -1,0 +1,36 @@
+/* FILE: apps/storefront/src/themes/malak/styles/foundation/reset.css */
+
+.mk-root,
+.mk-root *,
+.mk-root *::before,
+.mk-root *::after {
+  box-sizing: border-box;
+}
+
+.mk-root {
+  direction: rtl;
+  min-height: 100dvh;
+  background: var(--mk-bg-page);
+  color: var(--mk-text-main);
+  font-family: var(--mk-font-family);
+}
+
+.mk-root button,
+.mk-root input,
+.mk-root textarea,
+.mk-root select {
+  font: inherit;
+}
+
+.mk-root button {
+  cursor: pointer;
+}
+
+.mk-root img {
+  max-width: 100%;
+}
+
+body[data-malak-theme] {
+  background: var(--mk-bg-page);
+  color: var(--mk-text-main);
+}

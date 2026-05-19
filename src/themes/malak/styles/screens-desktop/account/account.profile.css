@@ -1,0 +1,494 @@
+/* FILE: apps/storefront/src/themes/malak/styles/screens-desktop/account/account.profile.css */
+
+/* =========================================================
+   Account profile page - clean aligned layout
+   ========================================================= */
+
+.mk-account {
+  --mk-acc-brand: var(--mk-color-primary, #000000);
+  --mk-acc-brand-text: var(--mk-primary-contrast, #ffffff);
+  --mk-acc-brand-soft: var(--mk-primary-soft);
+  --mk-acc-brand-softer: color-mix(
+    in srgb,
+    var(--mk-acc-brand) 4%,
+    var(--mk-bg-card, #ffffff) 96%
+  );
+  --mk-acc-brand-border: var(--mk-primary-border);
+  --mk-acc-gold: var(--mk-acc-brand);
+}
+
+.mk-account-dashboard {
+  display: grid;
+  gap: 18px;
+}
+
+/* =========================================================
+   Hero
+   ========================================================= */
+
+.mk-account-profileHero {
+  min-height: 166px;
+  border-radius: 26px;
+  border: 1px solid var(--mk-acc-line);
+  background: var(--mk-bg-card, #ffffff);
+  box-shadow:
+    0 18px 60px rgba(15, 15, 15, 0.045),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  padding: 24px;
+  display: grid;
+  grid-template-columns: minmax(300px, 1fr) 1px minmax(230px, 0.78fr) 220px;
+  grid-template-areas: "identity divider contacts actions";
+  align-items: center;
+  gap: 24px;
+  overflow: hidden;
+}
+
+/* =========================================================
+   Identity - right side
+   ========================================================= */
+
+.mk-account-profileHero__identity {
+  grid-area: identity;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 22px;
+}
+
+.mk-account-avatarLg {
+  width: 96px;
+  height: 96px;
+  flex: 0 0 96px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: var(--mk-acc-brand-soft);
+  border: 1px solid var(--mk-acc-brand-border);
+  color: var(--mk-acc-text);
+  font-size: 40px;
+  font-weight: 1000;
+}
+
+.mk-account-profileHero__info {
+  min-width: 0;
+  text-align: right;
+}
+
+.mk-account-profileHero__name {
+  margin: 0;
+  color: var(--mk-acc-text);
+  font-size: clamp(30px, 3vw, 42px);
+  font-weight: 1000;
+  line-height: 1.08;
+  letter-spacing: -0.045em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mk-account-profileHero__badges {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mk-account-profileHero__member {
+  margin-top: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--mk-acc-muted);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+/* =========================================================
+   Divider
+   ========================================================= */
+
+.mk-account-profileHero__divider {
+  grid-area: divider;
+  width: 1px;
+  min-height: 118px;
+  background: var(--mk-acc-line);
+}
+
+/* =========================================================
+   Contacts - middle
+   ========================================================= */
+
+.mk-account-profileHero__contacts {
+  grid-area: contacts;
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+}
+
+.mk-account-contactLine {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  column-gap: 12px;
+  align-items: center;
+}
+
+.mk-account-contactLine__icon {
+  grid-row: span 2;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: var(--mk-acc-brand-soft);
+  color: var(--mk-acc-brand);
+  border: 1px solid var(--mk-acc-brand-border);
+}
+
+.mk-account-contactLine__value {
+  min-width: 0;
+  color: var(--mk-acc-text);
+  font-size: 15px;
+  font-weight: 950;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mk-account-contactLine__label {
+  margin-top: 3px;
+  color: var(--mk-acc-muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+/* =========================================================
+   Actions - left side
+   ========================================================= */
+
+.mk-account-profileHero__actions {
+  grid-area: actions;
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.mk-account-profileAction {
+  width: 100%;
+  min-height: 48px;
+  border-radius: 13px;
+  padding: 0 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  border: 1px solid transparent;
+  font-size: 14px;
+  font-weight: 950;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    transform 140ms ease;
+}
+
+.mk-account-profileAction:hover {
+  transform: translateY(-1px);
+}
+
+.mk-account-profileAction--dark {
+  background: var(--mk-acc-brand);
+  color: var(--mk-acc-brand-text);
+}
+
+.mk-account-profileAction--dark svg {
+  color: currentColor;
+}
+
+.mk-account-profileAction--light {
+  background: var(--mk-bg-card, #ffffff);
+  color: var(--mk-acc-text);
+  border-color: var(--mk-acc-line-strong);
+}
+
+.mk-account-profileAction--light:hover {
+  background: var(--mk-acc-brand-softer);
+  border-color: var(--mk-acc-brand-border);
+}
+
+/* =========================================================
+   Chips
+   ========================================================= */
+
+.mk-account-chip {
+  min-height: 30px;
+  border-radius: 999px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 950;
+  border: 1px solid transparent;
+}
+
+.mk-account-chip--success {
+  background: color-mix(in srgb, var(--mk-acc-brand) 9%, var(--mk-bg-card, #ffffff) 91%);
+  color: var(--mk-acc-brand);
+  border-color: var(--mk-acc-brand-border);
+}
+
+.mk-account-chip--warn {
+  background: var(--mk-acc-brand-soft);
+  color: var(--mk-acc-brand);
+  border-color: var(--mk-acc-brand-border);
+}
+
+.mk-account-chip--soft {
+  background: var(--mk-bg-soft, #f7f7f7);
+  color: color-mix(in srgb, var(--mk-acc-text) 78%, var(--mk-acc-muted) 22%);
+  border-color: var(--mk-acc-line);
+}
+
+/* =========================================================
+   Profile Info Cards
+   ========================================================= */
+
+.mk-account-infoGrid--profile {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.mk-account-infoCard--rich {
+  min-height: 94px;
+  padding: 17px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  background: var(--mk-bg-card, #ffffff);
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+.mk-account-infoCard--rich:hover {
+  border-color: var(--mk-acc-brand-border);
+  box-shadow: 0 14px 34px rgba(15, 15, 15, 0.055);
+  transform: translateY(-1px);
+}
+
+.mk-account-infoCard__body {
+  min-width: 0;
+  text-align: right;
+}
+
+.mk-account-infoCard__icon {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  color: var(--mk-acc-brand);
+  background: var(--mk-acc-brand-soft);
+  border: 1px solid var(--mk-acc-brand-border);
+}
+
+/* =========================================================
+   Panels
+   ========================================================= */
+
+.mk-account-panelsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.mk-account-panel {
+  min-height: 210px;
+  border-radius: 24px;
+  border: 1px solid var(--mk-acc-line);
+  background: var(--mk-bg-card, #ffffff);
+  box-shadow: var(--mk-acc-shadow);
+  padding: 18px;
+}
+
+.mk-account-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.mk-account-panel__icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  color: var(--mk-acc-brand);
+  background: var(--mk-acc-brand-soft);
+  border: 1px solid var(--mk-acc-brand-border);
+}
+
+.mk-account-panel__title {
+  margin: 0;
+  color: var(--mk-acc-text);
+  font-size: 20px;
+  font-weight: 1000;
+  letter-spacing: -0.025em;
+}
+
+.mk-account-panel__body {
+  display: grid;
+}
+
+.mk-account-settingRow {
+  width: 100%;
+  min-height: 54px;
+  border: 0;
+  border-top: 1px solid var(--mk-acc-line);
+  background: transparent;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto 18px;
+  align-items: center;
+  gap: 10px;
+  text-align: right;
+  cursor: pointer;
+}
+
+.mk-account-settingRow:first-child {
+  border-top: 0;
+}
+
+.mk-account-settingRow:hover .mk-account-settingRow__label {
+  color: var(--mk-acc-brand);
+}
+
+.mk-account-settingRow__icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  color: var(--mk-acc-text);
+}
+
+.mk-account-settingRow__label {
+  min-width: 0;
+  color: color-mix(in srgb, var(--mk-acc-text) 82%, var(--mk-acc-muted) 18%);
+  font-size: 14px;
+  font-weight: 850;
+  transition: color 140ms ease;
+}
+
+.mk-account-settingRow__value {
+  color: var(--mk-acc-muted);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.mk-account-settingRow__badge {
+  min-height: 26px;
+  border-radius: 999px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.mk-account-settingRow__badge--success {
+  background: var(--mk-acc-brand-soft);
+  color: var(--mk-acc-brand);
+}
+
+.mk-account-settingRow__badge--neutral {
+  background: var(--mk-bg-soft, #f7f7f7);
+  color: var(--mk-acc-muted);
+}
+
+/* =========================================================
+   Responsive
+   ========================================================= */
+
+@media (max-width: 1280px) {
+  .mk-account-profileHero {
+    grid-template-columns: minmax(260px, 1fr) 1px minmax(210px, 0.74fr) 200px;
+    gap: 18px;
+  }
+
+  .mk-account-profileHero__name {
+    font-size: clamp(28px, 2.7vw, 36px);
+  }
+
+  .mk-account-infoGrid--profile {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1023px) {
+  .mk-account-profileHero {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "identity"
+      "contacts"
+      "actions";
+  }
+
+  .mk-account-profileHero__divider {
+    display: none;
+  }
+
+  .mk-account-profileHero__identity {
+    justify-content: flex-start;
+  }
+
+  .mk-account-profileHero__actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mk-account-panelsGrid,
+  .mk-account-infoGrid--profile {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .mk-account-profileHero {
+    padding: 18px;
+    border-radius: 22px;
+  }
+
+  .mk-account-profileHero__identity {
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  .mk-account-avatarLg {
+    width: 72px;
+    height: 72px;
+    flex-basis: 72px;
+    font-size: 30px;
+  }
+
+  .mk-account-profileHero__name {
+    white-space: normal;
+    font-size: 28px;
+  }
+
+  .mk-account-profileHero__actions {
+    grid-template-columns: 1fr;
+  }
+}

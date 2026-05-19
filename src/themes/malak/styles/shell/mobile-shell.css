@@ -1,0 +1,14 @@
+ /**
+ * apps/storefront/src/themes/malak/styles/shell/mobile-shell.css
+ */
+ .mk-mobile-shell {
+  min-height: 100dvh;
+  background: var(--mk-bg-page);
+  color: var(--mk-text-main);
+  overflow-x: hidden;
+}
+
+.mk-mobile-content {
+  min-height: 100dvh;
+  padding-bottom: var(--mk-tabbar-total-h);
+}

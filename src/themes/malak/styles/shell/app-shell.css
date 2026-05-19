@@ -1,0 +1,44 @@
+/* FILE: apps/storefront/src/themes/malak/styles/shell/app-shell.css */
+
+.mk-app-shell {
+  min-height: 100dvh;
+  background: var(--mk-bg-page);
+  color: var(--mk-text-main);
+  font-family: var(--mk-font-family, system-ui);
+}
+
+.mk-app-shell * ,
+.mk-app-shell *::before,
+.mk-app-shell *::after {
+  box-sizing: border-box;
+}
+
+.mk-app-shell a {
+  color: inherit;
+}
+
+.mk-app-shell button,
+.mk-app-shell input,
+.mk-app-shell textarea,
+.mk-app-shell select {
+  font-family: inherit;
+}
+
+.mk-app-shell input,
+.mk-app-shell textarea,
+.mk-app-shell select {
+  color: inherit;
+}
+
+.mk-app-shell input::placeholder,
+.mk-app-shell textarea::placeholder {
+  color: color-mix(in srgb, currentColor 45%, transparent);
+}
+
+.mk-app-shell[data-theme-mode="dark"] {
+  color-scheme: dark;
+}
+
+.mk-app-shell[data-theme-mode="light"] {
+  color-scheme: light;
+}

@@ -1,0 +1,131 @@
+
+ /**
+ * apps/storefront/src/themes/malak/styles/shell/topbar.css
+ */
+
+.mk-home-topbar {
+  position: fixed;
+  inset-inline: 0;
+  top: 0;
+  padding-top: var(--mk-safe-top);
+  pointer-events: none;
+}
+
+.mk-home-topbar__inner {
+  pointer-events: auto;
+  padding: 10px 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: transparent;
+}
+
+.mk-home-topbar.is-scrolled .mk-home-topbar__inner {
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--mk-border-soft);
+}
+
+.mk-home-topbar__row1 {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.mk-home-topbar__icons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mk-home-ibtn {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--mk-radius-pill);
+  border: 1px solid var(--mk-border-medium);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--mk-text-main);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mk-home-topbar__delivery {
+  border: 0;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  font-weight: 800;
+  color: rgba(17, 17, 17, 0.92);
+  font-size: 12px;
+  white-space: nowrap;
+  padding: 0;
+}
+
+.mk-home-topbar__row2 {
+  display: block;
+}
+
+.mk-home-topbar__search {
+  height: 40px;
+  width: 100%;
+  border-radius: var(--mk-radius-pill);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--mk-border-medium);
+  color: var(--mk-text-main);
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 10px;
+  text-align: right;
+}
+
+.mk-home-topbar__searchIcon {
+  opacity: 0.7;
+  line-height: 0;
+}
+
+.mk-home-topbar__searchPlaceholder {
+  color: rgba(17, 17, 17, 0.55);
+  font-size: 13px;
+  font-weight: 700;
+  flex: 1;
+}
+
+.mk-home-topbar__ship {
+  display: none;
+  height: 26px;
+  border-radius: var(--mk-radius-pill);
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--mk-border-soft);
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  margin-top: -2px;
+}
+
+.mk-home-topbar.is-scrolled .mk-home-topbar__ship {
+  display: flex;
+}
+
+.mk-home-topbar__shipDot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--mk-radius-pill);
+  background: #22c55e;
+}
+
+.mk-home-topbar__shipText {
+  font-size: 11px;
+  font-weight: 800;
+  color: rgba(17, 17, 17, 0.86);
+  white-space: nowrap;
+}
+
+.mk-home-topbar.is-scrolled .mk-home-topbar__row1 {
+  display: none;
+}

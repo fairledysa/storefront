@@ -1,0 +1,18 @@
+/* FILE: apps/storefront/src/themes/malak/styles/components/overlay.css */
+
+.mk-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+  display: grid;
+  place-items: center;
+}
+
+.mk-spinner {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--mk-radius-pill);
+  border: 3px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  animation: mk-spin 1s linear infinite;
+}

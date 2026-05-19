@@ -1,0 +1,2392 @@
+// FILE: apps/storefront/src/themes/malak/screens/home/HomeScreen.tsx
+
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+
+import ProductsSlider from "./_components/ProductsSlider";
+
+import type {
+  HomeDynamicItem,
+  HomeDynamicSection,
+  ShowcaseFeatureItem,
+  TestimonialItem,
+  TestimonialNameMode,
+} from "./_dynamic/types";
+
+import DynamicThemeIcon from "./_dynamic/icons";
+
+import { buildCategoryHref as buildStoreCategoryHref } from "@/lib/seo/build-store-href";
+
+import { getImageFromValue, getTextValue, s } from "./_dynamic/utils";
+
+import { resolveLinkHref } from "./_dynamic/link-utils";
+
+import {
+  buildDynamicSections,
+  fetchStoreTestimonialsPage,
+  formatTestimonialDate,
+  getAdvancedCollectionProducts,
+  getAdvancedCollectionTabs,
+  getCountdownContent,
+  getCountdownParts,
+  getFaqContent,
+  getFeaturedMosaicOfferContent,
+  getFeaturesProductShowcaseContent,
+  getMosaicTextPositionClass,
+  getProductsTabs,
+  getSectionValues,
+  getStatsHeroSplitContent,
+  getTestimonialsContent,
+  isAdvancedProductsCollectionSection,
+  isBannersSliderSection,
+  isCircleLinksSection,
+  isCountdownOfferSection,
+  isFaqSection,
+  isFeaturedMosaicOfferSection,
+  isFeaturesProductShowcaseSection,
+  isProductsTabsSection,
+  isResponsiveHeroSliderSection,
+  isSquareLinksSection,
+  isStatsHeroSplitSection,
+  isStatsSection,
+  isTestimonialsSection,
+  isWideBannerSection,
+  maskCustomerName,
+} from "./_dynamic/section-utils";
+
+import { Swiper, SwiperSlide } from "swiper/react";
+import { Navigation, Pagination, Autoplay } from "swiper/modules";
+
+type Props = {
+  data?: any;
+  seoMode?: any;
+};
+
+type ImageLinksGridLayout = "2" | "3" | "3_inline" | "4" | "4_inline";
+
+function cleanAlt(value: unknown) {
+  return s(value)
+    .replace(/<[^>]*>/g, " ")
+    .replace(/[|]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function imageAlt(...values: unknown[]) {
+  for (const value of values) {
+    const clean = cleanAlt(value);
+    if (clean) return clean;
+  }
+
+  return "صورة";
+}
+
+function normalizeImageLinksGridLayout(value: unknown): ImageLinksGridLayout {
+  const layout = s(value);
+
+  if (layout === "3_inline") return "3_inline";
+  if (layout === "4_inline") return "4_inline";
+  if (layout === "4") return "4";
+  if (layout === "3") return "3";
+
+  return "2";
+}
+
+function getBooleanValue(value: any) {
+  if (value === true) return true;
+  if (value === false) return false;
+
+  const text = s(value).toLowerCase();
+
+  return (
+    text === "true" ||
+    text === "1" ||
+    text === "yes" ||
+    text === "on" ||
+    text === "enabled"
+  );
+}
+
+function flattenCategories(rows: any[]): any[] {
+  const result: any[] = [];
+
+  for (const row of rows || []) {
+    if (!row) continue;
+
+    result.push(row);
+
+    if (Array.isArray(row.children) && row.children.length) {
+      result.push(...flattenCategories(row.children));
+    }
+  }
+
+  return result;
+}
+
+function objectValues(value: any) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+  return Object.values(value).filter(Boolean);
+}
+
+function getAllCategoriesFromData(data: any) {
+  return flattenCategories([
+    ...(Array.isArray(data?.navigation?.categories)
+      ? data.navigation.categories
+      : []),
+    ...(Array.isArray(data?.categories) ? data.categories : []),
+    ...(Array.isArray(data?.bootstrap?.navigation?.categories)
+      ? data.bootstrap.navigation.categories
+      : []),
+    ...(Array.isArray(data?.theme?.navigation?.categories)
+      ? data.theme.navigation.categories
+      : []),
+    ...(Array.isArray(data?.storefront?.navigation?.categories)
+      ? data.storefront.navigation.categories
+      : []),
+    ...objectValues(data?.linkedCategoriesById),
+    ...objectValues(data?.linked_categories_by_id),
+  ]);
+}
+
+function getLinkType(linkValue: any): string {
+  if (linkValue?.link) return getLinkType(linkValue.link);
+
+  return s(
+    linkValue?.type ||
+      linkValue?.link_type ||
+      linkValue?.kind ||
+      linkValue?.target_type ||
+      linkValue?.url_type,
+  );
+}
+
+function getLinkRawValue(linkValue: any): string {
+  if (linkValue === null || linkValue === undefined) return "";
+
+  if (typeof linkValue === "string" || typeof linkValue === "number") {
+    return s(linkValue);
+  }
+
+  if (typeof linkValue !== "object") return "";
+
+  if (linkValue.link) {
+    const nested = getLinkRawValue(linkValue.link);
+    if (nested) return nested;
+  }
+
+  const value =
+    linkValue.value ??
+    linkValue.id ??
+    linkValue.category_id ??
+    linkValue.categoryId ??
+    linkValue.target_id ??
+    linkValue.targetId ??
+    linkValue.href ??
+    linkValue.url ??
+    "";
+
+  if (typeof value === "string" || typeof value === "number") {
+    return s(value);
+  }
+
+  if (value && typeof value === "object") {
+    return s(
+      value.id ??
+        value.value ??
+        value.public_no ??
+        value.publicNo ??
+        value.slug ??
+        value.href ??
+        "",
+    );
+  }
+
+  return "";
+}
+
+function categoryHrefFromRow(category: any, value: string, seoMode: any) {
+  const existingHref = s(category?.href);
+
+  const name = s(category?.name || category?.title || category?.label);
+  const slug = s(category?.slug);
+  const publicNo = Number(category?.public_no ?? category?.publicNo ?? 0);
+  const safePublicNo =
+    Number.isFinite(publicNo) && publicNo > 0 ? publicNo : 0;
+  const shortUrl = s(category?.short_url ?? category?.shortUrl);
+
+  if (safePublicNo > 0 || shortUrl) {
+    return buildStoreCategoryHref({
+      mode: seoMode || "named_ar",
+      slugNameAr: name || slug || value,
+      slugNameEn: slug || name || value,
+      publicNo: safePublicNo,
+      shortCode: shortUrl || null,
+    });
+  }
+
+  if (existingHref) return existingHref;
+
+  return "";
+}
+
+function resolveCategoryHrefFallback(linkValue: any, data: any, seoMode: any) {
+  const value = getLinkRawValue(linkValue);
+  if (!value) return "";
+
+  const directFromMap =
+    data?.linkedCategoriesById?.[value] ||
+    data?.linked_categories_by_id?.[value] ||
+    null;
+
+  if (directFromMap) {
+    const href = categoryHrefFromRow(directFromMap, value, seoMode);
+    if (href) return href;
+  }
+
+  const categories = getAllCategoriesFromData(data);
+
+  const category = categories.find((item) => {
+    const id = s(item?.id);
+    const publicNo = s(item?.public_no ?? item?.publicNo);
+    const slug = s(item?.slug);
+    const href = s(item?.href);
+    const shortUrl = s(item?.short_url ?? item?.shortUrl);
+
+    return (
+      id === value ||
+      publicNo === value ||
+      slug === value ||
+      href === value ||
+      shortUrl === value
+    );
+  });
+
+  if (!category) return "";
+
+  return categoryHrefFromRow(category, value, seoMode);
+}
+
+function resolveGridHref(linkValue: any, data: any, seoMode: any) {
+  if (!linkValue) return "#";
+
+  const resolved = resolveLinkHref(linkValue, data, seoMode);
+
+  if (resolved && resolved !== "#") return resolved;
+
+  const linkType = getLinkType(linkValue);
+  const rawValue = getLinkRawValue(linkValue);
+
+  if (linkType === "category") {
+    const categoryHref = resolveCategoryHrefFallback(linkValue, data, seoMode);
+    if (categoryHref) return categoryHref;
+  }
+
+  if (!linkType && rawValue) {
+    const categoryHref = resolveCategoryHrefFallback(linkValue, data, seoMode);
+    if (categoryHref) return categoryHref;
+  }
+
+  return "#";
+}
+
+function resolveCurrenciesFromData(data: any) {
+  return (
+    data?.bootstrap?.currencies ||
+    data?.currencies ||
+    data?.store?.currencies ||
+    data?.theme?.currencies ||
+    data?.settings?.currencies ||
+    null
+  );
+}
+function resolveTaxFromData(data: any) {
+  return (
+    data?.bootstrap?.tax ||
+    data?.theme?.bootstrap?.tax ||
+    data?.themeData?.bootstrap?.tax ||
+    data?.theme_data?.bootstrap?.tax ||
+    data?.storefront?.bootstrap?.tax ||
+    data?.tax ||
+    data?.store?.tax ||
+    data?.theme?.tax ||
+    data?.settings?.tax ||
+    data?.themeOptions?.tax ||
+    data?.theme_options?.tax ||
+    null
+  );
+}
+ 
+
+function ResponsiveHeroSliderSection({
+  section,
+  data,
+  seoMode,
+}: {
+  section: HomeDynamicSection;
+  data: any;
+  seoMode: any;
+}) {
+  const values = getSectionValues(section);
+  const rows = Array.isArray(values?.field_1) ? values.field_1 : [];
+
+  const slides = rows
+    .map((row: any, index: number) => {
+      const title =
+        getTextValue(row, ["field_1", "title", "heading"]) || s(row?.field_1);
+
+      const description =
+        getTextValue(row, ["field_2", "description", "subtitle", "text"]) ||
+        s(row?.field_2);
+
+      const buttonText =
+        getTextValue(row, ["field_3", "button_text", "buttonText"]) ||
+        s(row?.field_3);
+
+      const buttonHref = row?.field_4 || row?.button_link || row?.buttonLink;
+
+      const desktopImage = getImageFromValue(
+        row?.field_5 || row?.desktop_image || row?.desktopImage || row?.image,
+      );
+
+      const mobileImage = getImageFromValue(
+        row?.field_6 || row?.mobile_image || row?.mobileImage || row?.image,
+      );
+
+      const href = buttonHref ? resolveLinkHref(buttonHref, data, seoMode) : "#";
+
+      return {
+        id: s(row?.id) || `${section.id}-responsive-slide-${index}`,
+        title,
+        description,
+        buttonText,
+        href,
+        desktopImage,
+        mobileImage,
+        alt: imageAlt(
+          title,
+          description,
+          section.title,
+          `بنر رئيسي ${index + 1}`,
+        ),
+      };
+    })
+    .filter((slide: any) => slide.desktopImage || slide.mobileImage);
+
+  if (!slides.length) return null;
+
+  return (
+    <section className="mk-responsive-hero-slider-section py-3">
+      <div className="mx-auto w-full max-w-[1440px] px-4">
+        <Swiper
+          modules={[Navigation, Pagination, Autoplay]}
+          slidesPerView={1}
+          loop={slides.length > 1}
+          dir="rtl"
+          speed={650}
+          autoplay={
+            slides.length > 1
+              ? { delay: 5000, disableOnInteraction: false }
+              : false
+          }
+          pagination={slides.length > 1 ? { clickable: true } : false}
+          navigation={slides.length > 1}
+          className="mk-responsive-hero-slider"
+        >
+          {slides.map((slide: any, index: number) => {
+            const hasHref = Boolean(slide.href && slide.href !== "#");
+            const isFirst = index === 0;
+
+            const imageNode = (
+              <picture className="mk-responsive-hero-picture">
+                {slide.mobileImage ? (
+                  <source
+                    media="(max-width: 767px)"
+                    srcSet={slide.mobileImage}
+                  />
+                ) : null}
+
+                <img
+                  src={slide.desktopImage || slide.mobileImage}
+                  alt={slide.alt}
+                  width={1600}
+                  height={610}
+                  loading={isFirst ? "eager" : "lazy"}
+                  fetchPriority={isFirst ? "high" : "auto"}
+                  decoding={isFirst ? "sync" : "async"}
+                  className="mk-responsive-hero-img"
+                />
+              </picture>
+            );
+
+            return (
+              <SwiperSlide key={slide.id}>
+                <div className="overflow-hidden rounded-[28px] bg-transparent">
+                  {hasHref ? (
+                    <a
+                      href={slide.href}
+                      className="block w-full"
+                      aria-label={slide.alt}
+                    >
+                      {imageNode}
+                    </a>
+                  ) : (
+                    imageNode
+                  )}
+                </div>
+              </SwiperSlide>
+            );
+          })}
+        </Swiper>
+      </div>
+    </section>
+  );
+}
+
+function StatsHeroSplitSection({ section }: { section: HomeDynamicSection }) {
+  const content = getStatsHeroSplitContent(section);
+
+  if (
+    !content.eyebrow &&
+    !content.title &&
+    !content.highlightedTitle &&
+    !content.description &&
+    !content.stats.length
+  ) {
+    return null;
+  }
+
+  const contentFirst = content.contentSide === "right";
+
+  return (
+    <section className="mk-stats-hero-split">
+      <div className="mx-auto w-full max-w-[1440px] px-4">
+        <div
+          className={[
+            "mk-shs-layout",
+            contentFirst ? "mk-shs-layout-content-right" : "",
+          ].join(" ")}
+        >
+          {content.stats.length ? (
+            <div className="mk-shs-stats">
+              {content.stats.map((item, index) => (
+                <div
+                  key={`${item.value}-${item.label}-${index}`}
+                  className="mk-shs-card"
+                >
+                  <div className="mk-shs-card-text">
+                    {item.value ? (
+                      <div className="mk-shs-number" dir="ltr">
+                        {item.value}
+                      </div>
+                    ) : null}
+
+                    {item.label ? (
+                      <div className="mk-shs-label">{item.label}</div>
+                    ) : null}
+                  </div>
+
+                  {item.icon ? (
+                    <span
+                      className="mk-shs-icon-ring"
+                      style={{
+                        background: item.iconBg || "transparent",
+                        borderColor: item.iconBorder || "transparent",
+                      }}
+                    >
+                      <DynamicThemeIcon name={item.icon} className="text-xl" />
+                    </span>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="mk-shs-content">
+            {content.eyebrow ? (
+              <div className="mk-shs-eyebrow">{content.eyebrow}</div>
+            ) : null}
+
+            {content.title || content.highlightedTitle ? (
+              <h2 className="mk-shs-title">
+                {content.title ? <span>{content.title}</span> : null}
+                {content.highlightedTitle ? (
+                  <em>{content.highlightedTitle}</em>
+                ) : null}
+              </h2>
+            ) : null}
+
+            {content.description ? (
+              <p className="mk-shs-description">{content.description}</p>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function StatsSection({ section }: { section: HomeDynamicSection }) {
+  const values = getSectionValues(section);
+
+  const title = getTextValue(values, ["field_1", "title", "heading"]);
+  const description = getTextValue(values, [
+    "field_3",
+    "description",
+    "subtitle",
+    "text",
+  ]);
+
+  const image = getImageFromValue(values?.field_4);
+
+  const bgColor = s(values?.field_5) || "transparent";
+  const accentColor = s(values?.field_6) || "#A7745E";
+
+  const rows = Array.isArray(values?.field_7) ? values.field_7 : [];
+
+  const items = rows
+    .map((row: any, index: number) => {
+      const icon =
+        s(row?.field_1?.value) ||
+        s(row?.field_1?.icon) ||
+        s(row?.field_1) ||
+        s(row?.icon) ||
+        "";
+
+      const value =
+        getTextValue(row, ["field_2", "value", "number"]) ||
+        s(row?.field_2) ||
+        "";
+
+      const label =
+        getTextValue(row, ["field_3", "label", "title", "name"]) ||
+        s(row?.field_3) ||
+        "";
+
+      const itemDescription =
+        getTextValue(row, ["field_4", "description", "subtitle", "text"]) ||
+        s(row?.field_4) ||
+        "";
+
+      const iconBg = s(row?.field_5) || accentColor;
+      const iconColor = "#FFFFFF";
+
+      if (!value && !label && !itemDescription && !icon) return null;
+
+      return {
+        id: s(row?.id) || `stat-${index}`,
+        icon,
+        value,
+        label,
+        description: itemDescription,
+        iconBg,
+        iconColor,
+      };
+    })
+    .filter(Boolean) as Array<{
+    id: string;
+    icon: string;
+    value: string;
+    label: string;
+    description: string;
+    iconBg: string;
+    iconColor: string;
+  }>;
+
+  if (!title && !description && !image && !items.length) {
+    return null;
+  }
+
+  return (
+    <section className="mk-simple-stats-section">
+      <div className="mx-auto w-full max-w-[1280px] px-4">
+        {title || description ? (
+          <div className="mk-simple-stats-header">
+            {title ? <h2 className="mk-simple-stats-title">{title}</h2> : null}
+
+            {description ? (
+              <p className="mk-simple-stats-description">{description}</p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {image ? (
+          <div className="mk-simple-stats-image-wrap">
+            <img
+              src={image}
+              alt={imageAlt(
+                title,
+                description,
+                section.title,
+                "إحصائيات المتجر",
+              )}
+              loading="lazy"
+              decoding="async"
+              className="mk-simple-stats-image"
+            />
+          </div>
+        ) : null}
+
+        {items.length ? (
+          <div className="mk-simple-stats-list">
+            {items.map((item) => (
+              <article
+                key={item.id}
+                className="mk-simple-stats-card"
+                style={{ background: bgColor }}
+              >
+                {item.icon ? (
+                  <div
+                    className="mk-simple-stats-icon"
+                    style={{
+                      background: item.iconBg,
+                      color: item.iconColor,
+                    }}
+                  >
+                    <DynamicThemeIcon name={item.icon} />
+                  </div>
+                ) : null}
+
+                {item.value ? (
+                  <div className="mk-simple-stats-value" dir="ltr">
+                    {item.value}
+                  </div>
+                ) : null}
+
+                {item.label ? (
+                  <h3 className="mk-simple-stats-label">{item.label}</h3>
+                ) : null}
+
+                {item.description ? (
+                  <p className="mk-simple-stats-card-description">
+                    {item.description}
+                  </p>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function FeaturedMosaicOfferSection({
+  section,
+  data,
+  seoMode,
+}: {
+  section: HomeDynamicSection;
+  data: any;
+  seoMode: any;
+}) {
+  const content = getFeaturedMosaicOfferContent(section, data, seoMode);
+
+  if (!content.mainImage && !content.sideImages.length) return null;
+
+  const leftImages = content.sideImages.slice(0, 2);
+  const rightImages = content.sideImages.slice(2, 4);
+
+  return (
+    <section className="mk-featured-mosaic-offer py-8">
+      <div className="mx-auto w-full max-w-[1440px] px-4">
+        <div className="mk-fmo-grid">
+          <div className="mk-fmo-side mk-fmo-side-left">
+            {leftImages.map((item, index) => {
+              const alt = imageAlt(
+                item.alt,
+                content.title,
+                section.title,
+                `عرض جانبي ${index + 1}`,
+              );
+
+              return (
+                <a
+                  key={`left-${item.image}-${index}`}
+                  href={item.href || "#"}
+                  className="mk-fmo-side-card"
+                  aria-label={alt}
+                >
+                  <img
+                    src={item.image}
+                    alt={alt}
+                    loading="lazy"
+                    decoding="async"
+                    className="mk-fmo-side-img"
+                  />
+                </a>
+              );
+            })}
+          </div>
+
+          <a
+            href={content.productHref || "#"}
+            className="mk-fmo-main"
+            aria-label={imageAlt(content.title, section.title, "عرض مميز")}
+          >
+            {content.mainImage ? (
+              <img
+                src={content.mainImage}
+                alt={imageAlt(content.title, section.title, "عرض مميز")}
+                loading="lazy"
+                decoding="async"
+                className="mk-fmo-main-img"
+              />
+            ) : null}
+
+            <div className="mk-fmo-overlay" />
+
+            <div
+              className={[
+                "mk-fmo-content",
+                getMosaicTextPositionClass(content.textPosition),
+              ].join(" ")}
+              style={{
+                color: content.textColor || "#FFFFFF",
+              }}
+            >
+              {content.eyebrow ? (
+                <div className="mk-fmo-eyebrow">{content.eyebrow}</div>
+              ) : null}
+
+              {content.title ? (
+                <h2 className="mk-fmo-title">{content.title}</h2>
+              ) : null}
+
+              {content.subtitle ? (
+                <p className="mk-fmo-subtitle">{content.subtitle}</p>
+              ) : null}
+            </div>
+
+            {content.buttonText ? (
+              <span
+                className="mk-fmo-button"
+                style={{
+                  background: content.buttonBg || "#FFFFFF",
+                }}
+              >
+                {content.buttonText}
+              </span>
+            ) : null}
+          </a>
+
+          <div className="mk-fmo-side mk-fmo-side-right">
+            {rightImages.map((item, index) => {
+              const alt = imageAlt(
+                item.alt,
+                content.title,
+                section.title,
+                `عرض جانبي ${index + 1}`,
+              );
+
+              return (
+                <a
+                  key={`right-${item.image}-${index}`}
+                  href={item.href || "#"}
+                  className="mk-fmo-side-card"
+                  aria-label={alt}
+                >
+                  <img
+                    src={item.image}
+                    alt={alt}
+                    loading="lazy"
+                    decoding="async"
+                    className="mk-fmo-side-img"
+                  />
+                </a>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CountdownCircle({
+  value,
+  label,
+  tone = "default",
+}: {
+  value: number;
+  label: string;
+  tone?: "days" | "hours" | "minutes" | "seconds" | "default";
+}) {
+  const safeValue = Number.isFinite(value)
+    ? Math.max(0, Math.floor(value))
+    : 0;
+
+  return (
+    <div
+      className={[
+        "mk-countdown-circle",
+        tone !== "default" ? `mk-countdown-circle--${tone}` : "",
+      ].join(" ")}
+      aria-label={`${safeValue} ${label}`}
+    >
+      <div className="mk-countdown-value" dir="ltr">
+        {String(safeValue).padStart(2, "0")}
+      </div>
+
+      <div className="mk-countdown-label">{label}</div>
+    </div>
+  );
+}
+
+function CountdownOfferSection({
+  section,
+  data,
+  seoMode,
+}: {
+  section: HomeDynamicSection;
+  data: any;
+  seoMode: any;
+}) {
+  const content = getCountdownContent(section);
+  const [parts, setParts] = useState(() => getCountdownParts(content.target));
+
+  useEffect(() => {
+    setParts(getCountdownParts(content.target));
+
+    if (!content.target) return;
+
+    const timer = window.setInterval(() => {
+      setParts(getCountdownParts(content.target));
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [content.target]);
+
+  if (!content.image) return null;
+
+  const href = content.buttonHref
+    ? resolveGridHref(content.buttonHref, data, seoMode)
+    : "#";
+
+  const hasHref = Boolean(href && href !== "#");
+  const hasTimer = Boolean(content.target);
+
+  const title = s(content.title);
+  const subtitle = s(content.subtitle);
+
+  const labels = {
+    days: s(content.labels?.days) || "يوم",
+    hours: s(content.labels?.hours) || "ساعة",
+    minutes: s(content.labels?.minutes) || "دقيقة",
+    seconds: s(content.labels?.seconds) || "ثانية",
+  };
+
+  return (
+    <section className="mk-countdown-offer-section py-4" dir="rtl">
+      <div className="mx-auto w-full max-w-[1440px] px-4">
+        <div
+          className="mk-countdown-offer"
+          role="region"
+          aria-label={imageAlt(title, section.title, "عرض مؤقت")}
+        >
+          <img
+            src={content.image}
+            alt={imageAlt(title, subtitle, section.title, "عرض مؤقت")}
+            loading="lazy"
+            decoding="async"
+            className="mk-countdown-offer-img"
+          />
+
+          <div className="mk-countdown-offer-overlay" aria-hidden="true" />
+
+          <div className="mk-countdown-offer-content">
+            {title ? (
+              <h2 className="mk-countdown-offer-title">{title}</h2>
+            ) : null}
+
+            {subtitle ? (
+              <p className="mk-countdown-offer-subtitle">{subtitle}</p>
+            ) : null}
+
+            {hasTimer ? (
+              <div
+                className="mk-countdown-offer-timer"
+                dir="rtl"
+                aria-live="polite"
+              >
+                <CountdownCircle
+                  value={parts.days}
+                  label={labels.days}
+                  tone="days"
+                />
+
+                <CountdownCircle
+                  value={parts.hours}
+                  label={labels.hours}
+                  tone="hours"
+                />
+
+                <CountdownCircle
+                  value={parts.minutes}
+                  label={labels.minutes}
+                  tone="minutes"
+                />
+
+                <CountdownCircle
+                  value={parts.seconds}
+                  label={labels.seconds}
+                  tone="seconds"
+                />
+              </div>
+            ) : null}
+
+            {content.buttonText && hasHref ? (
+              <a href={href} className="mk-countdown-offer-button">
+                <span>{content.buttonText}</span>
+              </a>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ProductsTabsSection({
+  section,
+  data,
+  seoMode,
+  currencies,
+  tax,
+}: {
+  section: HomeDynamicSection;
+  data: any;
+  seoMode: any;
+  currencies?: any;
+  tax?: any;
+}) {
+  const values = getSectionValues(section);
+
+  const groupTitle = getTextValue(values, ["field_2", "title", "heading"]);
+  const groupDescription = getTextValue(values, [
+    "field_3",
+    "description",
+    "subtitle",
+    "text",
+  ]);
+
+  const tabs = useMemo(
+    () => getProductsTabs(section, data, seoMode),
+    [section, data, seoMode],
+  );
+
+  const [activeId, setActiveId] = useState("");
+
+  useEffect(() => {
+    if (!tabs.length) return;
+
+    setActiveId((current) => {
+      if (current && tabs.some((tab) => tab.id === current)) return current;
+      return tabs[0].id;
+    });
+  }, [tabs]);
+
+  if (!tabs.length) return null;
+
+  const activeTab = tabs.find((tab) => tab.id === activeId) || tabs[0];
+  const activeDescription = s((activeTab as any).description);
+  const isSingleTab = tabs.length === 1;
+
+  return (
+    <section className="mk-products-tabs-section mk-home-product-section">
+      {isSingleTab ? (
+        groupTitle || groupDescription ? (
+          <div className="mk-home-product-head">
+            {groupTitle ? (
+              <h2 className="mk-products-tabs-single-title">{groupTitle}</h2>
+            ) : null}
+
+            {groupDescription ? (
+              <p className="mk-products-tabs-single-desc">
+                {groupDescription}
+              </p>
+            ) : null}
+          </div>
+        ) : null
+      ) : (
+        <div className="mk-home-product-head">
+          <div className="mk-products-tabs-header">
+            {tabs.map((tab) => {
+              const active = tab.id === activeTab.id;
+
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveId(tab.id)}
+                  className={[
+                    "mk-products-tab-button",
+                    active ? "mk-products-tab-button-active" : "",
+                  ].join(" ")}
+                >
+                  {tab.title}
+                </button>
+              );
+            })}
+          </div>
+
+          {activeDescription ? (
+            <div className="mk-products-tabs-active-desc">
+              {activeDescription}
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      {activeTab.products.length ? (
+<ProductsSlider
+  title={activeTab.title}
+  products={activeTab.products}
+  data={data}
+  currencies={currencies}
+  tax={tax}
+/>
+      ) : (
+        <div className="mk-products-tabs-empty">
+          لا توجد منتجات لعرضها في هذا التاب
+        </div>
+      )}
+    </section>
+  );
+}
+
+function AdvancedProductsCollectionSection({
+  section,
+  data,
+  seoMode,
+  currencies,
+  tax,
+}: {
+  section: HomeDynamicSection;
+  data: any;
+  seoMode: any;
+  currencies?: any;
+  tax?: any;
+}) {
+  const values = getSectionValues(section);
+
+  const title = getTextValue(values, ["field_1", "title", "heading"]);
+  const description = getTextValue(values, [
+    "field_2",
+    "description",
+    "subtitle",
+    "text",
+  ]);
+
+  const image = getImageFromValue(values?.field_3);
+  const imageSide = s(values?.field_4) === "left" ? "left" : "right";
+
+  const imageTitle = getTextValue(values, ["field_5", "image_title"]);
+  const imageDescription = getTextValue(values, [
+    "field_6",
+    "image_description",
+  ]);
+
+  const tabsEnabled = Boolean(values?.field_7);
+
+  const tabs = useMemo(
+    () =>
+      tabsEnabled
+        ? getAdvancedCollectionTabs(values, section, data, seoMode)
+        : [],
+    [tabsEnabled, values, section, data, seoMode],
+  );
+
+  const products = useMemo(
+    () =>
+      tabsEnabled ? [] : getAdvancedCollectionProducts(values, data, seoMode),
+    [tabsEnabled, values, data, seoMode],
+  );
+
+  const [activeTabId, setActiveTabId] = useState("");
+
+  useEffect(() => {
+    if (!tabsEnabled || !tabs.length) return;
+
+    setActiveTabId((current) => {
+      if (current && tabs.some((tab) => tab.id === current)) return current;
+      return tabs[0].id;
+    });
+  }, [tabsEnabled, tabs]);
+
+  const activeTab = tabs.find((tab) => tab.id === activeTabId) || tabs[0];
+
+  const hasTabsProducts = tabsEnabled && activeTab?.products?.length;
+  const hasSliderProducts = !tabsEnabled && products.length;
+
+  if (
+    !title &&
+    !description &&
+    !image &&
+    !hasTabsProducts &&
+    !hasSliderProducts
+  ) {
+    return null;
+  }
+
+  if (!image) {
+    return (
+      <section className="mk-advanced-products-section mk-home-product-section">
+        {title || description ? (
+          <div className="mk-home-product-head">
+            {title ? (
+              <h2 className="m-0 text-right text-2xl font-extrabold text-slate-950">
+                {title}
+              </h2>
+            ) : null}
+
+            {description ? (
+              <p className="mt-2 max-w-3xl text-right text-sm leading-7 text-slate-500">
+                {description}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {tabsEnabled ? (
+          tabs.length ? (
+            <>
+              <div className="mk-home-product-head">
+                <div className="mk-advanced-products-tabs">
+                  {tabs.map((tab) => {
+                    const active = tab.id === activeTab.id;
+
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setActiveTabId(tab.id)}
+                        className={[
+                          "mk-advanced-products-tab",
+                          active ? "mk-advanced-products-tab-active" : "",
+                        ].join(" ")}
+                      >
+                        {tab.title}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {activeTab?.products?.length ? (
+                <ProductsSlider
+                  title={activeTab.title}
+                  products={activeTab.products}
+                  currencies={currencies}
+                  tax={tax}
+                />
+              ) : (
+                <div className="mk-advanced-products-empty">
+                  لا توجد منتجات لعرضها في هذا التاب
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="mk-advanced-products-empty">
+              لم يتم إضافة تبويبات بعد
+            </div>
+          )
+        ) : products.length ? (
+          <ProductsSlider products={products} currencies={currencies} tax={tax} />
+        ) : (
+          <div className="mk-advanced-products-empty">
+            لا توجد منتجات لعرضها
+          </div>
+        )}
+      </section>
+    );
+  }
+
+  return (
+    <section className="mk-advanced-products-section mk-home-product-section">
+      <div className="mx-auto w-full max-w-[1440px] px-4">
+        {title || description ? (
+          <div className="mk-home-product-head">
+            {title ? (
+              <h2 className="m-0 text-right text-2xl font-extrabold text-slate-950">
+                {title}
+              </h2>
+            ) : null}
+
+            {description ? (
+              <p className="mt-2 max-w-3xl text-right text-sm leading-7 text-slate-500">
+                {description}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div
+          className={[
+            "mk-advanced-products-layout",
+            imageSide === "left" ? "mk-advanced-products-layout-left" : "",
+          ].join(" ")}
+        >
+          <div className="mk-advanced-products-media">
+            <img
+              src={image}
+              alt={imageAlt(imageTitle, title, description, section.title)}
+              loading="lazy"
+              decoding="async"
+              className="mk-advanced-products-img"
+            />
+
+            {imageTitle || imageDescription ? (
+              <div className="mk-advanced-products-media-content">
+                {imageTitle ? (
+                  <h3 className="mk-advanced-products-media-title">
+                    {imageTitle}
+                  </h3>
+                ) : null}
+
+                {imageDescription ? (
+                  <p className="mk-advanced-products-media-desc">
+                    {imageDescription}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mk-advanced-products-content">
+            {tabsEnabled ? (
+              tabs.length ? (
+                <>
+                  <div className="mk-advanced-products-tabs">
+                    {tabs.map((tab) => {
+                      const active = tab.id === activeTab.id;
+
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setActiveTabId(tab.id)}
+                          className={[
+                            "mk-advanced-products-tab",
+                            active ? "mk-advanced-products-tab-active" : "",
+                          ].join(" ")}
+                        >
+                          {tab.title}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {activeTab?.products?.length ? (
+                    <ProductsSlider
+                      title={activeTab.title}
+                      products={activeTab.products}
+                      currencies={currencies}
+                      tax={tax}
+                    />
+                  ) : (
+                    <div className="mk-advanced-products-empty">
+                      لا توجد منتجات لعرضها في هذا التاب
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="mk-advanced-products-empty">
+                  لم يتم إضافة تبويبات بعد
+                </div>
+              )
+            ) : products.length ? (
+              <ProductsSlider products={products} currencies={currencies} tax={tax} />
+            ) : (
+              <div className="mk-advanced-products-empty">
+                لا توجد منتجات لعرضها
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ShowcaseFeatureItemView({ feature }: { feature: ShowcaseFeatureItem }) {
+  return (
+    <div className="mk-fps-feature">
+      <span
+        className="mk-fps-feature-icon"
+        style={{
+          background: feature.iconBg || "#DBEAFE",
+        }}
+      >
+        <DynamicThemeIcon name={feature.icon} />
+      </span>
+
+      <span className="mk-fps-feature-content">
+        <h3 className="mk-fps-feature-title">{feature.title}</h3>
+        {feature.description ? (
+          <p className="mk-fps-feature-desc">{feature.description}</p>
+        ) : null}
+      </span>
+    </div>
+  );
+}
+
+function FeaturesProductShowcaseSection({
+  section,
+  data,
+  seoMode,
+}: {
+  section: HomeDynamicSection;
+  data: any;
+  seoMode: any;
+}) {
+  const content = getFeaturesProductShowcaseContent(section, data, seoMode);
+
+  const rightFeatures = content.features.filter((item) => item.side === "right");
+  const leftFeatures = content.features.filter((item) => item.side === "left");
+
+  if (!content.productImage && !content.features.length && !content.title) {
+    return null;
+  }
+
+  return (
+    <section className="mk-features-product-showcase py-14">
+      <div className="mx-auto w-full max-w-[1440px] px-4">
+        <div className="mk-fps-header">
+          {content.eyebrow ? (
+            <div className="mk-fps-eyebrow">{content.eyebrow}</div>
+          ) : null}
+
+          {content.title ? (
+            <h2 className="mk-fps-title">{content.title}</h2>
+          ) : null}
+        </div>
+
+        <div className="mk-fps-layout">
+          <div className="mk-fps-features mk-fps-features-right">
+            {rightFeatures.map((feature, index) => (
+              <ShowcaseFeatureItemView
+                key={`right-${feature.title}-${index}`}
+                feature={feature}
+              />
+            ))}
+          </div>
+
+          <div className="mk-fps-product-wrap">
+            <a href={content.productHref || "#"} className="mk-fps-product-card">
+              <div className="mk-fps-product-image-box">
+                {content.productImage ? (
+                  <img
+                    src={content.productImage}
+                    alt={imageAlt(
+                      content.productTitle,
+                      content.title,
+                      section.title,
+                      "منتج مميز",
+                    )}
+                    loading="lazy"
+                    decoding="async"
+                    className="mk-fps-product-image"
+                  />
+                ) : null}
+              </div>
+
+              {content.productTitle ? (
+                <div className="mk-fps-product-name">
+                  {content.productTitle}
+                </div>
+              ) : null}
+
+              <div className="mk-fps-product-footer">
+                <span className="mk-fps-product-button">
+                  {content.buttonText}
+                </span>
+
+                {content.price ? (
+                  <span className="mk-fps-product-price" dir="rtl">
+                    {content.price}
+                    <small>{content.currency}</small>
+                  </span>
+                ) : null}
+              </div>
+            </a>
+          </div>
+
+          <div className="mk-fps-features mk-fps-features-left">
+            {leftFeatures.map((feature, index) => (
+              <ShowcaseFeatureItemView
+                key={`left-${feature.title}-${index}`}
+                feature={feature}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SquareLinksSection({
+  section,
+  items,
+}: {
+  section: HomeDynamicSection;
+  items: HomeDynamicItem[];
+}) {
+  const values = getSectionValues(section);
+  const title =
+    getTextValue(values, ["field_1", "title", "heading"]) || section.title;
+  const description = getTextValue(values, [
+    "field_2",
+    "description",
+    "subtitle",
+    "sub_title",
+    "text",
+  ]);
+
+  if (!items.length) return null;
+
+  return (
+    <section className="mk-square-links-section py-8">
+      <div className="mx-auto w-full max-w-[1440px] px-4">
+        {title || description ? (
+          <div className="mb-7 text-center">
+            {title ? (
+              <h2 className="m-0 text-3xl font-extrabold text-slate-950">
+                {title}
+              </h2>
+            ) : null}
+
+            {description ? (
+              <p className="mx-auto mt-3 max-w-2xl text-sm leading-8 text-slate-500">
+                {description}
+              </p>
+            ) : null}
+
+            <div className="mk-square-links-title-line" />
+          </div>
+        ) : null}
+
+        <div className="mk-square-links-grid">
+          {items.map((item, index) => {
+            const alt = imageAlt(
+              item.title,
+              item.description,
+              title,
+              `رابط مربع ${index + 1}`,
+            );
+
+            return (
+              <a
+                key={`${item.src}-${item.href}-${index}`}
+                href={item.href || "#"}
+                className="mk-square-link-card"
+                aria-label={alt}
+              >
+                <span className="mk-square-link-img-wrap">
+                  <img
+                    src={item.src}
+                    alt={alt}
+                    width={500}
+                    height={500}
+                    loading="lazy"
+                    fetchPriority="auto"
+                    decoding="async"
+                    className="mk-square-link-img"
+                  />
+                </span>
+
+                {item.title ? (
+                  <span className="mk-square-link-title">{item.title}</span>
+                ) : null}
+              </a>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CircleLinksSection({
+  section,
+  items,
+}: {
+  section: HomeDynamicSection;
+  items: HomeDynamicItem[];
+}) {
+  const values = getSectionValues(section);
+
+  const title =
+    getTextValue(values, ["field_1", "title", "heading"]) || section.title;
+  const description = getTextValue(values, [
+    "field_2",
+    "description",
+    "subtitle",
+    "sub_title",
+    "text",
+  ]);
+
+  if (!items.length) return null;
+
+  return (
+    <section className="mk-circle-links-section py-10">
+      <div className="mx-auto w-full max-w-[1440px] px-4">
+        {title || description ? (
+          <div className="mb-9 text-center">
+            {title ? (
+              <h2 className="m-0 text-4xl font-extrabold leading-tight text-slate-950 md:text-5xl">
+                {title}
+              </h2>
+            ) : null}
+
+            {description ? (
+              <p className="mx-auto mt-3 max-w-2xl text-lg font-medium leading-8 text-slate-400">
+                {description}
+              </p>
+            ) : null}
+
+            <div className="mk-circle-links-title-line" />
+          </div>
+        ) : null}
+
+        <div className="mk-circle-links-grid">
+          {items.map((item, index) => {
+            const alt = imageAlt(
+              item.title,
+              item.description,
+              title,
+              `رابط دائري ${index + 1}`,
+            );
+
+            return (
+              <a
+                key={`${item.src}-${item.href}-${index}`}
+                href={item.href || "#"}
+                className="mk-circle-link-card"
+                aria-label={alt}
+              >
+                <span className="mk-circle-link-img-wrap">
+                  <img
+                    src={item.src}
+                    alt={alt}
+                    width={500}
+                    height={500}
+                    loading="lazy"
+                    fetchPriority="auto"
+                    decoding="async"
+                    className="mk-circle-link-img"
+                  />
+                </span>
+
+                {item.title ? (
+                  <span className="mk-circle-link-title">{item.title}</span>
+                ) : null}
+
+                {item.description ? (
+                  <span className="mk-circle-link-desc">{item.description}</span>
+                ) : null}
+              </a>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function DynamicFaqSection({ section }: { section: HomeDynamicSection }) {
+  const content = getFaqContent(section);
+
+  if (!content.title && !content.description && !content.items.length) {
+    return null;
+  }
+
+  return (
+    <section className="mk-dynamic-faq-section py-10">
+      <div className="mx-auto w-full max-w-[1200px] px-4">
+        {content.title || content.description ? (
+          <div className="mb-8 text-center">
+            {content.title ? (
+              <h2 className="m-0 text-3xl font-extrabold text-slate-950 md:text-4xl">
+                {content.title}
+              </h2>
+            ) : null}
+
+            {content.description ? (
+              <p className="mx-auto mt-3 max-w-2xl text-sm font-medium leading-8 text-slate-500 md:text-base">
+                {content.description}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {content.items.length ? (
+          <div
+            className={[
+              "mk-dynamic-faq-grid",
+              content.columns === "1" ? "mk-dynamic-faq-grid-one" : "",
+            ].join(" ")}
+          >
+            {content.items.map((item, index) => (
+              <details
+                key={`${item.question}-${index}`}
+                className="mk-dynamic-faq-card"
+                open={index === 0}
+              >
+                <summary className="mk-dynamic-faq-question">
+                  <span>{item.question}</span>
+                  <span className="mk-dynamic-faq-plus">+</span>
+                </summary>
+
+                {item.answer ? (
+                  <div className="mk-dynamic-faq-answer">{item.answer}</div>
+                ) : null}
+              </details>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function StarsView({ rating }: { rating: number }) {
+  const fullStars = Math.round(Math.min(5, Math.max(0, rating || 0)));
+
+  return (
+    <div
+      className="mk-dynamic-testimonials-stars"
+      aria-label={`${fullStars} من 5`}
+    >
+      {Array.from({ length: 5 }).map((_, index) => (
+        <span key={index}>{index < fullStars ? "★" : "☆"}</span>
+      ))}
+    </div>
+  );
+}
+
+function TestimonialCardView({
+  item,
+  nameMode,
+  showDate,
+}: {
+  item: TestimonialItem;
+  nameMode: TestimonialNameMode;
+  showDate: boolean;
+}) {
+  const displayName =
+    nameMode === "masked" ? maskCustomerName(item.name) : item.name;
+
+  return (
+    <article className="mk-dynamic-testimonial-card">
+      <div className="mk-dynamic-testimonial-head">
+        <div className="mk-dynamic-testimonial-avatar">
+          {item.avatar ? (
+            <img
+              src={item.avatar}
+              alt={imageAlt(displayName, "صورة العميل")}
+              loading="lazy"
+              decoding="async"
+            />
+          ) : (
+            <span>{s(displayName).slice(0, 1) || "ع"}</span>
+          )}
+        </div>
+
+        <div className="mk-dynamic-testimonial-person">
+          <h3>{displayName}</h3>
+
+          {item.role ? <p>{item.role}</p> : null}
+
+          {showDate && item.createdAt ? (
+            <time dateTime={item.createdAt}>
+              {formatTestimonialDate(item.createdAt)}
+            </time>
+          ) : null}
+        </div>
+      </div>
+
+      <p className="mk-dynamic-testimonial-text">{item.text}</p>
+
+      <StarsView rating={item.rating} />
+    </article>
+  );
+}
+
+function DynamicTestimonialsSection({
+  section,
+  data,
+}: {
+  section: HomeDynamicSection;
+  data: any;
+}) {
+  const content = getTestimonialsContent(section, data);
+
+  const [open, setOpen] = useState(false);
+  const [modalItems, setModalItems] = useState<TestimonialItem[]>([]);
+  const [modalOffset, setModalOffset] = useState(0);
+  const [modalHasMore, setModalHasMore] = useState(false);
+  const [modalLoading, setModalLoading] = useState(false);
+  const [modalError, setModalError] = useState("");
+
+  const visibleItems = content.items.slice(0, content.limit);
+
+  async function loadModalItems(reset = false) {
+    if (modalLoading) return;
+
+    const nextOffset = reset ? 0 : modalOffset;
+
+    try {
+      setModalLoading(true);
+      setModalError("");
+
+      const result = await fetchStoreTestimonialsPage({
+        limit: content.loadMoreLimit,
+        offset: nextOffset,
+      });
+
+      setModalItems((current) =>
+        reset ? result.items : [...current, ...result.items],
+      );
+
+      setModalHasMore(result.hasMore);
+      setModalOffset(
+        typeof result.nextOffset === "number"
+          ? result.nextOffset
+          : nextOffset + result.items.length,
+      );
+    } catch (error: any) {
+      setModalError(error?.message || "تعذر تحميل التقييمات");
+    } finally {
+      setModalLoading(false);
+    }
+  }
+
+  async function openModal() {
+    setOpen(true);
+    setModalItems([]);
+    setModalOffset(0);
+    setModalHasMore(false);
+    setModalError("");
+
+    await loadModalItems(true);
+  }
+
+  if (!content.title && !content.description && !content.showAllButton) {
+    return null;
+  }
+
+  return (
+    <section className="mk-dynamic-testimonials-section py-12">
+      <div className="mx-auto w-full max-w-[1320px] px-4">
+        {content.title || content.description ? (
+          <div className="mk-dynamic-testimonials-header">
+            <div className="mk-dynamic-testimonials-eyebrow">TESTIMONIALS</div>
+
+            {content.title ? (
+              <h2 className="mk-dynamic-testimonials-title">
+                {content.title}
+              </h2>
+            ) : null}
+
+            {content.description ? (
+              <p className="mk-dynamic-testimonials-description">
+                {content.description}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {visibleItems.length ? (
+          <Swiper
+            modules={[Navigation, Pagination, Autoplay]}
+            slidesPerView={1}
+            spaceBetween={18}
+            dir="rtl"
+            speed={500}
+            loop={visibleItems.length > 3}
+            autoplay={
+              visibleItems.length > 3
+                ? { delay: 4500, disableOnInteraction: false }
+                : false
+            }
+            pagination={visibleItems.length > 1 ? { clickable: true } : false}
+            navigation={visibleItems.length > 3}
+            breakpoints={{
+              640: {
+                slidesPerView: 1,
+                spaceBetween: 16,
+              },
+              768: {
+                slidesPerView: 2,
+                spaceBetween: 18,
+              },
+              1100: {
+                slidesPerView: 3,
+                spaceBetween: 22,
+              },
+            }}
+            className="mk-dynamic-testimonials-slider"
+          >
+            {visibleItems.map((item) => (
+              <SwiperSlide key={item.id}>
+                <TestimonialCardView
+                  item={item}
+                  nameMode={content.nameMode}
+                  showDate={content.showDate}
+                />
+              </SwiperSlide>
+            ))}
+          </Swiper>
+        ) : (
+          <div className="mk-dynamic-testimonials-empty">
+            لا توجد تقييمات لعرضها حالياً
+          </div>
+        )}
+
+        {content.showAllButton ? (
+          <div className="mk-dynamic-testimonials-actions">
+            <button
+              type="button"
+              className="mk-dynamic-testimonials-button"
+              onClick={openModal}
+            >
+              {content.buttonText}
+            </button>
+          </div>
+        ) : null}
+      </div>
+
+      {open ? (
+        <div
+          className="mk-dynamic-testimonials-modal"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="mk-dynamic-testimonials-modal-backdrop"
+            onClick={() => setOpen(false)}
+          />
+
+          <div className="mk-dynamic-testimonials-modal-card">
+            <div className="mk-dynamic-testimonials-modal-head">
+              <h3>{content.title || "كل التقييمات"}</h3>
+
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                aria-label="إغلاق"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="mk-dynamic-testimonials-modal-body">
+              {modalItems.map((item) => (
+                <TestimonialCardView
+                  key={`modal-${item.id}`}
+                  item={item}
+                  nameMode={content.nameMode}
+                  showDate={content.showDate}
+                />
+              ))}
+
+              {modalLoading && !modalItems.length ? (
+                <div className="mk-dynamic-testimonials-modal-status">
+                  جاري تحميل التقييمات...
+                </div>
+              ) : null}
+
+              {modalError ? (
+                <div className="mk-dynamic-testimonials-modal-status">
+                  {modalError}
+                </div>
+              ) : null}
+
+              {!modalLoading && !modalError && !modalItems.length ? (
+                <div className="mk-dynamic-testimonials-modal-status">
+                  لا توجد تقييمات لعرضها حالياً
+                </div>
+              ) : null}
+
+              {modalHasMore ? (
+                <div className="mk-dynamic-testimonials-modal-more">
+                  <button
+                    type="button"
+                    disabled={modalLoading}
+                    onClick={() => loadModalItems(false)}
+                  >
+                    {modalLoading ? "جاري التحميل..." : "عرض المزيد"}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function BannersSliderSection({
+  title,
+  items,
+}: {
+  title?: string;
+  items: HomeDynamicItem[];
+}) {
+  if (!items.length) return null;
+
+  return (
+    <section className="mk-banners-slider-section py-1">
+      <div className="mx-auto w-full max-w-[1440px] px-4">
+        <div className="mk-banners-slider-wrap">
+          <Swiper
+            modules={[Navigation, Pagination, Autoplay]}
+            slidesPerView={1}
+            loop={items.length > 1}
+            dir="rtl"
+            speed={550}
+            autoplay={
+              items.length > 1
+                ? { delay: 5000, disableOnInteraction: false }
+                : false
+            }
+            pagination={items.length > 1 ? { clickable: true } : false}
+            navigation={items.length > 1}
+            className="mk-banners-slider-swiper"
+          >
+            {items.map((item, index) => {
+              const href = item.href && item.href !== "#" ? item.href : "#";
+
+              const alt = imageAlt(
+                item.title,
+                item.description,
+                title,
+                `بنر ${index + 1}`,
+              );
+
+              return (
+                <SwiperSlide key={`${item.src}-${index}`}>
+                  <a
+                    href={href}
+                    className="mk-banners-slider-link"
+                    aria-label={alt}
+                  >
+                    <img
+                      src={item.src}
+                      alt={alt}
+                      width={1600}
+                      height={610}
+                      loading={index === 0 ? "eager" : "lazy"}
+                      fetchPriority={index === 0 ? "high" : "auto"}
+                      decoding="async"
+                      className="mk-banners-slider-img"
+                    />
+                  </a>
+                </SwiperSlide>
+              );
+            })}
+          </Swiper>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function getWideBannerContent(
+  section: HomeDynamicSection,
+  data: any,
+  seoMode: any,
+) {
+  const values = getSectionValues(section);
+  const firstItem = Array.isArray(section.items) ? section.items[0] : null;
+
+  const image =
+    getImageFromValue(values?.field_1) ||
+    getImageFromValue((firstItem as any)?.src) ||
+    "";
+
+  const title =
+    getTextValue(values, ["field_2", "title", "heading"]) ||
+    s((firstItem as any)?.title);
+
+  const description =
+    getTextValue(values, ["field_3", "description", "subtitle", "text"]) ||
+    s((firstItem as any)?.description);
+
+  const linkValue =
+    values?.field_4 ||
+    (firstItem as any)?.link ||
+    (firstItem as any)?.href ||
+    null;
+
+  const href = linkValue
+    ? resolveGridHref(linkValue, data, seoMode)
+    : s((firstItem as any)?.href) || "#";
+
+  const showTextOverlay = getBooleanValue(values?.field_5);
+
+  return {
+    image,
+    title,
+    description,
+    href,
+    showTextOverlay,
+  };
+}
+
+function WideBannerSection({
+  section,
+  data,
+  seoMode,
+}: {
+  section: HomeDynamicSection;
+  data: any;
+  seoMode: any;
+}) {
+  const content = getWideBannerContent(section, data, seoMode);
+
+  if (!content.image) return null;
+
+  const hasHref = Boolean(content.href && content.href !== "#");
+  const hasText = Boolean(
+    content.showTextOverlay && (content.title || content.description),
+  );
+
+  const alt = imageAlt(
+    content.title,
+    content.description,
+    section.title,
+    "بنر عريض",
+  );
+
+  const bannerContent = (
+    <>
+      <img
+        src={content.image}
+        alt={alt}
+        loading="lazy"
+        decoding="async"
+        className="mk-wide-banner-img"
+      />
+
+      {hasText ? (
+        <>
+          <span className="mk-wide-banner-shade" aria-hidden="true" />
+
+          <span className="mk-wide-banner-content">
+            {content.title ? (
+              <span className="mk-wide-banner-title">{content.title}</span>
+            ) : null}
+
+            {content.description ? (
+              <span className="mk-wide-banner-description">
+                {content.description}
+              </span>
+            ) : null}
+          </span>
+        </>
+      ) : null}
+    </>
+  );
+
+  return (
+    <section className="mk-wide-banner-section py-1">
+      <div className="mx-auto w-full max-w-[1440px] px-4">
+        {hasHref ? (
+          <a
+            href={content.href}
+            className="mk-wide-banner-link"
+            aria-label={alt}
+          >
+            {bannerContent}
+          </a>
+        ) : (
+          <div className="mk-wide-banner-link">{bannerContent}</div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function isImageLinksGridSection(section: HomeDynamicSection) {
+  const key = s(section.key);
+  const slug = s(section.slug);
+  const renderKey = s(section.renderKey);
+  const rawKey = s(section.raw?.key);
+  const rawId = s(section.raw?.id);
+
+  return (
+    key === "image_links_grid" ||
+    slug === "image_links_grid" ||
+    renderKey === "image_links_grid" ||
+    rawKey === "image_links_grid" ||
+    rawId === "image_links_grid"
+  );
+}
+
+function getImageLinksGridItems(
+  section: HomeDynamicSection,
+  data: any,
+  seoMode: any,
+) {
+  const values = getSectionValues(section);
+  const layout = normalizeImageLinksGridLayout(values?.field_1);
+
+  const allItems = [
+    {
+      image: getImageFromValue(values?.field_2),
+      alt: getTextValue(values, ["field_3"]) || s(values?.field_3),
+      link: values?.field_4,
+    },
+    {
+      image: getImageFromValue(values?.field_5),
+      alt: getTextValue(values, ["field_6"]) || s(values?.field_6),
+      link: values?.field_7,
+    },
+    {
+      image: getImageFromValue(values?.field_8),
+      alt: getTextValue(values, ["field_9"]) || s(values?.field_9),
+      link: values?.field_10,
+    },
+    {
+      image: getImageFromValue(values?.field_11),
+      alt: getTextValue(values, ["field_12"]) || s(values?.field_12),
+      link: values?.field_13,
+    },
+  ];
+
+  const limit =
+    layout === "4" || layout === "4_inline"
+      ? 4
+      : layout === "3" || layout === "3_inline"
+        ? 3
+        : 2;
+
+  return {
+    layout,
+    items: allItems
+      .slice(0, limit)
+      .map((item, index) => ({
+        id: `${section.id}-image-links-grid-${index + 1}`,
+        src: item.image,
+        alt: imageAlt(item.alt, section.title, `بنر ${index + 1}`),
+        href: resolveGridHref(item.link, data, seoMode),
+      }))
+      .filter((item) => item.src),
+  };
+}
+
+function ImageLinksGridSection({
+  section,
+  data,
+  seoMode,
+}: {
+  section: HomeDynamicSection;
+  data: any;
+  seoMode: any;
+}) {
+  const { layout, items } = getImageLinksGridItems(section, data, seoMode);
+
+  if (!items.length) return null;
+
+  return (
+    <section className="mk-image-links-grid-section py-1">
+      <div className="mx-auto w-full max-w-[1440px] px-4">
+        <div
+          className={[
+            "mk-image-links-grid",
+            layout === "2" ? "mk-image-links-grid--two" : "",
+            layout === "3" ? "mk-image-links-grid--three" : "",
+            layout === "3_inline" ? "mk-image-links-grid--three-inline" : "",
+            layout === "4" ? "mk-image-links-grid--four" : "",
+            layout === "4_inline" ? "mk-image-links-grid--four-inline" : "",
+          ].join(" ")}
+          dir="rtl"
+        >
+          {items.map((item) => (
+            <a
+              key={item.id}
+              href={item.href || "#"}
+              className="mk-image-links-grid__card"
+              aria-label={item.alt}
+            >
+              <img
+                src={item.src}
+                alt={item.alt}
+                width={1150}
+                height={368}
+                loading="lazy"
+                fetchPriority="auto"
+                decoding="async"
+                className="mk-image-links-grid__img"
+              />
+            </a>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export default function HomeScreen({ data, seoMode }: Props) {
+  const dynamicSections = buildDynamicSections(data, seoMode);
+  const currencies = resolveCurrenciesFromData(data);
+const tax = resolveTaxFromData(data);
+
+  return (
+    <div>
+      {dynamicSections.map((section) => {
+        const key = section.id;
+
+        if (isResponsiveHeroSliderSection(section)) {
+          return (
+            <ResponsiveHeroSliderSection
+              key={key}
+              section={section}
+              data={data}
+              seoMode={seoMode}
+            />
+          );
+        }
+
+        if (isImageLinksGridSection(section)) {
+          return (
+            <ImageLinksGridSection
+              key={key}
+              section={section}
+              data={data}
+              seoMode={seoMode}
+            />
+          );
+        }
+
+        if (isCountdownOfferSection(section)) {
+          return (
+            <CountdownOfferSection
+              key={key}
+              section={section}
+              data={data}
+              seoMode={seoMode}
+            />
+          );
+        }
+
+        if (isProductsTabsSection(section)) {
+          return (
+           <ProductsTabsSection
+  key={key}
+  section={section}
+  data={data}
+  seoMode={seoMode}
+  currencies={currencies}
+  tax={tax}
+/>
+          );
+        }
+
+        if (isAdvancedProductsCollectionSection(section)) {
+          return (
+         <AdvancedProductsCollectionSection
+  key={key}
+  section={section}
+  data={data}
+  seoMode={seoMode}
+  currencies={currencies}
+  tax={tax}
+/>
+          );
+        }
+
+        if (isStatsHeroSplitSection(section)) {
+          return <StatsHeroSplitSection key={key} section={section} />;
+        }
+
+        if (isStatsSection(section)) {
+          return <StatsSection key={key} section={section} />;
+        }
+
+        if (isFaqSection(section)) {
+          return <DynamicFaqSection key={key} section={section} />;
+        }
+
+        if (isTestimonialsSection(section)) {
+          return (
+            <DynamicTestimonialsSection
+              key={key}
+              section={section}
+              data={data}
+            />
+          );
+        }
+
+        if (isFeaturedMosaicOfferSection(section)) {
+          return (
+            <FeaturedMosaicOfferSection
+              key={key}
+              section={section}
+              data={data}
+              seoMode={seoMode}
+            />
+          );
+        }
+
+        if (isFeaturesProductShowcaseSection(section)) {
+          return (
+            <FeaturesProductShowcaseSection
+              key={key}
+              section={section}
+              data={data}
+              seoMode={seoMode}
+            />
+          );
+        }
+
+        if (isCircleLinksSection(section)) {
+          return (
+            <CircleLinksSection
+              key={key}
+              section={section}
+              items={section.items}
+            />
+          );
+        }
+
+        if (isSquareLinksSection(section)) {
+          return (
+            <SquareLinksSection
+              key={key}
+              section={section}
+              items={section.items}
+            />
+          );
+        }
+
+        if (isWideBannerSection(section)) {
+          return (
+            <WideBannerSection
+              key={key}
+              section={section}
+              data={data}
+              seoMode={seoMode}
+            />
+          );
+        }
+
+        if (isBannersSliderSection(section)) {
+          return (
+            <BannersSliderSection
+              key={key}
+              title={section.title}
+              items={section.items}
+            />
+          );
+        }
+
+        return null;
+      })}
+    </div>
+  );
+}

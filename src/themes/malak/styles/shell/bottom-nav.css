@@ -1,0 +1,85 @@
+
+ /**
+ * apps/storefront/src/themes/malak/styles/shell/bottom-nav.css
+ */
+.mk-tabbar {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  padding-bottom: var(--mk-safe-bottom);
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid var(--mk-border-soft);
+}
+
+.mk-tabbar__inner {
+  height: var(--mk-tabbar-h);
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+}
+
+.mk-tab-item {
+  border: none;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 11px;
+  color: rgba(17, 17, 17, 0.58);
+  padding: 8px 6px;
+  border-radius: 16px;
+  position: relative;
+  min-width: 0;
+}
+
+.mk-tab-item.active {
+  color: #111;
+  font-weight: 800;
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.mk-tab-icon {
+  position: relative;
+  line-height: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mk-tab-label {
+  line-height: 1;
+  white-space: nowrap;
+  font-size: 10px;
+  color: #7d7e82;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mk-tab-item.active .mk-tab-label {
+  color: #111;
+}
+
+.mk-tab-badge {
+  position: absolute;
+  top: -7px;
+  inset-inline-start: -10px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: var(--mk-radius-pill);
+  background: #ee2d64;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 900;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgba(255, 255, 255, 0.95);
+}

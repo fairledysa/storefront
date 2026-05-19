@@ -1,0 +1,23 @@
+/* FILE: apps/storefront/src/themes/malak/styles/screens-desktop/account.css */
+
+@import "./account/account.base.css";
+@import "./account/account.layout.css";
+@import "./account/account.sidebar.css";
+@import "./account/account.shared.css";
+@import "./account/account.forms.css";
+@import "./account/account.info-cards.css";
+@import "./account/account.modal.css";
+@import "./account/account.city-dropdown.css";
+@import "./account/account.addresses.legacy.css";
+@import "./account/account.wallet.legacy.css";
+@import "./account/account.orders.css";
+@import "./account/account.favorites.css";
+@import "./account/account.responsive.css";
+@import "./account/account.orders-final.css";
+@import "./account/account.profile.css";
+@import "./account/account.modal-final.css";
+@import "./account/account.addresses.css";
+@import "./account/account.wallet.css";
+@import "./account/account.refer.css";
+@import "./account/account.gift-balance.css";
+@import "./account/account.tickets.css";

@@ -1,0 +1,125 @@
+/* FILE: apps/storefront/src/themes/malak/styles/foundation/tokens.css */
+
+:root {
+  --mk-color-primary: #000000;
+--mk-primary: var(--mk-color-primary);
+--mk-primary-contrast: #ffffff;
+--mk-primary-soft: color-mix(
+  in srgb,
+  var(--mk-color-primary) 10%,
+  transparent
+);
+--mk-primary-border: color-mix(
+  in srgb,
+  var(--mk-color-primary) 24%,
+  transparent
+);
+--mk-primary-hover: color-mix(
+  in srgb,
+  var(--mk-color-primary) 88%,
+  #000000 12%
+);
+
+  --mk-bg-page: #ffffff;
+  --mk-bg-page-secondary: #ffffff;
+  --mk-bg-card: #ffffff;
+  --mk-bg-surface: #ffffff;
+  --mk-bg-soft: #f7f7f7;
+  --mk-bg-header: #ffffff;
+  --mk-bg-footer: #ffffff;
+  --mk-bg-product: #ffffff;
+
+  --mk-text-main: #111111;
+  --mk-text-muted: rgba(0, 0, 0, 0.65);
+  --mk-text-soft: rgba(17, 17, 17, 0.58);
+  --mk-text-inverse: #ffffff;
+  --mk-text-header: #111111;
+  --mk-text-footer: #111111;
+
+  --mk-border-soft: rgba(0, 0, 0, 0.06);
+  --mk-border-medium: rgba(0, 0, 0, 0.08);
+  --mk-border-strong: rgba(0, 0, 0, 0.12);
+
+  --mk-radius-sm: 10px;
+  --mk-radius-md: 14px;
+  --mk-radius-lg: 18px;
+  --mk-radius-xl: 22px;
+  --mk-radius-pill: 999px;
+
+  --mk-shadow-card: 0 10px 26px rgba(15, 23, 42, 0.055);
+  --mk-shadow-floating: 0 18px 42px rgba(15, 23, 42, 0.15);
+  --mk-shadow-pop: 0 20px 50px rgba(0, 0, 0, 0.2);
+
+  --mk-gap: 12px;
+  --mk-container: 1280px;
+
+  --mk-font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+
+  --mk-safe-top: env(safe-area-inset-top, 0px);
+  --mk-safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  --mk-tabbar-h: 66px;
+  --mk-tabbar-total-h: calc(var(--mk-tabbar-h) + var(--mk-safe-bottom));
+
+  --mk-z-overlay: 70;
+  --mk-z-footer: 75;
+  --mk-z-header: 80;
+  --mk-z-popover: 90;
+  --mk-z-topbar: 80;
+  --mk-z-tabbar: 1000;
+  --mk-z-search-overlay: 2000;
+
+  --mk-help-bg: #9b7ad6;
+  --mk-accent: #6d28d9;
+
+  /**
+   * Aliases قديمة مهمة حتى ما تنكسر ملفات ومكونات قديمة.
+   */
+  --mk-primary: var(--mk-color-primary);
+  --mk-bg: var(--mk-bg-page);
+  --mk-surface: var(--mk-bg-surface);
+  --mk-text: var(--mk-text-main);
+  --mk-muted: var(--mk-text-muted);
+  --mk-border: var(--mk-border-medium);
+  --mk-radius: var(--mk-radius-md);
+  --mk-shadow: var(--mk-shadow-card);
+  --mk-font: var(--mk-font-family);
+
+  /**
+   * Aliases للهيدر القديم.
+   */
+  --no-container: var(--mk-container);
+  --no-border: #eeeeee;
+  --no-muted: #7a7a7a;
+  --no-bg-soft: var(--mk-bg-soft);
+  --no-text: var(--mk-text-main);
+  --no-shadow: 0 12px 28px rgba(0, 0, 0, 0.08);
+  --no-shadow-pop: var(--mk-shadow-pop);
+
+  --z-overlay: var(--mk-z-overlay);
+  --z-footer: var(--mk-z-footer);
+  --z-header: var(--mk-z-header);
+  --z-popover: var(--mk-z-popover);
+}
+
+[data-mk-theme="dark"] {
+  --mk-bg-page: #0b0b0b;
+  --mk-bg-page-secondary: #121212;
+  --mk-bg-card: #121212;
+  --mk-bg-surface: #121212;
+  --mk-bg-soft: #171717;
+
+  --mk-text-main: #f2f2f2;
+  --mk-text-muted: rgba(255, 255, 255, 0.7);
+  --mk-text-soft: rgba(255, 255, 255, 0.58);
+
+  --mk-border-soft: rgba(255, 255, 255, 0.06);
+  --mk-border-medium: rgba(255, 255, 255, 0.1);
+  --mk-border-strong: rgba(255, 255, 255, 0.16);
+
+  --mk-bg: var(--mk-bg-page);
+  --mk-surface: var(--mk-bg-surface);
+  --mk-text: var(--mk-text-main);
+  --mk-muted: var(--mk-text-muted);
+  --mk-border: var(--mk-border-medium);
+}

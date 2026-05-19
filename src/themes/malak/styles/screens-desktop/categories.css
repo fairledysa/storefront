@@ -1,0 +1,31 @@
+/* FILE: apps/storefront/src/themes/malak/styles/screens-desktop/categories.css */
+
+.mk-dcategories {
+  width: 100%;
+  direction: rtl;
+}
+
+.mk-dcategories__container {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 40px 24px;
+}
+
+.mk-dcategories__title {
+  margin: 0;
+  color: #0f172a;
+  font-size: 28px;
+  font-weight: 950;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.mk-dcategories__text {
+  margin: 10px 0 0;
+  color: #64748b;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.9;
+  text-align: right;
+}

@@ -1,0 +1,43 @@
+/* FILE: apps/storefront/src/themes/malak/styles/index.css */
+
+@import "./foundation/tokens.css";
+@import "./foundation/reset.css";
+@import "./foundation/typography.css";
+@import "./foundation/layout.css";
+@import "./foundation/animations.css";
+@import "./foundation/z-index.css";
+
+@import "./components/buttons.css";
+@import "./components/badges.css";
+@import "./components/cards.css";
+@import "./components/empty.css";
+@import "./components/overlay.css";
+
+@import "./shell/app-shell.css";
+@import "./shell/mobile-shell.css";
+@import "./shell/topbar.css";
+@import "./shell/bottom-nav.css";
+@import "./shell/search-overlay.css";
+@import "./shell/desktop-header.css";
+@import "./shell/footer.css";
+
+@import "./screens-mobile/product.css";
+@import "./screens-mobile/cart.css";
+@import "./screens-mobile/home.css";
+@import "./screens-mobile/category.css";
+@import "./screens-mobile/categories.css";
+@import "./screens-mobile/account.css";
+@import "./screens-mobile/order-details.css";
+
+@import "./screens-desktop/home.css";
+@import "./screens-desktop/product.css";
+@import "./screens-desktop/category.css";
+@import "./screens-desktop/categories.css";
+@import "./screens-desktop/cart.css";
+@import "./screens-desktop/thankyou.css";
+@import "./screens-desktop/maintenance.css";
+@import "./screens-desktop/account.css";
+@import "./screens-desktop/page.css";
+@import "./screens-desktop/search.css";
+@import "./screens-desktop/product-cart-runtime.css";
+@import "./screens-desktop/checkout-payment.css";

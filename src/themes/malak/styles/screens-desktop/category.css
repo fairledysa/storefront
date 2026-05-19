@@ -1,0 +1,76 @@
+/* FILE: apps/storefront/src/themes/malak/styles/screens-desktop/category.css */
+
+.mk-dcat {
+  width: 100%;
+  direction: rtl;
+}
+
+.mk-dcat__container {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 32px 24px;
+}
+
+.mk-dcat__title {
+  margin: 0 0 32px;
+  color: var(--mk-text-main, #0f172a);
+  font-size: 24px;
+  font-weight: 950;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.mk-dcat__error {
+  color: #dc2626;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.8;
+  text-align: right;
+}
+
+.mk-dcat__empty {
+  color: var(--mk-text-muted, #6b7280);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.8;
+  text-align: right;
+}
+
+.mk-dcat__grid {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(var(--mk-products-per-row, 4), minmax(0, 1fr));
+  gap: 24px;
+}
+
+@media (max-width: 1280px) {
+  .mk-dcat__grid {
+    grid-template-columns: repeat(
+      min(var(--mk-products-per-row, 4), 4),
+      minmax(0, 1fr)
+    );
+  }
+}
+
+@media (max-width: 1024px) {
+  .mk-dcat__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .mk-dcat__container {
+    padding: 22px 14px;
+  }
+
+  .mk-dcat__title {
+    margin-bottom: 20px;
+    font-size: 20px;
+  }
+
+  .mk-dcat__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+}

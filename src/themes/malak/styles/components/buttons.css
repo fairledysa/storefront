@@ -1,0 +1,42 @@
+/* FILE: apps/storefront/src/themes/malak/styles/components/buttons.css */
+
+.mk-btn {
+  border: none;
+  border-radius: calc(var(--mk-radius-md) - 2px);
+  height: 44px;
+  padding: 0 14px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.mk-btn--full {
+  width: 100%;
+}
+
+.mk-btn--sm {
+  height: 36px;
+}
+
+.mk-btn--md {
+  height: 44px;
+}
+
+.mk-btn--lg {
+  height: 48px;
+}
+
+.mk-btn--primary {
+  background: var(--mk-color-primary);
+  color: #fff;
+}
+
+.mk-btn--secondary {
+  background: #fff;
+  color: var(--mk-text-main);
+  border: 1px solid var(--mk-border-medium);
+}
+
+.mk-btn--ghost {
+  background: transparent;
+  color: var(--mk-text-main);
+}

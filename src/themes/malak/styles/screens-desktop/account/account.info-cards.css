@@ -1,0 +1,39 @@
+/* FILE: apps/storefront/src/themes/malak/styles/screens-desktop/account/account.info-cards.css */
+
+/* =========================================================
+   Account Info Cards
+   ========================================================= */
+
+.mk-account-infoGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.mk-account-infoCard {
+  min-height: 108px;
+  border-radius: var(--mk-acc-radius-lg);
+  border: 1px solid var(--mk-acc-line);
+  background: var(--mk-acc-surface);
+  padding: 18px;
+  box-shadow: var(--mk-acc-shadow);
+}
+
+.mk-account-infoCard__label {
+  margin-bottom: 10px;
+  color: var(--mk-acc-muted);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.mk-account-infoCard__value {
+  color: var(--mk-acc-text);
+  font-size: 18px;
+  font-weight: 900;
+  line-height: 1.8;
+  word-break: break-word;
+}
+
+.mk-account-infoCard__value.is-missing {
+  color: var(--mk-acc-soft);
+}

@@ -1,0 +1,85 @@
+/* FILE: apps/storefront/src/themes/malak/styles/screens-desktop/account/account.modal.css */
+
+/* =========================================================
+   Modal
+   ========================================================= */
+
+.mk-account-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+}
+
+.mk-account-modal__overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.42);
+}
+
+.mk-account-modal__card {
+  position: absolute;
+  left: 50%;
+  top: 64px;
+  width: min(92vw, 560px);
+  transform: translateX(-50%);
+  border-radius: var(--mk-acc-radius-xl);
+  background: var(--mk-acc-surface);
+  padding: 20px;
+  border: 1px solid var(--mk-acc-line);
+  box-shadow: 0 28px 80px rgba(15, 15, 15, 0.18);
+}
+
+.mk-account-modal__head {
+  margin-bottom: 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  border-radius: var(--mk-acc-radius-md);
+  padding: 12px;
+  background: var(--mk-acc-surface-soft);
+}
+
+.mk-account-modal__title {
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--mk-acc-text);
+}
+
+.mk-account-modal__close {
+  border: 0;
+  background: transparent;
+  color: var(--mk-acc-muted);
+  border-radius: 8px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.mk-account-modal__close:hover {
+  background: color-mix(in srgb, var(--mk-acc-muted) 10%, transparent);
+}
+
+.mk-account-modal__body {
+  display: grid;
+  gap: 12px;
+}
+
+.mk-account-alert {
+  margin-bottom: 12px;
+  border-radius: var(--mk-acc-radius-md);
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.mk-account-alert--error {
+  border: 1px solid #fecaca;
+  background: #fff5f5;
+  color: var(--mk-acc-danger);
+}
+
+.mk-account-alert--success {
+  border: 1px solid #bbf7d0;
+  background: #f0fdf4;
+  color: var(--mk-acc-success);
+}

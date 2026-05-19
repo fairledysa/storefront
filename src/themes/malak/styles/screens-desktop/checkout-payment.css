@@ -1,0 +1,248 @@
+/* FILE: apps/storefront/src/themes/malak/styles/screens-desktop/checkout-payment.css */
+
+.mk-cod-help-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  direction: rtl;
+}
+
+.mk-cod-help-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgb(9 9 11 / 0.52);
+  cursor: default;
+}
+
+.mk-cod-help-modal {
+  position: relative;
+  width: min(100%, 560px);
+  max-height: min(86vh, 760px);
+  overflow: hidden;
+  border-radius: 30px;
+  border: 1px solid rgb(228 228 231);
+  background: #ffffff;
+  box-shadow:
+    0 36px 90px rgb(15 23 42 / 0.32),
+    0 8px 26px rgb(15 23 42 / 0.14);
+  text-align: right;
+  direction: rtl;
+}
+
+.mk-cod-help-header {
+  min-height: 78px;
+  padding: 18px 22px;
+  border-bottom: 1px solid rgb(244 244 245);
+  background: linear-gradient(180deg, #fffaf1 0%, #fffdf8 100%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.mk-cod-help-title-wrap {
+  min-width: 0;
+  flex: 1;
+  text-align: right;
+}
+
+.mk-cod-help-title {
+  color: #09090b;
+  font-size: 18px;
+  font-weight: 950;
+  line-height: 1.45;
+  letter-spacing: -0.02em;
+}
+
+.mk-cod-help-subtitle {
+  margin-top: 4px;
+  color: #71717a;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.mk-cod-help-close {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  border-radius: 999px;
+  border: 1px solid rgb(228 228 231);
+  background: #ffffff;
+  color: #52525b;
+  font-size: 25px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    color 150ms ease,
+    transform 150ms ease;
+}
+
+.mk-cod-help-close:hover {
+  background: #f4f4f5;
+  color: #18181b;
+}
+
+.mk-cod-help-close:active {
+  transform: scale(0.96);
+}
+
+.mk-cod-help-body {
+  max-height: calc(min(86vh, 760px) - 78px);
+  overflow: auto;
+  padding: 20px;
+}
+
+.mk-cod-help-notice {
+  border-radius: 18px;
+  border: 1px solid rgb(217 119 6 / 0.22);
+  background: #fffaf1;
+  padding: 15px 17px;
+  color: #57534e;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 2;
+  text-align: right;
+}
+
+.mk-cod-help-list {
+  margin-top: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.mk-cod-help-record {
+  min-height: 116px;
+  border-radius: 20px;
+  border: 1px solid rgb(228 228 231);
+  background: #ffffff;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  direction: rtl;
+  text-align: right;
+}
+
+.mk-cod-help-number {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: #f4f4f5;
+  color: #71717a;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.mk-cod-help-record-content {
+  min-width: 0;
+  text-align: right;
+}
+
+.mk-cod-help-store-name {
+  color: #09090b;
+  font-size: 15px;
+  font-weight: 950;
+  line-height: 1.6;
+}
+
+.mk-cod-help-reason {
+  margin-top: 5px;
+  color: #71717a;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.8;
+}
+
+.mk-cod-help-note {
+  margin-top: 4px;
+  color: #52525b;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.8;
+}
+
+.mk-cod-help-date {
+  margin-top: 7px;
+  color: #a1a1aa;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.5;
+  direction: rtl;
+  text-align: right;
+}
+
+.mk-cod-help-done {
+  width: 100%;
+  height: 48px;
+  margin-top: 20px;
+  border: 0;
+  border-radius: 18px;
+  background: #09090b;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.mk-cod-help-done:hover {
+  background: #18181b;
+}
+
+@media (max-width: 640px) {
+  .mk-cod-help-overlay {
+    padding: 12px;
+  }
+
+  .mk-cod-help-modal {
+    border-radius: 24px;
+  }
+
+  .mk-cod-help-header {
+    padding: 16px;
+  }
+
+  .mk-cod-help-body {
+    padding: 16px;
+  }
+
+  .mk-cod-help-title {
+    font-size: 16px;
+  }
+
+  .mk-cod-help-notice {
+    font-size: 12px;
+    line-height: 1.9;
+  }
+
+  .mk-cod-help-record {
+    grid-template-columns: 36px minmax(0, 1fr);
+    gap: 10px;
+    padding: 14px;
+    border-radius: 18px;
+  }
+
+  .mk-cod-help-number {
+    width: 30px;
+    height: 30px;
+    font-size: 12px;
+  }
+
+  .mk-cod-help-store-name {
+    font-size: 14px;
+  }
+
+  .mk-cod-help-reason {
+    font-size: 12px;
+  }
+}

@@ -1,0 +1,47 @@
+/* FILE: apps/storefront/src/themes/malak/styles/screens-desktop/account/account.layout.css */
+
+/* =========================================================
+   Layout
+   ========================================================= */
+
+.mk-account__aside {
+  grid-column: 1;
+  grid-row: 1;
+  height: fit-content;
+  position: sticky;
+  top: 96px;
+  border-radius: var(--mk-acc-radius-xl);
+  border: 1px solid var(--mk-acc-line);
+  background: var(--mk-acc-surface);
+  padding: 18px;
+  box-shadow: var(--mk-acc-shadow);
+}
+
+.mk-account__main {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+}
+
+.mk-account__pageHead {
+  margin: 0 0 24px;
+  padding: 0;
+}
+
+.mk-account__sectionTitle {
+  margin: 0;
+  color: var(--mk-acc-text);
+  font-size: clamp(34px, 3vw, 48px);
+  font-weight: 950;
+  line-height: 1.08;
+  letter-spacing: -0.045em;
+}
+
+.mk-account__pageSubtitle {
+  max-width: 660px;
+  margin: 12px 0 0;
+  color: var(--mk-acc-muted);
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.85;
+}

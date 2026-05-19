@@ -1,0 +1,155 @@
+/* FILE: apps/storefront/src/themes/malak/styles/screens-desktop/account/account.responsive.css */
+
+/* =========================================================
+   Responsive
+   ========================================================= */
+
+@media (max-width: 1280px) {
+  .mk-account {
+    grid-template-columns: 286px minmax(0, 1fr);
+    gap: 24px;
+  }
+
+  .mk-order-card {
+    grid-template-columns: 176px minmax(0, 1fr) 176px;
+  }
+
+  .mk-order-card__content {
+    grid-template-columns: minmax(0, 1fr) 132px;
+    gap: 14px;
+    padding-inline: 16px;
+  }
+}
+
+@media (max-width: 1023px) {
+  .mk-account {
+    grid-template-columns: 1fr;
+    gap: 18px;
+    padding: 22px 0 36px;
+  }
+
+  .mk-account__aside,
+  .mk-account__main {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .mk-account__aside {
+    position: static;
+  }
+
+  .mk-account-infoGrid,
+  .mk-addr-form__grid,
+  .mk-wallet {
+    grid-template-columns: 1fr;
+  }
+
+  .mk-orders-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .mk-orders-stat {
+    justify-content: flex-start;
+    border-inline-start: 0;
+    border-top: 1px solid var(--mk-acc-line);
+  }
+
+  .mk-orders-stat:first-child {
+    border-top: 0;
+  }
+
+  .mk-orders-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .mk-orders-search {
+    min-width: 0;
+  }
+
+  .mk-orders-filters {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .mk-order-card {
+    grid-template-columns: 1fr;
+  }
+
+  .mk-order-card__meta,
+  .mk-order-card__content,
+  .mk-order-card__side {
+    padding: 16px;
+  }
+
+  .mk-order-card__content {
+    grid-template-columns: 1fr;
+    border-inline: 0;
+    border-block: 1px solid var(--mk-acc-line);
+  }
+
+  .mk-order-card__total {
+    text-align: right;
+  }
+
+  .mk-order-card__actions {
+    grid-template-columns: 1fr;
+  }
+
+  .mk-favorites__grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
+  .mk-account-inlineForm,
+  .mk-addr-card__row,
+  .mk-addr-deleteModal__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .mk-orders-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .mk-orders-loading,
+  .mk-orders-error {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .mk-order-card__head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .mk-order-card__badges {
+    justify-content: flex-start;
+  }
+
+  .mk-favorites__head {
+    border-radius: 16px;
+    padding: 11px 12px;
+  }
+
+  .mk-favorites__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .mk-favorites__add,
+  .mk-favorites__remove {
+    min-height: 34px;
+    border-radius: 12px;
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 420px) {
+  .mk-favorites__grid {
+    gap: 9px;
+  }
+}
+
+

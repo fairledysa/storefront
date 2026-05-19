@@ -1,0 +1,184 @@
+/* FILE: apps/storefront/src/themes/malak/styles/shell/search-overlay.css */
+
+.mk-search-ov {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: color-mix(in srgb, var(--mk-bg-page) 72%, rgba(0, 0, 0, 0.5) 28%);
+  color: var(--mk-text-main);
+  display: flex;
+  flex-direction: column;
+}
+
+.mk-search-ov__top {
+  display: grid;
+  grid-template-columns: 48px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  background: var(--mk-bg-header);
+  color: var(--mk-text-header);
+  border-bottom: 1px solid var(--mk-border-soft);
+}
+
+.mk-search-ov__back,
+.mk-search-ov__close {
+  border: 0;
+  background: transparent;
+  color: var(--mk-text-header);
+  cursor: pointer;
+}
+
+.mk-search-ov__back {
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mk-search-ov__back:hover,
+.mk-search-ov__close:hover {
+  background: color-mix(in srgb, var(--mk-text-header) 9%, transparent);
+}
+
+.mk-search-ov__close {
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.mk-search-ov__bar {
+  position: relative;
+  min-width: 0;
+  background: var(--mk-bg-search);
+  color: var(--mk-text-search);
+  border: 1px solid var(--mk-border-soft);
+  border-radius: 999px;
+}
+
+.mk-search-ov__input {
+  width: 100%;
+  height: 44px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--mk-text-search);
+  padding: 0 46px 0 18px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.mk-search-ov__input::placeholder {
+  color: color-mix(in srgb, var(--mk-text-search) 45%, transparent);
+}
+
+.mk-search-ov__icon {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: color-mix(in srgb, var(--mk-text-search) 70%, transparent);
+  pointer-events: none;
+}
+
+.mk-search-ov__content {
+  width: min(100%, 760px);
+  margin: 18px auto 0;
+  padding: 20px;
+  background: var(--mk-bg-dropdown);
+  color: var(--mk-text-dropdown);
+  border: 1px solid var(--mk-border-soft);
+  border-radius: 22px;
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.18);
+}
+
+.mk-search-ov__title {
+  margin: 0 0 14px;
+  color: var(--mk-text-dropdown);
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.mk-search-ov__title:not(:first-child) {
+  margin-top: 24px;
+}
+
+.mk-search-ov__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mk-search-ov__chip {
+  min-height: 34px;
+  padding: 0 13px;
+  border-radius: 999px;
+  border: 1px solid var(--mk-border-medium);
+  background: color-mix(in srgb, var(--mk-bg-dropdown) 88%, var(--mk-text-dropdown) 12%);
+  color: var(--mk-text-dropdown);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.mk-search-ov__chip:hover {
+  border-color: var(--mk-border-strong);
+  background: color-mix(in srgb, var(--mk-color-primary) 10%, var(--mk-bg-dropdown));
+}
+
+.mk-search-ov__brands {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.mk-search-ov__brand {
+  aspect-ratio: 1;
+  border-radius: 999px;
+  border: 1px solid var(--mk-border-medium);
+  background: color-mix(in srgb, var(--mk-bg-dropdown) 88%, var(--mk-text-dropdown) 12%);
+  color: var(--mk-text-dropdown);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  text-align: center;
+}
+
+.mk-search-ov__brand:hover {
+  border-color: var(--mk-border-strong);
+  background: color-mix(in srgb, var(--mk-color-primary) 10%, var(--mk-bg-dropdown));
+}
+
+.mk-search-ov__brandText {
+  display: block;
+  max-width: 100%;
+  color: inherit;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .mk-search-ov__top {
+    grid-template-columns: 42px 1fr auto;
+    padding: 10px 12px;
+  }
+
+  .mk-search-ov__content {
+    width: calc(100% - 24px);
+    margin-top: 12px;
+    padding: 16px;
+    border-radius: 18px;
+  }
+
+  .mk-search-ov__brands {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

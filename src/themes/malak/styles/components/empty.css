@@ -1,0 +1,21 @@
+/* FILE: apps/storefront/src/themes/malak/styles/components/empty.css */
+
+.mk-empty {
+  padding: 18px;
+  text-align: center;
+}
+
+.mk-empty__title {
+  font-weight: 900;
+  font-size: 16px;
+}
+
+.mk-empty__desc {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--mk-text-muted);
+}
+
+.mk-empty__actions {
+  margin-top: 12px;
+}

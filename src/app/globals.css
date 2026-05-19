@@ -1,0 +1,126 @@
+/* apps/storefront/src/app/globals.css */
+
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* =========================
+   THEME TOKENS
+========================= */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  /* 👇 الخط القادم من الثيم (DB) */
+  --font-sans: var(--font-store, var(--font-geist-sans));
+  --font-mono: var(--font-geist-mono);
+
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+
+  /* ✅ اللون الأساسي (Primary) */
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+}
+
+/* =========================
+   ROOT (Default Light)
+========================= */
+:root {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --border: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+
+  /* ✅ الافتراضي لو ما جاء من DB */
+  --primary: #00a98f;
+  --primary-foreground: #ffffff;
+}
+
+/* =========================
+   DARK MODE
+========================= */
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --border: oklch(1 0 0 / 10%);
+  --ring: oklch(0.556 0 0);
+}
+
+/* =========================
+   FONTS
+========================= */
+
+/* --- Tajawal --- */
+@font-face {
+  font-family: "Tajawal";
+  src: url("/fonts/tajawal/Tajawal-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Tajawal";
+  src: url("/fonts/tajawal/Tajawal-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* --- Cairo --- */
+@font-face {
+  font-family: "Cairo";
+  src: url("/fonts/cairo/Cairo-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* --- Almarai --- */
+@font-face {
+  font-family: "Almarai";
+  src: url("/fonts/almarai/Almarai-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* --- Rubik --- */
+@font-face {
+  font-family: "Rubik";
+  src: url("/fonts/rubik/Rubik-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* --- Lusail --- */
+@font-face {
+  font-family: "Lusail";
+  src: url("/fonts/lusail/Lusail-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Lusail";
+  src: url("/fonts/lusail/Lusail-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* =========================
+   BASE
+========================= */
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    font-family: var(--font-store, "Tajawal", system-ui, sans-serif);
+    @apply bg-background text-foreground;
+  }
+}

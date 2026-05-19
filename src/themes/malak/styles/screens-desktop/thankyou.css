@@ -1,0 +1,311 @@
+/* FILE: apps/storefront/src/themes/malak/styles/screens-desktop/thankyou.css */
+
+.mk-dthank {
+  min-height: 78vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 16px 56px;
+}
+
+.mk-dthank__wrap {
+  width: 100%;
+  max-width: 980px;
+  position: relative;
+}
+
+.mk-dthank__glow {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(8px);
+  pointer-events: none;
+}
+
+.mk-dthank__glow--green {
+  inset: auto auto -20px -20px;
+  width: 180px;
+  height: 180px;
+  background: radial-gradient(
+    circle,
+    rgba(34, 197, 94, 0.16) 0%,
+    rgba(34, 197, 94, 0) 72%
+  );
+}
+
+.mk-dthank__glow--blue {
+  top: -30px;
+  right: -10px;
+  width: 220px;
+  height: 220px;
+  background: radial-gradient(
+    circle,
+    rgba(59, 130, 246, 0.1) 0%,
+    rgba(59, 130, 246, 0) 72%
+  );
+  filter: blur(10px);
+}
+
+.mk-dthank__panel {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 36px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(249, 250, 251, 0.98) 100%
+  );
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.1);
+  padding: 28px;
+}
+
+.mk-dthank__topLine {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  background: linear-gradient(
+    90deg,
+    #22c55e 0%,
+    #86efac 35%,
+    #22c55e 70%,
+    #16a34a 100%
+  );
+}
+
+.mk-dthank__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+  gap: 22px;
+  align-items: stretch;
+}
+
+.mk-dthank-main {
+  border: 1px solid rgba(17, 24, 39, 0.06);
+  border-radius: 30px;
+  background: #fff;
+  padding: 28px;
+  box-shadow: 0 12px 36px rgba(15, 23, 42, 0.06);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 330px;
+}
+
+.mk-dthank-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.18);
+  color: #15803d;
+  font-weight: 900;
+  font-size: 14px;
+}
+
+.mk-dthank-status__icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #22c55e;
+  color: #fff;
+  font-size: 18px;
+  box-shadow: 0 8px 20px rgba(34, 197, 94, 0.35);
+}
+
+.mk-dthank__title {
+  margin-top: 18px;
+  font-size: 42px;
+  font-weight: 950;
+  line-height: 1.1;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+
+.mk-dthank__desc {
+  margin-top: 10px;
+  font-size: 17px;
+  color: #475569;
+  font-weight: 700;
+  line-height: 1.8;
+}
+
+.mk-dthank-infoGrid {
+  margin-top: 22px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.mk-dthank-info {
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 24px;
+  background: #f8fafc;
+  padding: 18px;
+}
+
+.mk-dthank-info__label {
+  font-size: 13px;
+  color: #64748b;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.mk-dthank-info__orderNo {
+  font-size: 40px;
+  font-weight: 950;
+  color: #0f172a;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.mk-dthank-info__money {
+  font-size: 32px;
+  font-weight: 950;
+  color: #0f172a;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.mk-dthank-actions {
+  margin-top: 24px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.mk-dthank-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 54px;
+  padding: 0 24px;
+  border-radius: 18px;
+  text-decoration: none;
+  font-weight: 900;
+  font-size: 15px;
+}
+
+.mk-dthank-action--primary {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  color: #fff;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.22);
+}
+
+.mk-dthank-action--secondary {
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  background: #fff;
+  color: #0f172a;
+}
+
+.mk-dthank-side {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.mk-dthank-sideCard {
+  border-radius: 28px;
+  padding: 22px;
+  background: #fff;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.05);
+}
+
+.mk-dthank-sideCard--success {
+  background: linear-gradient(
+    180deg,
+    rgba(34, 197, 94, 0.08) 0%,
+    rgba(255, 255, 255, 1) 100%
+  );
+  border-color: rgba(34, 197, 94, 0.14);
+  box-shadow: 0 12px 32px rgba(34, 197, 94, 0.08);
+}
+
+.mk-dthank-sideCard__title {
+  font-size: 15px;
+  font-weight: 900;
+  color: #0f172a;
+}
+
+.mk-dthank-sideCard--success .mk-dthank-sideCard__title {
+  font-size: 16px;
+  color: #166534;
+}
+
+.mk-dthank-sideCard__text {
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.9;
+  color: #475569;
+  font-weight: 700;
+}
+
+.mk-dthank-steps {
+  margin-top: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.mk-dthank-step {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.mk-dthank-step__num {
+  min-width: 28px;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 13px;
+}
+
+.mk-dthank-step__num--green {
+  background: #ecfdf5;
+  color: #15803d;
+  border: 1px solid rgba(34, 197, 94, 0.16);
+}
+
+.mk-dthank-step__num--blue {
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+}
+
+.mk-dthank-step__num--purple {
+  background: #faf5ff;
+  color: #9333ea;
+  border: 1px solid rgba(147, 51, 234, 0.14);
+}
+
+.mk-dthank-step__text {
+  font-size: 14px;
+  color: #334155;
+  font-weight: 700;
+  line-height: 1.8;
+}
+
+@media (max-width: 900px) {
+  .mk-dthank__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mk-dthank-infoGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .mk-dthank__title {
+    font-size: 34px;
+  }
+}

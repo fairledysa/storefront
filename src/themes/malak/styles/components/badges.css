@@ -1,0 +1,24 @@
+/* FILE: apps/storefront/src/themes/malak/styles/components/badges.css */
+
+.mk-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--mk-radius-pill);
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 800;
+  border: 1px solid var(--mk-border-medium);
+  background: rgba(0, 0, 0, 0.03);
+}
+
+[data-mk-theme="dark"] .mk-badge {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.mk-badge--success {
+  border-color: rgba(0, 180, 90, 0.25);
+}
+
+.mk-badge--danger {
+  border-color: rgba(230, 40, 40, 0.25);
+}
