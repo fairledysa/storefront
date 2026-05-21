@@ -1,4 +1,5 @@
 // FILE: apps/storefront/src/theme-engine/store-context/resolve-store.ts
+
 import { headers } from "next/headers";
 import { cache } from "react";
 import { unstable_cache } from "next/cache";
@@ -60,15 +61,19 @@ function cleanHost(raw: string) {
 
 function localSubdomainSlug(host: string) {
   if (!host.endsWith(".localhost")) return null;
+
   const parts = host.split(".");
   if (parts.length < 2) return null;
+
   return parts[0] || null;
 }
 
 function madrarSubdomainSlug(host: string) {
   if (!host.endsWith(".elyaia.com")) return null;
+
   const parts = host.split(".");
   if (parts.length < 3) return null;
+
   return parts[0] || null;
 }
 
@@ -181,6 +186,19 @@ type ThemeVersionRow = {
   themes_catalog?: { key: string | null } | null;
 };
 
+type ActiveStoreThemeRow = {
+  id: string;
+  store_id: string;
+  theme_id: string;
+  status: string;
+  settings: Record<string, any>;
+  updated_at: string | null;
+  created_at: string | null;
+  version_id: string;
+  theme_key: string | null;
+  catalog_key: string | null;
+};
+
 async function fetchActiveThemeVersion(
   store_id: string,
 ): Promise<ThemeVersionRow | null> {
@@ -220,6 +238,110 @@ async function fetchActiveThemeVersion(
   }
 }
 
+function mainInfoFromThemeSettings(settings: Record<string, any>): ThemeMainInfo {
+  const colors = safeObject(settings.colors);
+  const typography = safeObject(settings.typography);
+
+  return {
+    primary_color: String(
+      settings.primary_color ??
+        settings.primaryColor ??
+        colors.primary ??
+        colors.brand ??
+        DEFAULT_MAIN_INFO.primary_color,
+    ),
+    font: String(
+      settings.font ??
+        settings.font_family ??
+        settings.fontFamily ??
+        typography.font ??
+        DEFAULT_MAIN_INFO.font,
+    ),
+  };
+}
+
+async function fetchActiveStoreTheme(
+  store_id: string,
+): Promise<ActiveStoreThemeRow | null> {
+  try {
+    const sb = supabaseAdmin();
+
+    const st = await sb
+      .from("store_themes")
+      .select("id,store_id,theme_id,status,settings,updated_at,created_at")
+      .eq("store_id", store_id)
+      .eq("status", "published")
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (st.error) {
+      logDbError("fetchActiveStoreTheme failed", st.error, { store_id });
+      return null;
+    }
+
+    if (!st.data?.theme_id) return null;
+
+    const theme = await sb
+      .from("themes")
+      .select("id,code,name,catalog_theme_id")
+      .eq("id", st.data.theme_id)
+      .limit(1)
+      .maybeSingle();
+
+    if (theme.error) {
+      logDbError("fetchActiveStoreTheme theme lookup failed", theme.error, {
+        store_id,
+        theme_id: st.data.theme_id,
+      });
+      return null;
+    }
+
+    const themeCode = String(theme.data?.code ?? "").trim();
+    const catalogThemeId = String(theme.data?.catalog_theme_id ?? "").trim();
+
+    let catalogKey: string | null = null;
+
+    if (catalogThemeId) {
+      const catalog = await sb
+        .from("themes_catalog")
+        .select("id,key,name")
+        .eq("id", catalogThemeId)
+        .limit(1)
+        .maybeSingle();
+
+      if (catalog.error) {
+        logDbError("fetchActiveStoreTheme catalog lookup failed", catalog.error, {
+          store_id,
+          catalog_theme_id: catalogThemeId,
+        });
+      } else {
+        catalogKey = String(catalog.data?.key ?? "").trim() || null;
+      }
+    }
+
+    const themeKey = themeCode || catalogKey || null;
+
+    if (!themeKey) return null;
+
+    return {
+      id: String(st.data.id),
+      store_id: String(st.data.store_id),
+      theme_id: String(st.data.theme_id),
+      status: String(st.data.status),
+      settings: safeObject(st.data.settings),
+      updated_at: st.data.updated_at ?? null,
+      created_at: st.data.created_at ?? null,
+      version_id: `store_theme:${st.data.id}`,
+      theme_key: themeKey,
+      catalog_key: catalogKey,
+    };
+  } catch (e: any) {
+    logDbError("fetchActiveStoreTheme crashed", e, { store_id });
+    return null;
+  }
+}
+
 async function fetchThemeMainInfo(
   store_id: string,
   version_id: string,
@@ -243,6 +365,7 @@ async function fetchThemeMainInfo(
         version_id,
         slug,
       });
+
       return DEFAULT_MAIN_INFO;
     }
 
@@ -281,6 +404,7 @@ async function fetchThemeOptions(
         version_id,
         slug,
       });
+
       return {};
     }
 
@@ -300,6 +424,11 @@ const _domainRowCache = new Map<string, () => Promise<StoreDomainRow | null>>();
 const _activeThemeVersionCache = new Map<
   string,
   () => Promise<ThemeVersionRow | null>
+>();
+
+const _activeStoreThemeCache = new Map<
+  string,
+  () => Promise<ActiveStoreThemeRow | null>
 >();
 
 const _themeMainInfoCache = new Map<string, () => Promise<ThemeMainInfo>>();
@@ -371,6 +500,22 @@ function cachedActiveThemeVersion(store_id: string) {
   return fn();
 }
 
+function cachedActiveStoreTheme(store_id: string) {
+  let fn = _activeStoreThemeCache.get(store_id);
+
+  if (!fn) {
+    fn = unstable_cache(
+      () => fetchActiveStoreTheme(store_id),
+      ["active-store-theme", store_id],
+      { revalidate: 30 },
+    );
+
+    _activeStoreThemeCache.set(store_id, fn);
+  }
+
+  return fn();
+}
+
 function cachedThemeMainInfo(store_id: string, version_id: string) {
   const key = `${store_id}:${version_id}`;
   let fn = _themeMainInfoCache.get(key);
@@ -406,27 +551,42 @@ function cachedThemeOptions(store_id: string, version_id: string) {
 }
 
 /* ---------------------------- Main resolver ---------------------------- */
- /* ---------------------------- Main resolver ---------------------------- */
 
 async function attachThemeToContext(ctx: StoreContext): Promise<StoreContext> {
   const storeId = ctx.store?.id;
+
   if (!storeId) return ctx;
 
-  const v = await cachedActiveThemeVersion(storeId);
-  if (!v?.id) return ctx;
+  const version = await cachedActiveThemeVersion(storeId);
 
-  const [main_info, options] = await Promise.all([
-    cachedThemeMainInfo(storeId, v.id),
-    cachedThemeOptions(storeId, v.id),
-  ]);
+  if (version?.id) {
+    const [main_info, options] = await Promise.all([
+      cachedThemeMainInfo(storeId, version.id),
+      cachedThemeOptions(storeId, version.id),
+    ]);
+
+    return {
+      ...ctx,
+      theme: {
+        version_id: version.id,
+        theme_key: version.themes_catalog?.key ?? null,
+        main_info,
+        options,
+      },
+    };
+  }
+
+  const fallbackTheme = await cachedActiveStoreTheme(storeId);
+
+  if (!fallbackTheme?.theme_key) return ctx;
 
   return {
     ...ctx,
     theme: {
-      version_id: v.id,
-      theme_key: v.themes_catalog?.key ?? null,
-      main_info,
-      options,
+      version_id: fallbackTheme.version_id,
+      theme_key: fallbackTheme.theme_key,
+      main_info: mainInfoFromThemeSettings(fallbackTheme.settings),
+      options: fallbackTheme.settings,
     },
   };
 }
@@ -515,6 +675,7 @@ export const resolveStoreContext = cache(async (): Promise<StoreContext> => {
   const h = await headers();
 
   const host = cleanHost(h.get("x-forwarded-host") || h.get("host") || "");
+
   if (!host) return { host: "" };
 
   return cachedStoreContextByHost(host);
