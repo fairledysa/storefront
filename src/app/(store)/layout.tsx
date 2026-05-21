@@ -21,6 +21,21 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
+function resolveThemeCode(theme: any): ThemeCode {
+  const code = String(
+    theme?.theme_key ??
+      theme?.themeCode ??
+      theme?.theme_code ??
+      theme?.code ??
+      theme?.key ??
+      theme?.theme?.key ??
+      theme?.theme?.code ??
+      "",
+  ).trim();
+
+  return (code || "classic") as ThemeCode;
+}
+
 export default async function StoreLayout({
   children,
 }: {
@@ -30,7 +45,7 @@ export default async function StoreLayout({
 
   if (!ctx.store) return notFound();
 
-  const activeCode = (ctx.theme?.theme_key || "classic") as ThemeCode;
+  const activeCode = resolveThemeCode(ctx.theme);
   const kind = THEME_KIND[activeCode] || "legacy";
   const isAppShell = kind === "app-shell";
 
