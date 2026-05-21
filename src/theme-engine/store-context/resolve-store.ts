@@ -670,7 +670,7 @@ function cachedStoreContextByHost(host: string) {
 
   return fn();
 }
-
+ 
 export const resolveStoreContext = cache(async (): Promise<StoreContext> => {
   const h = await headers();
 
