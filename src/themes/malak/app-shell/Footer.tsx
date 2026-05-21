@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ComponentProps,
   type CSSProperties,
@@ -923,12 +924,38 @@ export default function Footer({ theme, bootstrap }: Props) {
   const pathname = usePathname();
   const year = useMemo(() => new Date().getFullYear(), []);
 
+  const footerRef = useRef<HTMLElement | null>(null);
+
   const [certificateOpen, setCertificateOpen] = useState(false);
   const [pageUrl, setPageUrl] = useState("");
+  const [footerVisible, setFooterVisible] = useState(false);
 
   useEffect(() => {
     setPageUrl(window.location.href);
   }, [pathname]);
+
+  useEffect(() => {
+    const el = footerRef.current;
+    if (!el) return;
+    if (typeof window === "undefined") return;
+    if (!("IntersectionObserver" in window)) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setFooterVisible(Boolean(entry?.isIntersecting));
+      },
+      {
+        root: null,
+        threshold: 0.02,
+      },
+    );
+
+    observer.observe(el);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
 
   const footerEnabled = bootstrap?.footer?.enabled !== false;
 
@@ -1152,6 +1179,8 @@ export default function Footer({ theme, bootstrap }: Props) {
   if (!footerEnabled) return null;
 
   const renderFloatingButtons = (side: FloatingSide) => {
+    if (footerVisible) return null;
+
     const showWhatsapp =
       whatsappEnabled && whatsappHref !== "#" && whatsappPosition === side;
 
@@ -1226,7 +1255,12 @@ export default function Footer({ theme, bootstrap }: Props) {
 
   return (
     <>
-      <footer className={footerClassName} style={footerStyle} dir="rtl">
+      <footer
+        ref={footerRef}
+        className={footerClassName}
+        style={footerStyle}
+        dir="rtl"
+      >
         {showHelpBlock ? (
           <div
             className="mk-footer__help"
@@ -1460,10 +1494,10 @@ export default function Footer({ theme, bootstrap }: Props) {
             ) : null}
           </div>
         </div>
-
-        {hasRightFloating ? renderFloatingButtons("right") : null}
-        {hasLeftFloating ? renderFloatingButtons("left") : null}
       </footer>
+
+      {hasRightFloating ? renderFloatingButtons("right") : null}
+      {hasLeftFloating ? renderFloatingButtons("left") : null}
 
       <CertificateModal
         open={certificateOpen}
