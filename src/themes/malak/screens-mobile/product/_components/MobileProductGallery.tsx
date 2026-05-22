@@ -1,7 +1,7 @@
 // FILE: apps/storefront/src/themes/malak/screens-mobile/product/_components/MobileProductGallery.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type Props = {
@@ -20,11 +20,7 @@ function s(value: any) {
 
 function normalizeFit(value: any): "cover" | "contain" | "fill" {
   const fit = s(value).toLowerCase();
-
-  if (fit === "contain" || fit === "fill" || fit === "cover") {
-    return fit;
-  }
-
+  if (fit === "contain" || fit === "fill" || fit === "cover") return fit;
   return "cover";
 }
 
@@ -55,9 +51,17 @@ export default function MobileProductGallery({
 }: Props) {
   const router = useRouter();
 
+  const dragRef = useRef({
+    active: false,
+    startX: 0,
+    startY: 0,
+    pointerId: 0,
+  });
+
+  const blockClickRef = useRef(false);
+
   const cleanImages = useMemo(() => {
-    const rows = Array.isArray(images) ? images : [];
-    return normalizeImages(rows);
+    return normalizeImages(Array.isArray(images) ? images : []);
   }, [images]);
 
   const fitMode = normalizeFit(objectFit);
@@ -76,6 +80,8 @@ export default function MobileProductGallery({
     s(productName) ||
     `صورة المنتج ${activeIndex + 1}`;
 
+  const progress = total > 0 ? ((activeIndex + 1) / total) * 100 : 0;
+
   useEffect(() => {
     if (activeIndex > total - 1) {
       setActiveIndex(0);
@@ -89,17 +95,9 @@ export default function MobileProductGallery({
     document.body.style.overflow = "hidden";
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        setLightboxOpen(false);
-      }
-
-      if (event.key === "ArrowRight") {
-        goPrev();
-      }
-
-      if (event.key === "ArrowLeft") {
-        goNext();
-      }
+      if (event.key === "Escape") setLightboxOpen(false);
+      if (event.key === "ArrowRight") goPrev();
+      if (event.key === "ArrowLeft") goNext();
     }
 
     window.addEventListener("keydown", handleKeyDown);
@@ -149,12 +147,58 @@ export default function MobileProductGallery({
   }
 
   function openZoom() {
+    if (blockClickRef.current) return;
     if (!activateZoom || !hasImages) return;
     setLightboxOpen(true);
   }
 
   function closeZoom() {
     setLightboxOpen(false);
+  }
+
+  function onPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (!hasMany) return;
+
+    dragRef.current = {
+      active: true,
+      startX: event.clientX,
+      startY: event.clientY,
+      pointerId: event.pointerId,
+    };
+
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      //
+    }
+  }
+
+  function onPointerUp(event: React.PointerEvent<HTMLDivElement>) {
+    if (!dragRef.current.active) return;
+
+    const dx = event.clientX - dragRef.current.startX;
+    const dy = event.clientY - dragRef.current.startY;
+
+    dragRef.current.active = false;
+
+    try {
+      event.currentTarget.releasePointerCapture(dragRef.current.pointerId);
+    } catch {
+      //
+    }
+
+    if (Math.abs(dx) < 44 || Math.abs(dx) < Math.abs(dy)) return;
+
+    blockClickRef.current = true;
+    window.setTimeout(() => {
+      blockClickRef.current = false;
+    }, 120);
+
+    if (dx > 0) {
+      goPrev();
+    } else {
+      goNext();
+    }
   }
 
   if (!hasImages) {
@@ -174,8 +218,6 @@ export default function MobileProductGallery({
             <div className="mk-mpg-header__title">
               <span>{s(productName) || "المنتج"}</span>
             </div>
-
-            <div className="mk-mpg-header__spacer" />
           </div>
 
           <div className="mk-mpg-empty">لا توجد صور للمنتج</div>
@@ -196,7 +238,14 @@ export default function MobileProductGallery({
           .filter(Boolean)
           .join(" ")}
       >
-        <div className="mk-mpg-stage">
+        <div
+          className="mk-mpg-stage"
+          onPointerDown={onPointerDown}
+          onPointerUp={onPointerUp}
+          onPointerCancel={() => {
+            dragRef.current.active = false;
+          }}
+        >
           <div className="mk-mpg-header">
             <button
               type="button"
@@ -210,8 +259,6 @@ export default function MobileProductGallery({
             <div className="mk-mpg-header__title">
               <span>{s(productName) || "المنتج"}</span>
             </div>
-
-            <div className="mk-mpg-header__spacer" />
           </div>
 
           <button
@@ -232,29 +279,14 @@ export default function MobileProductGallery({
               loading="eager"
               fetchPriority="high"
               decoding="async"
+              draggable={false}
             />
           </button>
 
           {hasMany ? (
-            <>
-              <button
-                type="button"
-                className="mk-mpg-nav mk-mpg-nav--prev"
-                aria-label="الصورة السابقة"
-                onClick={goPrev}
-              >
-                ‹
-              </button>
-
-              <button
-                type="button"
-                className="mk-mpg-nav mk-mpg-nav--next"
-                aria-label="الصورة التالية"
-                onClick={goNext}
-              >
-                ›
-              </button>
-            </>
+            <div className="mk-mpg-progress" aria-hidden="true">
+              <span style={{ width: `${progress}%` }} />
+            </div>
           ) : null}
 
           <div className="mk-mpg-counter">
@@ -289,6 +321,7 @@ export default function MobileProductGallery({
                     className="mk-mpg-thumb__img"
                     loading="lazy"
                     decoding="async"
+                    draggable={false}
                   />
                 </button>
               );
@@ -344,6 +377,7 @@ export default function MobileProductGallery({
               className="mk-mpg-lightbox__img"
               loading="eager"
               decoding="async"
+              draggable={false}
             />
           </div>
 
