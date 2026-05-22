@@ -46,7 +46,9 @@ function inferRouteFromPathname(pathname: string | null) {
   if (lower === "/categories" || lower.startsWith("/categories?")) {
     return "categories";
   }
-
+if (lower === "/search" || lower.startsWith("/search?")) {
+  return "search";
+}
   if (lower === "/cart" || lower.startsWith("/cart?")) {
     return "cart";
   }

@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import SquareArrowRight02 from "@/components/icon/huge/SquareArrowRight02";
+
 type Props = {
   images?: string[];
   productName?: string | null;
@@ -20,7 +21,11 @@ function s(value: any) {
 
 function normalizeFit(value: any): "cover" | "contain" | "fill" {
   const fit = s(value).toLowerCase();
-  if (fit === "contain" || fit === "fill" || fit === "cover") return fit;
+
+  if (fit === "contain" || fit === "fill" || fit === "cover") {
+    return fit;
+  }
+
   return "cover";
 }
 
@@ -120,35 +125,14 @@ export default function MobileProductGallery({
   }
 
   function handleBack() {
-    const fallbackHref = s(backHref) || "/";
-
-    if (typeof window === "undefined") {
-      router.push(fallbackHref);
-      return;
-    }
-
-    const referrer = s(document.referrer);
-
-    if (referrer) {
-      try {
-        const referrerUrl = new URL(referrer);
-        const currentUrl = new URL(window.location.href);
-
-        if (referrerUrl.origin === currentUrl.origin) {
-          router.back();
-          return;
-        }
-      } catch {
-        //
-      }
-    }
-
-    router.push(fallbackHref);
+    const href = s(backHref) || "/";
+    router.push(href);
   }
 
   function openZoom() {
     if (blockClickRef.current) return;
     if (!activateZoom || !hasImages) return;
+
     setLightboxOpen(true);
   }
 
@@ -190,6 +174,7 @@ export default function MobileProductGallery({
     if (Math.abs(dx) < 44 || Math.abs(dx) < Math.abs(dy)) return;
 
     blockClickRef.current = true;
+
     window.setTimeout(() => {
       blockClickRef.current = false;
     }, 120);
@@ -212,7 +197,10 @@ export default function MobileProductGallery({
               aria-label="رجوع"
               onClick={handleBack}
             >
-             <SquareArrowRight02 className="mk-mpg-backIcon" aria-hidden="true" />
+              <SquareArrowRight02
+                className="mk-mpg-backIcon"
+                aria-hidden="true"
+              />
             </button>
 
             <div className="mk-mpg-header__title">
@@ -253,7 +241,10 @@ export default function MobileProductGallery({
               aria-label="رجوع"
               onClick={handleBack}
             >
-              <SquareArrowRight02 className="mk-mpg-backIcon" aria-hidden="true" />
+              <SquareArrowRight02
+                className="mk-mpg-backIcon"
+                aria-hidden="true"
+              />
             </button>
 
             <div className="mk-mpg-header__title">

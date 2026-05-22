@@ -1103,6 +1103,30 @@ export default function Footer({ theme, bootstrap }: Props) {
     storePages,
   });
 
+  const mobileLinks = (() => {
+    const seen = new Set<string>();
+    const out: Item[] = [];
+
+    for (const col of cols) {
+      for (const item of col.items) {
+        const label = text(item.label);
+        const href = normalizeHref(item.href);
+
+        if (!label || !href || href === "#") continue;
+
+        const key = `${label}|${href}`;
+        if (seen.has(key)) continue;
+
+        seen.add(key);
+        out.push({ label, href });
+
+        if (out.length >= 8) return out;
+      }
+    }
+
+    return out;
+  })();
+
   const socials = normalizeSocials(bootstrap);
   const payments = normalizePayments(bootstrap);
 
@@ -1261,6 +1285,147 @@ export default function Footer({ theme, bootstrap }: Props) {
         style={footerStyle}
         dir="rtl"
       >
+        <div className="mk-mfooter" aria-label="فوتر المتجر للجوال">
+          <div className="mk-mfooter__brandCard">
+            {footerLogoUrl ? (
+              <Link href="/" className="mk-mfooter__logoLink">
+                <img
+                  src={footerLogoUrl}
+                  alt={footerLogoAlt}
+                  className="mk-mfooter__logo"
+                />
+              </Link>
+            ) : (
+              <Link href="/" className="mk-mfooter__logoText">
+                {storeName}
+              </Link>
+            )}
+
+            <div className="mk-mfooter__brandText">
+              <strong>{storeName}</strong>
+              <span>{copyrightText}</span>
+            </div>
+          </div>
+
+          {topHelp.length > 0 ? (
+            <div className="mk-mfooter__support">
+              {topHelp.slice(0, 2).map((x) => (
+                <a
+                  key={`mhelp-${x.title}-${x.value}`}
+                  href={x.href}
+                  className="mk-mfooter__supportBtn"
+                  target={isExternalHref(x.href) ? "_blank" : undefined}
+                  rel={isExternalHref(x.href) ? "noreferrer" : undefined}
+                >
+                  <span className="mk-mfooter__supportIcon">
+                    <Icon icon={x.icon as any} size={20 as any} />
+                  </span>
+
+                  <span className="mk-mfooter__supportText">
+                    <b>{x.title}</b>
+                    <small>{x.value}</small>
+                  </span>
+                </a>
+              ))}
+            </div>
+          ) : null}
+
+          {mobileLinks.length > 0 ? (
+            <div className="mk-mfooter__strip">
+              <div className="mk-mfooter__stripTitle">روابط سريعة</div>
+
+              <div className="mk-mfooter__chips">
+                {mobileLinks.map((item) => (
+                  <Link
+                    key={`mlink-${item.label}-${item.href}`}
+                    href={item.href}
+                    className="mk-mfooter__chip"
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {showSocial && socials.length > 0 ? (
+            <div className="mk-mfooter__social">
+              {socials.map((item) => (
+                <a
+                  key={`msocial-${item.label}-${item.href}`}
+                  href={item.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={item.label}
+                  title={item.label}
+                  className="mk-mfooter__socialBtn"
+                >
+                  <Icon icon={item.icon as any} size={18 as any} />
+                </a>
+              ))}
+            </div>
+          ) : null}
+
+          {showApps && hasAnyApp ? (
+            <div className="mk-mfooter__apps">
+              {hasAndroid ? (
+                <a
+                  href={androidUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mk-mfooter__appBtn"
+                >
+                  <Icon icon={"CustomGooglePlay" as any} size={22 as any} />
+
+                  <span>
+                    <b>Google Play</b>
+                    <small>تحميل التطبيق</small>
+                  </span>
+                </a>
+              ) : null}
+
+              {hasIos ? (
+                <a
+                  href={iosUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mk-mfooter__appBtn"
+                >
+                  <Icon icon={"CustomAppleAppStore" as any} size={22 as any} />
+
+                  <span>
+                    <b>App Store</b>
+                    <small>تحميل التطبيق</small>
+                  </span>
+                </a>
+              ) : null}
+            </div>
+          ) : null}
+
+          {showPayments && payments.length > 0 ? (
+            <div className="mk-mfooter__payments">
+              {payments.slice(0, 8).map((src) => (
+                <PaymentLogo key={`mpay-${src}`} src={src} />
+              ))}
+            </div>
+          ) : null}
+
+          {showBusinessCertificate ? (
+            <button
+              type="button"
+              className="mk-mfooter__certificate"
+              onClick={() => setCertificateOpen(true)}
+            >
+              <span>{businessCertificateTitle}</span>
+              <b>عرض</b>
+            </button>
+          ) : null}
+
+          <div className="mk-mfooter__legal">
+            © {year} {copyrightText}
+          </div>
+        </div>
+
         {showHelpBlock ? (
           <div
             className="mk-footer__help"
@@ -1369,9 +1534,9 @@ export default function Footer({ theme, bootstrap }: Props) {
                 <div className="mk-footer__colTitle">تواصل معنا</div>
 
                 <div className="mk-footer__socialGrid">
-                  {socials.map((s) => (
+                  {socials.map((item) => (
                     <a
-                      key={`${s.label}-${s.href}`}
+                      key={`${item.label}-${item.href}`}
                       className={[
                         "mk-footer__socialBtn",
                         enhancedSocialIcons
@@ -1381,13 +1546,13 @@ export default function Footer({ theme, bootstrap }: Props) {
                       ]
                         .filter(Boolean)
                         .join(" ")}
-                      href={s.href}
+                      href={item.href}
                       target="_blank"
                       rel="noreferrer"
-                      aria-label={s.label}
-                      title={s.label}
+                      aria-label={item.label}
+                      title={item.label}
                     >
-                      <Icon icon={s.icon as any} size={18 as any} />
+                      <Icon icon={item.icon as any} size={18 as any} />
                     </a>
                   ))}
                 </div>

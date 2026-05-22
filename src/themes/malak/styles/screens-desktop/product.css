@@ -3270,3 +3270,122 @@
     border-radius: 16px;
   }
 }
+
+
+
+
+
+
+
+/* =========================================================
+   Desktop Product Page — use store identity, no forced gold
+   يكون آخر شيء في product.css
+   ========================================================= */
+
+.mk-dproduct,
+.mk-drecommended,
+.mk-dproduct-reviewsStandalone {
+  --mk-rating-color: var(
+    --mk-primary,
+    var(--mk-color-primary, var(--mk-product-primary, #111827))
+  );
+
+  --mk-product-primary: var(
+    --mk-primary,
+    var(--mk-color-primary, var(--mk-accent, #111827))
+  );
+
+  --mk-product-primary-hover: var(
+    --mk-primary-hover,
+    var(--mk-color-primary-hover, var(--mk-product-primary))
+  );
+
+  --mk-product-primary-contrast: var(
+    --mk-primary-contrast,
+    #ffffff
+  );
+}
+
+/* نجوم وشريط التقييمات في نسخة الكمبيوتر */
+.mk-dproduct .mk-prev-summary__stars,
+.mk-dproduct .mk-prev-stars,
+.mk-dproduct .mk-prev-lightbox__stars {
+  color: var(--mk-rating-color) !important;
+}
+
+.mk-dproduct .mk-prev-barRow__fill {
+  background: var(--mk-rating-color) !important;
+}
+
+/* بطاقة تقييم / شراء موثق بدون ذهبي إجباري */
+.mk-dproduct .mk-prev-type--review,
+.mk-dproduct .mk-prev-verified {
+  background: color-mix(
+    in srgb,
+    var(--mk-rating-color) 9%,
+    var(--mk-product-card, #ffffff)
+  ) !important;
+  color: var(--mk-rating-color) !important;
+  border-color: color-mix(
+    in srgb,
+    var(--mk-rating-color) 28%,
+    transparent
+  ) !important;
+}
+
+/* صندوق نسبة التوصية */
+.mk-dproduct .mk-prev-summary__score:last-child .mk-prev-summary__stars {
+  color: color-mix(
+    in srgb,
+    var(--mk-rating-color) 72%,
+    var(--mk-product-text, #111827)
+  ) !important;
+}
+
+/* لايت بوكس صور التقييم */
+.mk-dproduct .mk-prev-lightbox__rating {
+  background: color-mix(
+    in srgb,
+    var(--mk-rating-color) 8%,
+    #ffffff
+  ) !important;
+  border-color: color-mix(
+    in srgb,
+    var(--mk-rating-color) 24%,
+    transparent
+  ) !important;
+}
+
+/* قسم المنتجات المقترحة يسحب نفس هوية المتجر */
+.mk-drecommended {
+  --mk-card-primary: var(--mk-product-primary);
+  --mk-card-primary-hover: var(--mk-product-primary-hover);
+  --mk-card-primary-contrast: var(--mk-product-primary-contrast);
+  --mk-pc-primary: var(--mk-product-primary);
+  --mk-pc-primary-hover: var(--mk-product-primary-hover);
+  --mk-pc-primary-contrast: var(--mk-product-primary-contrast);
+  --mk-accent: var(--mk-product-primary);
+  --mk-accent-hover: var(--mk-product-primary-hover);
+}
+
+/* أي بادجات أو أزرار داخل المنتجات المقترحة لا تكون ذهبية إجبارية */
+.mk-drecommended [class*="badge"],
+.mk-drecommended [class*="Badge"],
+.mk-drecommended [class*="discount"],
+.mk-drecommended [class*="Discount"] {
+  border-color: color-mix(
+    in srgb,
+    var(--mk-product-primary) 24%,
+    transparent
+  );
+}
+
+.mk-drecommended [class*="cart"],
+.mk-drecommended [class*="Cart"],
+.mk-drecommended [data-mk-cart-product-id] {
+  --mk-product-primary: var(--mk-primary, var(--mk-color-primary, #111827));
+  --mk-product-primary-hover: var(
+    --mk-primary-hover,
+    var(--mk-color-primary-hover, #111827)
+  );
+}

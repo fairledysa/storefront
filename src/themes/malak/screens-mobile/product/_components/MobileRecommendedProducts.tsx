@@ -1,6 +1,9 @@
 // FILE: apps/storefront/src/themes/malak/screens-mobile/product/_components/MobileRecommendedProducts.tsx
 "use client";
 
+import type { MouseEvent } from "react";
+import { useRouter } from "next/navigation";
+
 import type { SeoUrlMode } from "@/data/store/settings";
 import { buildProductHref } from "@/lib/seo/build-store-href";
 import ProductsSlider from "../../../screens/home/_components/ProductsSlider";
@@ -149,6 +152,31 @@ function normalizeProductsForSlider(args: {
     .filter(Boolean);
 }
 
+function isModifiedClick(event: MouseEvent) {
+  return event.metaKey || event.ctrlKey || event.shiftKey || event.altKey;
+}
+
+function resolveInternalHref(rawHref: string) {
+  const href = s(rawHref);
+
+  if (!href || href === "#") return "";
+  if (href.startsWith("mailto:") || href.startsWith("tel:")) return "";
+
+  if (href.startsWith("/")) return href;
+
+  if (typeof window === "undefined") return "";
+
+  try {
+    const url = new URL(href, window.location.origin);
+
+    if (url.origin !== window.location.origin) return "";
+
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return "";
+  }
+}
+
 export default function MobileRecommendedProducts({
   items,
   mode,
@@ -157,6 +185,8 @@ export default function MobileRecommendedProducts({
   currencies,
   tax,
 }: Props) {
+  const router = useRouter();
+
   const enabled = storeOptions?.productRecommendations?.enabled ?? true;
 
   if (!enabled) return null;
@@ -173,8 +203,30 @@ export default function MobileRecommendedProducts({
 
   if (!products.length) return null;
 
+  function handleRecommendedClick(event: MouseEvent<HTMLElement>) {
+    if (event.defaultPrevented) return;
+    if (isModifiedClick(event)) return;
+
+    const target = event.target as HTMLElement | null;
+    const anchor = target?.closest?.("a[href]") as HTMLAnchorElement | null;
+
+    if (!anchor) return;
+    if (anchor.target && anchor.target !== "_self") return;
+
+    const href = resolveInternalHref(anchor.getAttribute("href") || "");
+    if (!href) return;
+
+    event.preventDefault();
+    router.push(href);
+  }
+
   return (
-    <section className="mk-mrecommended" dir="rtl" aria-label={title}>
+    <section
+      className="mk-mrecommended"
+      dir="rtl"
+      aria-label={title}
+      onClickCapture={handleRecommendedClick}
+    >
       <ProductsSlider
         title={title}
         viewAllText=""

@@ -28,6 +28,7 @@
 @import "./screens-mobile/categories.css";
 @import "./screens-mobile/account.css";
 @import "./screens-mobile/order-details.css";
+@import "./screens-mobile/search.css";
 
 @import "./screens-desktop/home.css";
 @import "./screens-desktop/product.css";

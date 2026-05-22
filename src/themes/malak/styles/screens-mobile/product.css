@@ -3585,79 +3585,89 @@
 }
 
 
+
+
+
+
+
+
+
+
+
 /* =========================================================
-   FINAL TUNE — Product Mobile less crowded
+   Mobile Product Reviews — use store identity, no forced gold
    ========================================================= */
 
-/* قلل طول الصورة عشان يظهر كرت المنتج بدون زحمة */
-.mk-mobile-shell[data-mk-route="product"] .mk-mpg-stage__img,
-.mk-mpg-stage__img {
-  height: min(68svh, 610px) !important;
-  object-fit: cover !important;
-  object-position: center top !important;
+.mk-mobile-shell[data-mk-route="product"] .mk-prev,
+.mk-mobile-shell[data-mk-route="product"] .mk-mproduct-reviews {
+  --mk-rating-color: var(
+    --mk-primary,
+    var(--mk-color-primary, var(--mk-product-primary, #111827))
+  );
 }
 
-/* انتقال أنعم بين الصورة وكرت المنتج */
-.mk-mpg-stage {
-  border-radius: 0 0 22px 22px !important;
+/* نجوم التقييم من هوية المتجر */
+.mk-mobile-shell[data-mk-route="product"] .mk-prev-summary__stars,
+.mk-mobile-shell[data-mk-route="product"] .mk-prev-stars,
+.mk-mobile-shell[data-mk-route="product"] .mk-prev-lightbox__stars {
+  color: var(--mk-rating-color) !important;
 }
 
-.mk-mproduct-content {
-  padding-top: 12px !important;
+/* شريط نسب التقييم */
+.mk-mobile-shell[data-mk-route="product"] .mk-prev-barRow__fill {
+  background: var(--mk-rating-color) !important;
 }
 
-/* شريط الإضافة يكون أخف وأقرب للأسفل */
-.mk-mproduct-mobileCart {
-  bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important;
-  padding-inline: 10px !important;
+/* بطاقة "تقييم" */
+.mk-mobile-shell[data-mk-route="product"] .mk-prev-type--review {
+  background: color-mix(
+    in srgb,
+    var(--mk-rating-color) 9%,
+    var(--mk-product-card, #ffffff)
+  ) !important;
+  color: var(--mk-rating-color) !important;
+  border-color: color-mix(
+    in srgb,
+    var(--mk-rating-color) 28%,
+    transparent
+  ) !important;
 }
 
-.mk-mcart-bar {
-  min-height: 56px !important;
-  border-radius: 20px !important;
-  padding: 7px !important;
-  box-shadow:
-    0 16px 42px rgba(15, 23, 42, 0.16),
-    0 0 0 1px rgba(255, 255, 255, 0.5) inset !important;
+/* شراء موثق */
+.mk-mobile-shell[data-mk-route="product"] .mk-prev-verified {
+  background: color-mix(
+    in srgb,
+    var(--mk-rating-color) 10%,
+    var(--mk-product-card, #ffffff)
+  ) !important;
+  color: var(--mk-rating-color) !important;
+  border-color: color-mix(
+    in srgb,
+    var(--mk-rating-color) 28%,
+    transparent
+  ) !important;
 }
 
-.mk-mcart-submit {
-  height: 42px !important;
-  border-radius: 15px !important;
+/* نسبة التوصية */
+.mk-mobile-shell[data-mk-route="product"] .mk-prev-summary__score:nth-child(3) .mk-prev-summary__stars,
+.mk-mobile-shell[data-mk-route="product"] .mk-prev-summary__score:last-child .mk-prev-summary__stars {
+  color: color-mix(
+    in srgb,
+    var(--mk-rating-color) 72%,
+    var(--mk-product-text, #111827)
+  ) !important;
 }
 
-.mk-mcart-qty {
-  height: 42px !important;
-  border-radius: 15px !important;
-}
-
-.mk-mcart-qty button {
-  height: 42px !important;
-}
-
-.mk-mcart-iconBtn {
-  height: 42px !important;
-  border-radius: 15px !important;
-}
-
-/* أزرار الواتساب والطلوع لا تدخل فوق اسم المنتج */
-.mk-mobile-shell[data-mk-route="product"] .mk-floating-actions {
-  bottom: calc(136px + env(safe-area-inset-bottom, 0px)) !important;
-}
-
-/* على الشاشات الصغيرة أكثر */
-@media (max-width: 420px) {
-  .mk-mobile-shell[data-mk-route="product"] .mk-mpg-stage__img,
-  .mk-mpg-stage__img {
-    height: min(66svh, 575px) !important;
-  }
-
-  .mk-mproduct-mobileCart {
-    bottom: calc(70px + env(safe-area-inset-bottom, 0px)) !important;
-    padding-inline: 8px !important;
-  }
-
-  .mk-mobile-shell[data-mk-route="product"] .mk-floating-actions {
-    bottom: calc(132px + env(safe-area-inset-bottom, 0px)) !important;
-  }
+/* لايت بوكس صور التقييم */
+.mk-mobile-shell[data-mk-route="product"] .mk-prev-lightbox__rating {
+  background: color-mix(
+    in srgb,
+    var(--mk-rating-color) 8%,
+    #ffffff
+  ) !important;
+  border-color: color-mix(
+    in srgb,
+    var(--mk-rating-color) 24%,
+    transparent
+  ) !important;
 }
