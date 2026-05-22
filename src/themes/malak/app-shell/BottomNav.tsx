@@ -1,6 +1,7 @@
 // FILE: apps/storefront/src/themes/malak/app-shell/BottomNav.tsx
 "use client";
 
+import { useMemo } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Icon from "@/components/icon/Icon";
 import { BOTTOM_NAV_ITEMS } from "../app-navigation/bottom-nav.config";
@@ -11,37 +12,77 @@ import type { MalakBootstrap } from "../bootstrap/types";
 type Props = {
   seoMode?: SeoUrlMode;
   bootstrap?: MalakBootstrap;
+  initialCartCount?: number;
 };
 
-export default function BottomNav(_props: Props) {
+function normalizeCount(value: unknown) {
+  const n = Number(value);
+
+  if (!Number.isFinite(n) || n <= 0) return 0;
+
+  return Math.floor(n);
+}
+
+function isActivePath(pathname: string | null, href: string) {
+  const path = String(pathname || "/").trim() || "/";
+  const target = String(href || "/").trim() || "/";
+
+  if (target === "/") return path === "/";
+
+  return path === target || path.startsWith(`${target}/`);
+}
+
+export default function BottomNav({
+  initialCartCount = 0,
+}: Props) {
   const router = useRouter();
   const pathname = usePathname();
 
   const reset = useNavStack((s) => s.reset);
 
-  return (
-    <nav dir="rtl" className="mk-tabbar" aria-label="Bottom navigation">
-      <div className="mk-tabbar__inner">
-        {BOTTOM_NAV_ITEMS.map((item) => {
-          const href = item.href;
+  const cartCount = normalizeCount(initialCartCount);
 
-          const active =
-            pathname === href ||
-            (href !== "/" && pathname?.startsWith(href + "/"));
+  const items = useMemo(() => {
+    return BOTTOM_NAV_ITEMS.map((item) => {
+      if (item.type === "screen" && item.key === "cart") {
+        return {
+          ...item,
+          badge: cartCount > 0 ? cartCount : undefined,
+        };
+      }
+
+      return {
+        ...item,
+        badge: undefined,
+      };
+    });
+  }, [cartCount]);
+
+  return (
+    <nav dir="rtl" className="mk-tabbar" aria-label="التنقل السفلي">
+      <div className="mk-tabbar__inner">
+        {items.map((item) => {
+          const href = item.href;
+          const active = isActivePath(pathname, href);
 
           return (
             <button
               key={`${item.label}-${href}`}
               type="button"
               onClick={() => {
+                if (active) return;
+
                 if (item.type === "screen") {
                   reset(item.key);
                 }
 
                 router.push(href);
               }}
-              className={`mk-tab-item ${active ? "active" : ""}`}
+              className={["mk-tab-item", active ? "active" : ""]
+                .filter(Boolean)
+                .join(" ")}
               aria-current={active ? "page" : undefined}
+              aria-label={item.label}
             >
               <span className="mk-tab-icon" aria-hidden="true">
                 <Icon icon={item.icon as any} size={24} />

@@ -1,397 +1,354 @@
 // FILE: apps/storefront/src/themes/malak/screens-mobile/product/_components/MobileProductGallery.tsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 type Props = {
   images?: string[];
-  title?: string;
-  promotionTitle?: string | null;
-  onBack: () => void;
-  onSearch: () => void;
-  onOpenCart: () => void;
+  productName?: string | null;
+  imageAlts?: Array<string | null | undefined>;
+  activateZoom?: boolean;
+  thumbsBottom?: boolean;
+  objectFit?: "cover" | "contain" | "fill" | string;
+  backHref?: string | null;
 };
 
-function clampIndex(index: number, total: number) {
-  if (total <= 0) return 0;
-  if (index < 0) return total - 1;
-  if (index >= total) return 0;
-  return index;
+function s(value: any) {
+  return String(value ?? "").trim();
+}
+
+function normalizeFit(value: any): "cover" | "contain" | "fill" {
+  const fit = s(value).toLowerCase();
+
+  if (fit === "contain" || fit === "fill" || fit === "cover") {
+    return fit;
+  }
+
+  return "cover";
+}
+
+function normalizeImages(images: string[]) {
+  const seen = new Set<string>();
+  const out: string[] = [];
+
+  for (const image of images) {
+    const clean = s(image);
+    if (!clean) continue;
+    if (seen.has(clean)) continue;
+
+    seen.add(clean);
+    out.push(clean);
+  }
+
+  return out;
 }
 
 export default function MobileProductGallery({
   images = [],
-  title = "صورة المنتج",
-  promotionTitle = null,
-  onBack,
-  onSearch,
-  onOpenCart,
+  productName = null,
+  imageAlts = [],
+  activateZoom = false,
+  thumbsBottom = true,
+  objectFit = "cover",
+  backHref = null,
 }: Props) {
-  const list = useMemo(
-    () =>
-      Array.isArray(images)
-        ? images.map((x) => String(x ?? "").trim()).filter(Boolean)
-        : [],
-    [images],
-  );
+  const router = useRouter();
 
-  const [active, setActive] = useState(0);
-  const [viewerOpen, setViewerOpen] = useState(false);
-  const [zoomed, setZoomed] = useState(false);
+  const cleanImages = useMemo(() => {
+    const rows = Array.isArray(images) ? images : [];
+    return normalizeImages(rows);
+  }, [images]);
 
-  const touchStartX = useRef<number | null>(null);
-  const touchStartY = useRef<number | null>(null);
-  const lastSwipeAt = useRef(0);
+  const fitMode = normalizeFit(objectFit);
 
-  const viewerTouchStartX = useRef<number | null>(null);
-  const viewerTouchStartY = useRef<number | null>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
-  const total = list.length;
-  const main = list[active] ?? list[0] ?? null;
+  const total = cleanImages.length;
+  const hasImages = total > 0;
+  const hasMany = total > 1;
+
+  const currentImage = cleanImages[activeIndex] || cleanImages[0] || "";
+
+  const currentAlt =
+    s(imageAlts?.[activeIndex]) ||
+    s(productName) ||
+    `صورة المنتج ${activeIndex + 1}`;
 
   useEffect(() => {
-    if (!viewerOpen) return;
+    if (activeIndex > total - 1) {
+      setActiveIndex(0);
+    }
+  }, [activeIndex, total]);
 
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setViewerOpen(false);
-        setZoomed(false);
-      }
+  useEffect(() => {
+    if (!lightboxOpen) return;
 
-      if (e.key === "ArrowRight") {
-        setActive((i) => clampIndex(i - 1, total));
-        setZoomed(false);
-      }
-
-      if (e.key === "ArrowLeft") {
-        setActive((i) => clampIndex(i + 1, total));
-        setZoomed(false);
-      }
-    };
-
-    const prevOverflow = document.body.style.overflow;
+    const oldOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    window.addEventListener("keydown", onKeyDown);
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setLightboxOpen(false);
+      }
 
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [viewerOpen, total]);
+      if (event.key === "ArrowRight") {
+        goPrev();
+      }
 
-  function goNext() {
-    setActive((i) => clampIndex(i + 1, total));
-    setZoomed(false);
-  }
-
-  function goPrev() {
-    setActive((i) => clampIndex(i - 1, total));
-    setZoomed(false);
-  }
-
-  function handleSwipe(deltaX: number, deltaY: number) {
-    if (total <= 1) return false;
-
-    const absX = Math.abs(deltaX);
-    const absY = Math.abs(deltaY);
-
-    if (absX < 36) return false;
-    if (absY > absX * 0.8) return false;
-
-    if (deltaX > 0) {
-      goPrev();
-    } else {
-      goNext();
+      if (event.key === "ArrowLeft") {
+        goNext();
+      }
     }
 
-    lastSwipeAt.current = Date.now();
-    return true;
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = oldOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lightboxOpen, total]);
+
+  function goPrev() {
+    if (!hasMany) return;
+    setActiveIndex((prev) => (prev - 1 + total) % total);
+  }
+
+  function goNext() {
+    if (!hasMany) return;
+    setActiveIndex((prev) => (prev + 1) % total);
+  }
+
+  function handleBack() {
+    const fallbackHref = s(backHref) || "/";
+
+    if (typeof window === "undefined") {
+      router.push(fallbackHref);
+      return;
+    }
+
+    const referrer = s(document.referrer);
+
+    if (referrer) {
+      try {
+        const referrerUrl = new URL(referrer);
+        const currentUrl = new URL(window.location.href);
+
+        if (referrerUrl.origin === currentUrl.origin) {
+          router.back();
+          return;
+        }
+      } catch {
+        //
+      }
+    }
+
+    router.push(fallbackHref);
+  }
+
+  function openZoom() {
+    if (!activateZoom || !hasImages) return;
+    setLightboxOpen(true);
+  }
+
+  function closeZoom() {
+    setLightboxOpen(false);
+  }
+
+  if (!hasImages) {
+    return (
+      <section className="mk-mpg" dir="rtl">
+        <div className="mk-mpg-stage mk-mpg-stage--empty">
+          <div className="mk-mpg-header">
+            <button
+              type="button"
+              className="mk-mpg-header__back"
+              aria-label="رجوع"
+              onClick={handleBack}
+            >
+              ←
+            </button>
+
+            <div className="mk-mpg-header__title">
+              <span>{s(productName) || "المنتج"}</span>
+            </div>
+
+            <div className="mk-mpg-header__spacer" />
+          </div>
+
+          <div className="mk-mpg-empty">لا توجد صور للمنتج</div>
+        </div>
+      </section>
+    );
   }
 
   return (
     <>
-      <div className="mkmpg-hero" dir="rtl">
-        <div
-          className="mkmpg-media"
-          onTouchStart={(e) => {
-            const t = e.touches[0];
-            touchStartX.current = t.clientX;
-            touchStartY.current = t.clientY;
-          }}
-          onTouchEnd={(e) => {
-            if (touchStartX.current == null || touchStartY.current == null) {
-              return;
-            }
-
-            const t = e.changedTouches[0];
-            const dx = t.clientX - touchStartX.current;
-            const dy = t.clientY - touchStartY.current;
-
-            handleSwipe(dx, dy);
-
-            touchStartX.current = null;
-            touchStartY.current = null;
-          }}
-        >
-          {main ? (
+      <section
+        dir="rtl"
+        className={[
+          "mk-mpg",
+          `mk-mpg--fit-${fitMode}`,
+          thumbsBottom ? "mk-mpg--thumbs" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
+        <div className="mk-mpg-stage">
+          <div className="mk-mpg-header">
             <button
               type="button"
-              className="mkmpg-imageBtn"
-              onClick={() => {
-                if (Date.now() - lastSwipeAt.current < 280) return;
-                setViewerOpen(true);
-              }}
-              aria-label="تكبير صورة المنتج"
+              className="mk-mpg-header__back"
+              aria-label="رجوع"
+              onClick={handleBack}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={main} alt={title} className="mkmpg-img" />
-            </button>
-          ) : (
-            <div className="mkmpg-empty">لا توجد صورة</div>
-          )}
-
-          <div className="mkmpg-actions mkmpg-actions--left">
-            <button
-              type="button"
-              className="mkmpg-actionBtn"
-              onClick={onSearch}
-              aria-label="البحث"
-            >
-              <svg width="19" height="19" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M10.8 18.6a7.8 7.8 0 1 1 0-15.6 7.8 7.8 0 0 1 0 15.6Z"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                />
-                <path
-                  d="M16.6 16.6 21 21"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-              </svg>
+              ←
             </button>
 
-            <button
-              type="button"
-              className="mkmpg-actionBtn"
-              aria-label="إضافة للمفضلة"
-            >
-              <svg width="19" height="19" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M12 20.5s-7.5-4.4-9.4-9.1C1.1 7.7 3.2 4.5 6.6 4.5c2 0 3.4 1.1 4.2 2.2.8-1.1 2.2-2.2 4.2-2.2 3.4 0 5.5 3.2 4 6.9-1.9 4.7-7 9.1-7 9.1Z"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
+            <div className="mk-mpg-header__title">
+              <span>{s(productName) || "المنتج"}</span>
+            </div>
 
-            <button
-              type="button"
-              className="mkmpg-actionBtn"
-              aria-label="مشاركة"
-              onClick={async () => {
-                try {
-                  if (navigator.share) {
-                    await navigator.share({
-                      title,
-                      url: window.location.href,
-                    });
-                  } else {
-                    await navigator.clipboard.writeText(window.location.href);
-                    window.dispatchEvent(
-                      new CustomEvent("toast", {
-                        detail: { message: "تم نسخ رابط المنتج" },
-                      }),
-                    );
-                  }
-                } catch {
-                  //
-                }
-              }}
-            >
-              <svg width="19" height="19" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M18 8a3 3 0 1 0-2.83-4H15a3 3 0 0 0 .22 1.12L8.9 8.54A3 3 0 1 0 9 15.45l6.2 3.44A3 3 0 1 0 16.2 17L10 13.56a3.1 3.1 0 0 0 0-3.12L16.26 7A3 3 0 0 0 18 8Z"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
+            <div className="mk-mpg-header__spacer" />
           </div>
 
           <button
             type="button"
-            className="mkmpg-back"
-            onClick={onBack}
-            aria-label="رجوع"
+            className={[
+              "mk-mpg-stage__button",
+              activateZoom ? "is-zoomable" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            onClick={openZoom}
+            aria-label={activateZoom ? "فتح الصورة" : currentAlt}
           >
-            <svg width="21" height="21" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M9 18 15 12 9 6"
-                stroke="currentColor"
-                strokeWidth="2.4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+            <img
+              src={currentImage}
+              alt={currentAlt}
+              className="mk-mpg-stage__img"
+              loading="eager"
+              fetchPriority="high"
+              decoding="async"
+            />
           </button>
 
-          {promotionTitle ? (
-            <div className="mkmpg-badge">{promotionTitle}</div>
-          ) : null}
-
-          {total > 1 ? (
+          {hasMany ? (
             <>
               <button
                 type="button"
-                className="mkmpg-nav mkmpg-nav--right"
-                onClick={goPrev}
+                className="mk-mpg-nav mk-mpg-nav--prev"
                 aria-label="الصورة السابقة"
+                onClick={goPrev}
               >
                 ‹
               </button>
 
               <button
                 type="button"
-                className="mkmpg-nav mkmpg-nav--left"
-                onClick={goNext}
+                className="mk-mpg-nav mk-mpg-nav--next"
                 aria-label="الصورة التالية"
+                onClick={goNext}
               >
                 ›
               </button>
-
-              <div className="mkmpg-dots">
-                {list.map((_, i) => (
-                  <button
-                    key={`dot-${i}`}
-                    type="button"
-                    className={`mkmpg-dot ${
-                      i === active ? "mkmpg-dot--active" : ""
-                    }`}
-                    onClick={() => setActive(i)}
-                    aria-label={`الصورة ${i + 1}`}
-                  />
-                ))}
-              </div>
             </>
           ) : null}
-        </div>
-      </div>
 
-      {viewerOpen && main ? (
-        <div className="mkmpg-viewer" dir="rtl">
+          <div className="mk-mpg-counter">
+            {activeIndex + 1}/{total}
+          </div>
+        </div>
+
+        {thumbsBottom && hasMany ? (
+          <div className="mk-mpg-thumbs" aria-label="صور المنتج">
+            {cleanImages.map((image, index) => {
+              const thumbAlt =
+                s(imageAlts?.[index]) ||
+                s(productName) ||
+                `صورة المنتج ${index + 1}`;
+
+              return (
+                <button
+                  key={`${image}-${index}`}
+                  type="button"
+                  className={[
+                    "mk-mpg-thumb",
+                    index === activeIndex ? "is-active" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  onClick={() => setActiveIndex(index)}
+                  aria-label={`عرض الصورة ${index + 1}`}
+                >
+                  <img
+                    src={image}
+                    alt={thumbAlt}
+                    className="mk-mpg-thumb__img"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+      </section>
+
+      {lightboxOpen ? (
+        <div className="mk-mpg-lightbox" role="dialog" aria-modal="true">
           <button
             type="button"
-            className="mkmpg-viewerBg"
-            onClick={() => {
-              setViewerOpen(false);
-              setZoomed(false);
-            }}
+            className="mk-mpg-lightbox__backdrop"
             aria-label="إغلاق"
+            onClick={closeZoom}
           />
 
           <button
             type="button"
-            className="mkmpg-viewerClose"
-            onClick={() => {
-              setViewerOpen(false);
-              setZoomed(false);
-            }}
+            className="mk-mpg-lightbox__close"
             aria-label="إغلاق"
+            onClick={closeZoom}
           >
             ×
           </button>
 
-          {total > 1 ? (
-            <div className="mkmpg-viewerThumbs">
-              {list.map((img, i) => (
-                <button
-                  key={`viewer-thumb-${img}-${i}`}
-                  type="button"
-                  className={`mkmpg-viewerThumb ${
-                    i === active ? "mkmpg-viewerThumb--active" : ""
-                  }`}
-                  onClick={() => {
-                    setActive(i);
-                    setZoomed(false);
-                  }}
-                  aria-label={`الصورة ${i + 1}`}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={img} alt="" />
-                </button>
-              ))}
-            </div>
+          {hasMany ? (
+            <>
+              <button
+                type="button"
+                className="mk-mpg-lightbox__nav mk-mpg-lightbox__nav--prev"
+                aria-label="السابق"
+                onClick={goPrev}
+              >
+                ‹
+              </button>
+
+              <button
+                type="button"
+                className="mk-mpg-lightbox__nav mk-mpg-lightbox__nav--next"
+                aria-label="التالي"
+                onClick={goNext}
+              >
+                ›
+              </button>
+            </>
           ) : null}
 
-          <div
-            className="mkmpg-viewerStage"
-            onTouchStart={(e) => {
-              const t = e.touches[0];
-              viewerTouchStartX.current = t.clientX;
-              viewerTouchStartY.current = t.clientY;
-            }}
-            onTouchEnd={(e) => {
-              if (
-                viewerTouchStartX.current == null ||
-                viewerTouchStartY.current == null
-              ) {
-                return;
-              }
+          <div className="mk-mpg-lightbox__content">
+            <img
+              src={currentImage}
+              alt={currentAlt}
+              className="mk-mpg-lightbox__img"
+              loading="eager"
+              decoding="async"
+            />
+          </div>
 
-              const t = e.changedTouches[0];
-              const dx = t.clientX - viewerTouchStartX.current;
-              const dy = t.clientY - viewerTouchStartY.current;
-
-              if (!zoomed) {
-                handleSwipe(dx, dy);
-              }
-
-              viewerTouchStartX.current = null;
-              viewerTouchStartY.current = null;
-            }}
-          >
-            {total > 1 ? (
-              <>
-                <button
-                  type="button"
-                  className="mkmpg-viewerNav mkmpg-viewerNav--right"
-                  onClick={goPrev}
-                  aria-label="الصورة السابقة"
-                >
-                  ‹
-                </button>
-
-                <button
-                  type="button"
-                  className="mkmpg-viewerNav mkmpg-viewerNav--left"
-                  onClick={goNext}
-                  aria-label="الصورة التالية"
-                >
-                  ›
-                </button>
-              </>
-            ) : null}
-
-            <button
-              type="button"
-              className={`mkmpg-zoomArea ${
-                zoomed ? "mkmpg-zoomArea--zoomed" : ""
-              }`}
-              onClick={() => setZoomed((v) => !v)}
-              aria-label="تكبير أو تصغير الصورة"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={main} alt={title} className="mkmpg-viewerImg" />
-            </button>
-
-            <div className="mkmpg-zoomHint">
-              {zoomed ? "اضغط للتصغير" : "اضغط على الصورة للتكبير"}
-            </div>
+          <div className="mk-mpg-lightbox__counter">
+            {activeIndex + 1}/{total}
           </div>
         </div>
       ) : null}

@@ -1,38 +1,336 @@
-
- /**
- * apps/storefront/src/themes/malak/styles/shell/topbar.css
+/**
+ * FILE: apps/storefront/src/themes/malak/styles/shell/topbar.css
  */
 
 .mk-home-topbar {
   position: fixed;
   inset-inline: 0;
   top: 0;
+  z-index: var(--mk-z-header, var(--z-header, 300));
   padding-top: var(--mk-safe-top);
   pointer-events: none;
+  direction: rtl;
 }
 
 .mk-home-topbar__inner {
   pointer-events: auto;
-  padding: 10px 12px 10px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  padding: 10px 12px 10px;
   background: transparent;
+  color: var(--mk-text-header, var(--mk-text-main));
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    backdrop-filter 180ms ease;
 }
 
 .mk-home-topbar.is-scrolled .mk-home-topbar__inner {
-  background: rgba(255, 255, 255, 0.86);
+  background: color-mix(
+    in srgb,
+    var(--mk-bg-header, var(--mk-bg-page)) 88%,
+    transparent
+  );
+  border-bottom: 1px solid var(--mk-border-soft);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-bottom: 1px solid var(--mk-border-soft);
 }
+
+/* =========================
+   Main row
+   ========================= */
 
 .mk-home-topbar__row1 {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: minmax(72px, auto) minmax(0, 1fr) minmax(72px, auto);
   align-items: center;
   gap: 10px;
+  min-height: 44px;
 }
+
+.mk-home-topbar__center {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mk-home-topbar__sideSpace {
+  display: block;
+  width: 72px;
+  height: 36px;
+  flex: 0 0 auto;
+}
+
+/* =========================
+   Brand / logo
+   الشعار من قاعدة البيانات
+   ========================= */
+
+.mk-home-topbar__brand {
+  min-width: 0;
+  width: auto;
+  max-width: 118px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  overflow: hidden;
+  border-radius: 0;
+  border: 0;
+  background: transparent;
+  color: var(--mk-text-header, var(--mk-text-main));
+  text-decoration: none;
+  box-shadow: none;
+}
+
+.mk-home-topbar__logo {
+  display: block;
+  width: auto;
+  max-width: 108px;
+  max-height: 42px;
+  object-fit: contain;
+}
+
+.mk-home-topbar__storeName {
+  display: block;
+  max-width: 108px;
+  overflow: hidden;
+  color: var(--mk-text-header, var(--mk-text-main));
+  font-size: 12px;
+  font-weight: 950;
+  line-height: 1.3;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* =========================
+   Center text
+   ========================= */
+
+.mk-home-topbar__delivery {
+  min-width: 0;
+  max-width: 100%;
+  border: 0;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0;
+  color: var(--mk-text-header, var(--mk-text-main));
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.4;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.mk-home-topbar__deliveryText {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  color: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mk-home-topbar__deliveryChevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
+  opacity: 0.72;
+}
+
+/* =========================
+   Currency switcher
+   يستخدم نفس مكون الكمبيوتر CurrencySwitcher
+   ========================= */
+
+.mk-home-topbar__currency {
+  min-width: 0;
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.mk-home-topbar__currency .mk-currency-switcher {
+  width: auto;
+  max-width: 118px;
+  height: 36px;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  overflow: hidden;
+  border-radius: var(--mk-radius-pill);
+  border: 1px solid var(--mk-border-medium);
+  background: color-mix(
+    in srgb,
+    var(--mk-bg-header, var(--mk-bg-page)) 92%,
+    transparent
+  );
+  color: var(--mk-text-header, var(--mk-text-main));
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.04);
+}
+
+.mk-home-topbar__currency .mk-currency-switcher--pending {
+  opacity: 0.62;
+  pointer-events: none;
+}
+
+.mk-home-topbar__currency .mk-currency-switcher__icon {
+  width: 15px;
+  min-width: 15px;
+  height: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(
+    in srgb,
+    var(--mk-text-header, var(--mk-text-main)) 72%,
+    transparent
+  );
+  line-height: 0;
+}
+
+.mk-home-topbar__currency .mk-currency-switcher__select {
+  max-width: 88px;
+  min-width: 0;
+  height: 34px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--mk-text-header, var(--mk-text-main));
+  cursor: pointer;
+  font-family: var(--mk-font-family);
+  font-size: 10.5px;
+  font-weight: 950;
+  line-height: 1;
+  text-align: left;
+}
+
+.mk-home-topbar__currency .mk-currency-switcher__select:disabled {
+  cursor: wait;
+}
+
+/* =========================
+   Search
+   ========================= */
+
+.mk-home-topbar__row2 {
+  display: block;
+  width: 100%;
+}
+
+.mk-home-topbar__search {
+  width: 100%;
+  height: 40px;
+  border-radius: var(--mk-radius-pill);
+  border: 1px solid var(--mk-border-medium);
+  background: color-mix(
+    in srgb,
+    var(--mk-bg-header, var(--mk-bg-page)) 92%,
+    transparent
+  );
+  color: var(--mk-text-header, var(--mk-text-main));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  text-align: right;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.04);
+  cursor: pointer;
+}
+
+.mk-home-topbar__searchIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
+  line-height: 0;
+  opacity: 0.72;
+}
+
+.mk-home-topbar__searchPlaceholder {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: color-mix(
+    in srgb,
+    var(--mk-text-header, var(--mk-text-main)) 58%,
+    transparent
+  );
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* =========================
+   Small slogan strip on scroll
+   ========================= */
+
+.mk-home-topbar__ship {
+  display: none;
+  min-height: 26px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: -2px;
+  padding: 0 10px;
+  border-radius: var(--mk-radius-pill);
+  border: 1px solid var(--mk-border-soft);
+  background: color-mix(
+    in srgb,
+    var(--mk-bg-header, var(--mk-bg-page)) 72%,
+    transparent
+  );
+  color: var(--mk-text-header, var(--mk-text-main));
+}
+
+.mk-home-topbar.is-scrolled .mk-home-topbar__ship {
+  display: flex;
+}
+
+.mk-home-topbar__shipDot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: var(--mk-radius-pill);
+  background: var(--mk-color-primary);
+}
+
+.mk-home-topbar__shipText {
+  min-width: 0;
+  overflow: hidden;
+  color: color-mix(
+    in srgb,
+    var(--mk-text-header, var(--mk-text-main)) 86%,
+    transparent
+  );
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mk-home-topbar.is-scrolled .mk-home-topbar__row1 {
+  display: none;
+}
+
+/* =========================
+   Legacy compatibility
+   ========================= */
 
 .mk-home-topbar__icons {
   display: flex;
@@ -45,87 +343,73 @@
   height: 34px;
   border-radius: var(--mk-radius-pill);
   border: 1px solid var(--mk-border-medium);
-  background: rgba(255, 255, 255, 0.92);
-  color: var(--mk-text-main);
+  background: color-mix(
+    in srgb,
+    var(--mk-bg-header, var(--mk-bg-page)) 92%,
+    transparent
+  );
+  color: var(--mk-text-header, var(--mk-text-main));
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
-.mk-home-topbar__delivery {
-  border: 0;
-  background: transparent;
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-  font-weight: 800;
-  color: rgba(17, 17, 17, 0.92);
-  font-size: 12px;
-  white-space: nowrap;
-  padding: 0;
-}
+/* =========================
+   Small screens
+   ========================= */
 
-.mk-home-topbar__row2 {
-  display: block;
-}
+@media (max-width: 380px) {
+  .mk-home-topbar__inner {
+    padding-inline: 10px;
+  }
 
-.mk-home-topbar__search {
-  height: 40px;
-  width: 100%;
-  border-radius: var(--mk-radius-pill);
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid var(--mk-border-medium);
-  color: var(--mk-text-main);
-  display: flex;
-  align-items: center;
-  padding: 0 12px;
-  gap: 10px;
-  text-align: right;
-}
+  .mk-home-topbar__row1 {
+    grid-template-columns: minmax(62px, auto) minmax(0, 1fr) minmax(62px, auto);
+    gap: 8px;
+  }
 
-.mk-home-topbar__searchIcon {
-  opacity: 0.7;
-  line-height: 0;
-}
+  .mk-home-topbar__brand {
+    max-width: 96px;
+    height: 40px;
+  }
 
-.mk-home-topbar__searchPlaceholder {
-  color: rgba(17, 17, 17, 0.55);
-  font-size: 13px;
-  font-weight: 700;
-  flex: 1;
-}
+  .mk-home-topbar__logo {
+    max-width: 92px;
+    max-height: 38px;
+  }
 
-.mk-home-topbar__ship {
-  display: none;
-  height: 26px;
-  border-radius: var(--mk-radius-pill);
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid var(--mk-border-soft);
-  align-items: center;
-  gap: 8px;
-  padding: 0 10px;
-  margin-top: -2px;
-}
+  .mk-home-topbar__storeName {
+    max-width: 92px;
+    font-size: 11px;
+  }
 
-.mk-home-topbar.is-scrolled .mk-home-topbar__ship {
-  display: flex;
-}
+  .mk-home-topbar__sideSpace {
+    width: 62px;
+    height: 34px;
+  }
 
-.mk-home-topbar__shipDot {
-  width: 7px;
-  height: 7px;
-  border-radius: var(--mk-radius-pill);
-  background: #22c55e;
-}
+  .mk-home-topbar__currency .mk-currency-switcher {
+    max-width: 94px;
+    height: 34px;
+    min-height: 34px;
+    gap: 4px;
+  }
 
-.mk-home-topbar__shipText {
-  font-size: 11px;
-  font-weight: 800;
-  color: rgba(17, 17, 17, 0.86);
-  white-space: nowrap;
-}
+  .mk-home-topbar__currency .mk-currency-switcher__icon {
+    display: none;
+  }
 
-.mk-home-topbar.is-scrolled .mk-home-topbar__row1 {
-  display: none;
+  .mk-home-topbar__currency .mk-currency-switcher__select {
+    max-width: 84px;
+    height: 32px;
+    font-size: 10px;
+  }
+
+  .mk-home-topbar__delivery {
+    font-size: 11px;
+  }
+
+  .mk-home-topbar__search {
+    height: 38px;
+  }
 }

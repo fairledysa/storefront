@@ -11,15 +11,16 @@ import Footer from "./Footer";
 import ScreenContainer from "./ScreenContainer";
 import AuthModal from "./_components/AuthModal";
 import SearchOverlay from "./SearchOverlay";
+
 import type { ThemeAdapterOutput } from "../types";
 import type { MalakBootstrap } from "../bootstrap/types";
+import type { SeoUrlMode } from "@/data/store/settings";
 
 import { MOBILE_ROUTES } from "../app-navigation/routes.mobile";
 import {
   resolveRouteKeyFromPath,
   useNavStack,
 } from "../app-navigation/stack";
-import type { SeoUrlMode } from "@/data/store/settings";
 
 type Props = {
   theme: ThemeAdapterOutput;
@@ -27,7 +28,25 @@ type Props = {
   data?: any;
   children?: ReactNode;
   bootstrap?: MalakBootstrap;
+  initialCartCount?: number;
 };
+
+function safeObject(value: any) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value
+    : {};
+}
+
+function cleanPath(value: unknown) {
+  const path = String(value ?? "/").trim() || "/";
+  return path.replace(/\/+$/, "") || "/";
+}
+
+function isMobileInternalRoute(pathname: string | null) {
+  const path = cleanPath(pathname);
+
+  return path === "/categories";
+}
 
 export default function MobileShell({
   theme,
@@ -35,6 +54,7 @@ export default function MobileShell({
   data,
   children,
   bootstrap,
+  initialCartCount = 0,
 }: Props) {
   const pathname = usePathname();
 
@@ -59,6 +79,95 @@ export default function MobileShell({
   }, [forcedRoute, pathname, currentKey]);
 
   const isHome = effectiveKey === "home";
+
+  const showSearch = bootstrap?.header?.show_search !== false;
+
+  const searchPlaceholder = String(
+    bootstrap?.marketing?.search?.placeholder ?? "",
+  ).trim();
+
+  const searchGroups = Array.isArray(bootstrap?.marketing?.search?.groups)
+    ? bootstrap.marketing.search.groups
+    : undefined;
+
+  const dataWithBootstrap = useMemo(() => {
+    const source = safeObject(data);
+    const currentBootstrap = safeObject(source.bootstrap);
+    const incomingBootstrap = safeObject(bootstrap);
+
+    const mergedBootstrap = {
+      ...currentBootstrap,
+      ...incomingBootstrap,
+
+      currencies:
+        currentBootstrap.currencies ??
+        incomingBootstrap.currencies ??
+        source.currencies ??
+        null,
+
+      tax:
+        currentBootstrap.tax ??
+        incomingBootstrap.tax ??
+        source.tax ??
+        null,
+
+      navigation:
+        currentBootstrap.navigation ??
+        incomingBootstrap.navigation ??
+        source.navigation ??
+        null,
+
+      marketing:
+        currentBootstrap.marketing ??
+        incomingBootstrap.marketing ??
+        source.marketing ??
+        null,
+
+      header:
+        currentBootstrap.header ??
+        incomingBootstrap.header ??
+        source.header ??
+        null,
+
+      store:
+        currentBootstrap.store ??
+        incomingBootstrap.store ??
+        source.store ??
+        null,
+    };
+
+    return {
+      ...source,
+
+      bootstrap: mergedBootstrap,
+
+      currencies:
+        source.currencies ??
+        mergedBootstrap.currencies ??
+        bootstrap?.currencies ??
+        null,
+
+      tax:
+        source.tax ??
+        mergedBootstrap.tax ??
+        bootstrap?.tax ??
+        null,
+
+      navigation:
+        source.navigation ??
+        mergedBootstrap.navigation ??
+        bootstrap?.navigation ??
+        null,
+
+      marketing:
+        source.marketing ??
+        mergedBootstrap.marketing ??
+        bootstrap?.marketing ??
+        null,
+    };
+  }, [data, bootstrap]);
+
+  const forceScreenContainer = isMobileInternalRoute(pathname);
 
   async function fetchMe() {
     try {
@@ -92,6 +201,7 @@ export default function MobileShell({
     }
 
     function handleSearchOpen() {
+      if (!showSearch) return;
       setSearchOpen(true);
     }
 
@@ -104,7 +214,7 @@ export default function MobileShell({
       window.removeEventListener("auth:changed", handleAuthChanged);
       window.removeEventListener("mk:search:open", handleSearchOpen);
     };
-  }, []);
+  }, [showSearch]);
 
   return (
     <>
@@ -117,18 +227,41 @@ export default function MobileShell({
           theme={theme}
           bootstrap={bootstrap}
           isHome={isHome}
-          onSearchOpen={() => setSearchOpen(true)}
+          onSearchOpen={
+            showSearch
+              ? () => {
+                  setSearchOpen(true);
+                }
+              : undefined
+          }
         />
 
         <div className="mk-mobile-content">
-          {children ? children : <ScreenContainer data={data} />}
+          {forceScreenContainer ? (
+            <ScreenContainer data={dataWithBootstrap} />
+          ) : children ? (
+            children
+          ) : (
+            <ScreenContainer data={dataWithBootstrap} />
+          )}
 
           <Footer bootstrap={bootstrap} />
         </div>
 
-        <BottomNav seoMode={seoMode} bootstrap={bootstrap} />
+        <BottomNav
+          seoMode={seoMode}
+          bootstrap={bootstrap}
+          initialCartCount={initialCartCount}
+        />
 
-        <SearchOverlay open={searchOpen} onOpenChange={setSearchOpen} />
+        <SearchOverlay
+          open={searchOpen && showSearch}
+          onOpenChange={setSearchOpen}
+          placeholder={searchPlaceholder}
+          groups={searchGroups}
+          currencies={bootstrap?.currencies ?? null}
+          tax={bootstrap?.tax ?? null}
+        />
       </div>
 
       <AuthModal

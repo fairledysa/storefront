@@ -1,8 +1,10 @@
 // FILE: apps/storefront/src/themes/malak/app-shell/TopBar.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import Icon from "@/components/icon/Icon";
+import CurrencySwitcher from "./_components/CurrencySwitcher";
 import type { ThemeAdapterOutput } from "../types";
 import type { MalakBootstrap } from "../bootstrap/types";
 
@@ -13,6 +15,19 @@ type Props = {
   onSearchOpen?: () => void;
 };
 
+function text(value: unknown) {
+  return String(value ?? "").trim();
+}
+
+function pickText(...values: unknown[]) {
+  for (const value of values) {
+    const out = text(value);
+    if (out) return out;
+  }
+
+  return "";
+}
+
 export default function TopBar({
   theme,
   bootstrap,
@@ -21,12 +36,52 @@ export default function TopBar({
 }: Props) {
   const [scrolled, setScrolled] = useState(false);
 
+  const header = bootstrap?.header;
+  const store = bootstrap?.store;
+
+  const showSearch = header?.show_search !== false;
+
+  const logoUrl = pickText(header?.logo_url, store?.logo_url);
+  const logoAlt = pickText(header?.logo_alt, store?.name, "Logo");
+  const storeName = pickText(store?.name);
+
+  const sloganText =
+    header?.show_slogan !== false ? pickText(header?.slogan) : "";
+
+  const searchPlaceholder = pickText(
+    bootstrap?.marketing?.search?.placeholder,
+  );
+
+  const hasBrand = Boolean(logoUrl || storeName);
+  const shouldShowSearch = showSearch && Boolean(onSearchOpen);
+
+  const hasCurrencySwitcher = useMemo(() => {
+    const currencies = bootstrap?.currencies;
+
+    if (!currencies?.has_multiple) return false;
+
+    const enabledItems = Array.isArray(currencies.items)
+      ? currencies.items.filter((item) => item?.enabled !== false)
+      : [];
+
+    return enabledItems.length > 1;
+  }, [bootstrap?.currencies]);
+
   useEffect(() => {
     if (!isHome) return;
 
+    let ticking = false;
+
     const onScroll = () => {
-      const y = window.scrollY || document.documentElement.scrollTop || 0;
-      setScrolled(y > 70);
+      if (ticking) return;
+
+      ticking = true;
+
+      window.requestAnimationFrame(() => {
+        const y = window.scrollY || document.documentElement.scrollTop || 0;
+        setScrolled(y > 70);
+        ticking = false;
+      });
     };
 
     onScroll();
@@ -38,8 +93,9 @@ export default function TopBar({
 
   if (!isHome) return null;
 
-  const shippingText =
-    bootstrap?.header?.slogan || "شحن سريع وعروض يومية";
+  if (!hasBrand && !sloganText && !shouldShowSearch && !hasCurrencySwitcher) {
+    return null;
+  }
 
   return (
     <header
@@ -49,69 +105,78 @@ export default function TopBar({
     >
       <div className="mk-home-topbar__inner">
         <div className="mk-home-topbar__row1">
-          <div className="mk-home-topbar__icons">
-            <button
-              type="button"
-              className="mk-home-ibtn"
-              aria-label="الإشعارات"
+          {hasBrand ? (
+            <Link
+              href="/"
+              prefetch={true}
+              className="mk-home-topbar__brand"
+              aria-label={logoAlt || storeName}
             >
-              <Icon icon={"Notification01" as any} size={20} />
-            </button>
+              {logoUrl ? (
+                <img
+                  src={logoUrl}
+                  alt={logoAlt || storeName}
+                  className="mk-home-topbar__logo"
+                  loading="eager"
+                  decoding="async"
+                />
+              ) : (
+                <span className="mk-home-topbar__storeName">{storeName}</span>
+              )}
+            </Link>
+          ) : (
+            <span className="mk-home-topbar__sideSpace" aria-hidden="true" />
+          )}
 
-            <button
-              type="button"
-              className="mk-home-ibtn"
-              aria-label="الأقسام"
-            >
-              <Icon icon={"MenuSquare" as any} size={20} />
-            </button>
+          <div className="mk-home-topbar__center">
+            {sloganText ? (
+              <div className="mk-home-topbar__delivery">
+                <span className="mk-home-topbar__deliveryText">
+                  {sloganText}
+                </span>
+              </div>
+            ) : null}
           </div>
 
-          <button
-            type="button"
-            className="mk-home-topbar__delivery"
-            aria-label="تغيير التوصيل"
-          >
-            <span className="mk-home-topbar__deliveryText">توصيل إلى</span>
-            <span
-              className="mk-home-topbar__deliveryChevron"
-              aria-hidden="true"
+          {hasCurrencySwitcher ? (
+            <div className="mk-home-topbar__currency">
+              <CurrencySwitcher
+                storeId={store?.id}
+                currencies={bootstrap?.currencies ?? null}
+              />
+            </div>
+          ) : (
+            <span className="mk-home-topbar__sideSpace" aria-hidden="true" />
+          )}
+        </div>
+
+        {sloganText ? (
+          <div className="mk-home-topbar__ship">
+            <span className="mk-home-topbar__shipDot" />
+            <span className="mk-home-topbar__shipText">{sloganText}</span>
+          </div>
+        ) : null}
+
+        {shouldShowSearch ? (
+          <div className="mk-home-topbar__row2">
+            <button
+              type="button"
+              className="mk-home-topbar__search"
+              onClick={onSearchOpen}
+              aria-label="فتح البحث"
             >
-              <Icon icon={"ArrowDown01" as any} size={16} />
-            </span>
-          </button>
+              <span className="mk-home-topbar__searchIcon" aria-hidden="true">
+                <Icon icon={"Search01" as any} size={18} />
+              </span>
 
-          <button type="button" className="mk-home-ibtn" aria-label="الموقع">
-            <Icon icon={"Location01" as any} size={18} />
-          </button>
-        </div>
-
-        <div className="mk-home-topbar__ship">
-          <span className="mk-home-topbar__shipDot" />
-          <span className="mk-home-topbar__shipText">{shippingText}</span>
-        </div>
-
-        <div className="mk-home-topbar__row2">
-          <button
-            type="button"
-            className="mk-home-topbar__search"
-            onClick={() => {
-              if (onSearchOpen) {
-                onSearchOpen();
-                return;
-              }
-
-              window.dispatchEvent(new CustomEvent("mk:search:open"));
-            }}
-            aria-label="فتح البحث"
-          >
-            <span className="mk-home-topbar__searchIcon" aria-hidden="true">
-              <Icon icon={"Search01" as any} size={18} />
-            </span>
-
-            <span className="mk-home-topbar__searchPlaceholder">بحث...</span>
-          </button>
-        </div>
+              {searchPlaceholder ? (
+                <span className="mk-home-topbar__searchPlaceholder">
+                  {searchPlaceholder}
+                </span>
+              ) : null}
+            </button>
+          </div>
+        ) : null}
       </div>
     </header>
   );

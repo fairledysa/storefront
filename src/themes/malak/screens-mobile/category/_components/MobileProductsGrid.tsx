@@ -1,137 +1,263 @@
 // FILE: apps/storefront/src/themes/malak/screens-mobile/category/_components/MobileProductsGrid.tsx
 "use client";
 
+import { useMemo } from "react";
 import { buildProductHref } from "@/lib/seo/build-store-href";
 import type { SeoUrlMode } from "@/data/store/settings";
+import {
+  toProductCardVM,
+  type ProductCardVM,
+} from "@/data/viewmodels/product.vm";
+
 import MobileCategoryProductCard from "./MobileCategoryProductCard";
 
 type Props = {
   products: any[];
   mode: SeoUrlMode;
+  data?: any;
+  currencies?: any;
+  tax?: any;
 };
 
-function safeNum(x: any): number | null {
-  const n = Number(x);
-  return Number.isFinite(n) ? n : null;
+function s(value: any) {
+  return String(value ?? "").trim();
 }
 
-function firstDefined(...values: any[]) {
-  for (const v of values) {
-    if (v !== undefined && v !== null) return v;
+function safePublicNo(value: any) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function normalizeMode(mode: SeoUrlMode | any): SeoUrlMode {
+  const value = s(mode);
+
+  if (value === "short" || value === "named_ar" || value === "named_en") {
+    return value;
   }
 
-  return undefined;
+  return "named_ar";
 }
 
-function readImage(p: any) {
-  const media = Array.isArray(p?.media) ? p.media : [];
-
-  const firstImage = media
-    .filter((m: any) => m?.media_kind === "image" && m?.original_url)
-    .sort(
-      (a: any, b: any) =>
-        Number(a?.sort_order ?? 0) - Number(b?.sort_order ?? 0),
-    )[0];
-
-  return String(firstImage?.original_url ?? p?.image_url ?? "").trim();
-}
-
-function readPriceData(p: any) {
-  const base =
-    safeNum(firstDefined(p?.seo?.price, p?.pricing?.price, p?.price)) ?? 0;
-
-  const sale = safeNum(
-    firstDefined(p?.seo?.sale_price, p?.pricing?.sale_price, p?.sale_price),
+function getExistingHref(product: any) {
+  return (
+    s(product?.href) ||
+    s(product?.url) ||
+    s(product?.permalink) ||
+    s(product?.link) ||
+    ""
   );
-
-  if (typeof sale === "number" && sale > 0 && sale < base) {
-    return {
-      price: sale,
-      compareAtPrice: base,
-    };
-  }
-
-  return {
-    price: base,
-    compareAtPrice: null,
-  };
 }
 
-function readRating(p: any) {
-  const val = firstDefined(
-    p?.rating,
-    p?.rating?.average,
-    p?.seo?.rating_average,
+function getPublicNo(product: any) {
+  return safePublicNo(
+    product?.public_no ??
+      product?.publicNo ??
+      product?.seo?.public_no ??
+      product?.seo?.publicNo ??
+      product?.metadata?.public_no ??
+      product?.metadata?.publicNo,
   );
-
-  const n = Number(val);
-  return Number.isFinite(n) ? n : null;
 }
 
-function readReviewsCount(p: any) {
-  const val = firstDefined(
-    p?.reviews_count,
-    p?.rating?.count,
-    p?.seo?.rating_count,
+function getShortCode(product: any) {
+  return (
+    s(product?.short_url) ||
+    s(product?.shortUrl) ||
+    s(product?.seo?.short_url) ||
+    s(product?.seo?.shortUrl) ||
+    s(product?.metadata?.short_url) ||
+    s(product?.metadata?.shortUrl) ||
+    null
   );
-
-  const n = Number(val);
-  return Number.isFinite(n) ? n : null;
 }
 
-function readOutOfStock(p: any) {
-  const qty = Number(
-    firstDefined(
-      p?.stock?.quantity,
-      p?.quantity,
-      p?.stock_quantity,
-      p?.seo?.stock?.quantity,
-    ) ?? 0,
+function getSlugNameAr(product: any) {
+  return (
+    s(product?.slug_name_ar) ||
+    s(product?.slugNameAr) ||
+    s(product?.seo?.slug_name_ar) ||
+    s(product?.seo?.slugNameAr) ||
+    s(product?.metadata?.slug_name_ar) ||
+    s(product?.metadata?.slugNameAr) ||
+    s(product?.name) ||
+    s(product?.title)
   );
+}
 
-  const unlimited = Boolean(
-    firstDefined(
-      p?.stock?.unlimited_quantity,
-      p?.unlimited_quantity,
-      p?.seo?.stock?.unlimited_quantity,
-    ) ?? false,
+function getSlugNameEn(product: any) {
+  return (
+    s(product?.slug_name_en) ||
+    s(product?.slugNameEn) ||
+    s(product?.slug) ||
+    s(product?.seo?.slug_name_en) ||
+    s(product?.seo?.slugNameEn) ||
+    s(product?.seo?.slug) ||
+    s(product?.metadata?.slug_name_en) ||
+    s(product?.metadata?.slugNameEn) ||
+    s(product?.metadata?.slug) ||
+    s(product?.name) ||
+    s(product?.title)
   );
-
-  if (unlimited) return false;
-
-  return !(Number.isFinite(qty) && qty > 0);
 }
 
-function readSaleEnd(p: any) {
-  const value =
-    p?.pricing?.sale_end ??
-    p?.seo?.sale_end ??
-    p?.sale_end ??
-    p?.metadata?.saleEnd ??
-    null;
+function buildHref(product: any, mode: SeoUrlMode) {
+  const existing = getExistingHref(product);
+  if (existing && existing !== "#") return existing;
 
-  const text = String(value ?? "").trim();
+  const publicNo = getPublicNo(product);
+  const shortCode = getShortCode(product);
 
-  return text || null;
+  if (!publicNo && !shortCode) return "#";
+
+  return buildProductHref({
+    mode,
+    slugNameAr: getSlugNameAr(product),
+    slugNameEn: getSlugNameEn(product),
+    publicNo,
+    shortCode,
+  });
 }
 
-function readShowSaleCountdown(p: any) {
-  const value =
-    p?.metadata?.showSaleCountdown ?? p?.metadata?.show_sale_countdown ?? false;
-
-  if (typeof value === "boolean") return value;
-  if (typeof value === "number") return value === 1;
-
-  if (typeof value === "string") {
-    const v = value.trim().toLowerCase();
-    return v === "true" || v === "1";
-  }
-
-  return false;
+function resolveCurrenciesFromData(data: any) {
+  return (
+    data?.bootstrap?.currencies ||
+    data?.currencies ||
+    data?.store?.currencies ||
+    data?.theme?.currencies ||
+    data?.settings?.currencies ||
+    null
+  );
 }
 
-export default function MobileProductsGrid({ products, mode }: Props) {
-  if (!products || products.length === 0) {
+function resolveTaxFromData(data: any) {
+  return (
+    data?.bootstrap?.tax ||
+    data?.theme?.bootstrap?.tax ||
+    data?.themeData?.bootstrap?.tax ||
+    data?.theme_data?.bootstrap?.tax ||
+    data?.storefront?.bootstrap?.tax ||
+    data?.tax ||
+    data?.store?.tax ||
+    data?.theme?.tax ||
+    data?.settings?.tax ||
+    data?.themeOptions?.tax ||
+    data?.theme_options?.tax ||
+    data?.tax_settings ||
+    data?.taxSettings ||
+    null
+  );
+}
+
+function normalizeProductCard(args: {
+  product: any;
+  mode: SeoUrlMode;
+  currencies?: any;
+  tax?: any;
+}): ProductCardVM | null {
+  const product = args.product;
+  if (!product || typeof product !== "object") return null;
+
+  const href = buildHref(product, args.mode);
+
+  const vm = toProductCardVM({
+    storeSlug: "",
+    currencies: args.currencies,
+    tax: args.tax,
+    product: {
+      ...product,
+      href,
+      showDashInstead: true,
+    },
+  } as any);
+
+  if (!vm?.id && !vm?.title) return null;
+
+  return vm;
+}
+
+function isCartClickTarget(target: EventTarget | null) {
+  const el = target instanceof Element ? target : null;
+  if (!el) return false;
+
+  return Boolean(
+    el.closest(
+      ".mkpc-cart-inline, .mkpc-action--cart, [data-mk-cart-product-id]",
+    ),
+  );
+}
+
+function dispatchAddToCart(product: ProductCardVM) {
+  const raw: any = product.raw ?? {};
+  const item: any = product;
+
+  window.dispatchEvent(
+    new CustomEvent("product:add-to-cart", {
+      detail: {
+        ...raw,
+        ...item,
+
+        id: item.id,
+        product_id: raw.product_id || raw.productId || raw.id || item.id,
+        productId: raw.productId || raw.product_id || raw.id || item.id,
+
+        title: item.title,
+        name: item.title,
+
+        imageUrl: item.imageUrl,
+        image_url: item.imageUrl,
+
+        price: item.price,
+        basePrice: item.basePrice,
+
+        currency: item.currency,
+        currency_code: item.currency_code,
+        currencyCode: item.currencyCode,
+
+        currency_symbol: item.currency_symbol,
+        currencySymbol: item.currencySymbol,
+
+        tax: item.tax,
+
+        qty: 1,
+        quickView: false,
+      },
+    }),
+  );
+}
+
+export default function MobileProductsGrid({
+  products,
+  mode,
+  data,
+  currencies,
+  tax,
+}: Props) {
+  const seoMode = normalizeMode(mode);
+
+  const resolvedCurrencies = useMemo(() => {
+    return currencies || resolveCurrenciesFromData(data);
+  }, [currencies, data]);
+
+  const resolvedTax = useMemo(() => {
+    return tax || resolveTaxFromData(data);
+  }, [tax, data]);
+
+  const normalizedProducts = useMemo<ProductCardVM[]>(() => {
+    if (!Array.isArray(products)) return [];
+
+    return products
+      .map((product) =>
+        normalizeProductCard({
+          product,
+          mode: seoMode,
+          currencies: resolvedCurrencies,
+          tax: resolvedTax,
+        }),
+      )
+      .filter(Boolean) as ProductCardVM[];
+  }, [products, seoMode, resolvedCurrencies, resolvedTax]);
+
+  if (!normalizedProducts.length) {
     return (
       <div className="mk-mobile-category-products-empty">
         لا توجد منتجات
@@ -141,41 +267,24 @@ export default function MobileProductsGrid({ products, mode }: Props) {
 
   return (
     <div className="mk-mobile-category-products">
-      {products.map((p: any, i: number) => {
-        const href = buildProductHref({
-          mode,
-          slugNameAr: p?.name ?? "",
-          slugNameEn: p?.name ?? "",
-          publicNo: Number(p?.public_no ?? 0),
-          shortCode: p?.short_url ?? null,
-        });
-
-        const pricing = readPriceData(p);
+      {normalizedProducts.map((product, index) => {
+        const productId = s(product.id);
 
         return (
-          <MobileCategoryProductCard
-            key={`${String(p?.id ?? p?.public_no ?? i)}_${i}`}
-            item={{
-              id: String(p?.id ?? p?.public_no ?? i),
-              href,
-              brand: String(p?.brand?.name ?? p?.brand_name ?? ""),
-              title: String(p?.name ?? ""),
-              imageUrl: readImage(p),
-              rating: readRating(p) ?? undefined,
-              reviewsCount: readReviewsCount(p) ?? undefined,
-              price: pricing.price,
-              compareAtPrice: pricing.compareAtPrice,
-              subtitle: p?.subtitle ?? p?.metadata?.subtitle ?? null,
-              promotionTitle:
-                p?.promotionTitle ?? p?.metadata?.promotionTitle ?? null,
-              metadata: p?.metadata ?? null,
-              badge: null,
-              isOutOfStock: readOutOfStock(p),
-              saleEnd: readSaleEnd(p),
-              showSaleCountdown: readShowSaleCountdown(p),
-              showDashInstead: true,
+          <div
+            key={`${productId || "product"}-${index}`}
+            className="mk-mobile-category-products__item"
+            data-mk-product-card-id={productId}
+            onClickCapture={(event) => {
+              if (!isCartClickTarget(event.target)) return;
+
+              event.preventDefault();
+              event.stopPropagation();
+              dispatchAddToCart(product);
             }}
-          />
+          >
+            <MobileCategoryProductCard item={product} />
+          </div>
         );
       })}
     </div>

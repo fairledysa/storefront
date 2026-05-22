@@ -34,17 +34,16 @@ export const BOTTOM_NAV_ITEMS: BottomNavItem[] = [
   {
     type: "screen",
     key: "categories",
-    label: "جميع الأقسام",
+    label: "الأقسام",
     icon: "DashboardCircle",
     href: "/categories",
   },
   {
     type: "screen",
     key: "cart",
-    label: "سلة التسوق",
+    label: "السلة",
     icon: "ShoppingBag02",
     href: "/cart",
-    badge: 4,
   },
   {
     type: "screen",

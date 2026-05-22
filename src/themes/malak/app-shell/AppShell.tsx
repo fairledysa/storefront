@@ -1578,14 +1578,17 @@ export default function AppShell({
       <NavigationTransition enabled={!isMobile} />
 
       {isMobile ? (
-        <MobileShell
-          theme={theme}
-          seoMode={seoMode}
-          data={data}
-          bootstrap={bootstrap}
-        >
-          {children}
-        </MobileShell>
+         <MobileShell
+  theme={theme}
+  seoMode={seoMode}
+  data={data}
+  bootstrap={bootstrap}
+  initialCartCount={initialCartCount}
+>
+  {children}
+</MobileShell>
+
+
       ) : (
         <DesktopShell
           theme={theme}

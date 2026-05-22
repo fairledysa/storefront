@@ -1,25 +1,26 @@
 // FILE: apps/storefront/src/themes/malak/screens-mobile/product/_components/MobileStickyAddToCart.tsx
 "use client";
 
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Props = {
   productId: string;
-  variantId: string | null;
-  price: number;
+  productTitle?: string | null;
+  productImageUrl?: string | null;
+  variantId?: string | null;
+  price?: number | null;
   compareAtPrice?: number | null;
-  selectedOptionValueIds: string[];
-  selectedOptions: Array<{ name: string; value: string }>;
+  currencyCode?: string | null;
+  currencySymbol?: string | null;
+  currencyDecimals?: number | string | null;
+  saleEnd?: string | null;
+  showSaleCountdown?: boolean;
+  selectedOptionValueIds?: string[];
+  selectedOptions?: Array<{ name: string; value: string }>;
   disabled?: boolean;
   allowFileUpload?: boolean;
   allowNote?: boolean;
-  onOpenCart: () => void;
+  enableToast?: boolean;
 };
 
 type UploadedImage = {
@@ -32,21 +33,31 @@ type UploadedImage = {
 const MAX_IMAGES = 4;
 const MAX_IMAGE_BYTES = 7 * 1024 * 1024;
 
-function formatPrice(n: number) {
-  return new Intl.NumberFormat("ar-SA", { maximumFractionDigits: 0 }).format(
-    Number(n || 0),
-  );
+function s(value: any) {
+  return String(value ?? "").trim();
 }
 
-function hasValidPrice(n: any) {
-  const x = Number(n);
-  return Number.isFinite(x) && x > 0;
+function clampDecimals(value: any) {
+  const n = Number(value ?? 0);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(4, Math.floor(n)));
 }
 
-function clampQty(n: any) {
-  const x = Number(n ?? 1);
-  if (!Number.isFinite(x)) return 1;
-  return Math.max(1, Math.floor(x));
+function formatPrice(n: number, decimalDigits = 0) {
+  return new Intl.NumberFormat("ar-SA", {
+    minimumFractionDigits: decimalDigits,
+    maximumFractionDigits: decimalDigits,
+  }).format(Number(n || 0));
+}
+
+function formatMoney(
+  value: number,
+  currencySymbol: string,
+  decimalDigits: number,
+) {
+  const formatted = formatPrice(value, decimalDigits);
+  const symbol = s(currencySymbol);
+  return symbol ? `${formatted} ${symbol}` : formatted;
 }
 
 function isAllowedImageFile(file: File) {
@@ -62,6 +73,7 @@ function isAllowedImageFile(file: File) {
 
 async function uploadAttachmentToR2(file: File): Promise<UploadedImage> {
   const fd = new FormData();
+
   fd.append("kind", "product-attachment");
   fd.append("file", file, file.name);
 
@@ -85,106 +97,140 @@ async function uploadAttachmentToR2(file: File): Promise<UploadedImage> {
   };
 }
 
-function useBottomOffsetPx() {
-  const [px, setPx] = useState(74);
-
-  useEffect(() => {
-    const findTabbarEl = () => {
-      const byClass = document.querySelector(".mk-tabbar") as HTMLElement | null;
-      if (byClass) return byClass;
-
-      const byId = document.getElementById("dvxTabbar_70421");
-      if (byId) return byId as HTMLElement;
-
-      const any =
-        (document.querySelector('[id^="dvxTabbar_"]') as HTMLElement | null) ??
-        (document.querySelector('[data-dvx-tabbar="1"]') as HTMLElement | null);
-
-      return any ?? null;
-    };
-
-    const measure = () => {
-      const el = findTabbarEl();
-
-      if (!el) {
-        setPx(74);
-        return;
-      }
-
-      const h = Math.max(0, Math.round(el.getBoundingClientRect().height || 0));
-      setPx(h ? h + 8 : 74);
-    };
-
-    measure();
-
-    const ro =
-      "ResizeObserver" in window ? new ResizeObserver(() => measure()) : null;
-
-    const el = findTabbarEl();
-    if (el && ro) ro.observe(el);
-
-    window.addEventListener("resize", measure);
-    window.addEventListener("orientationchange", measure);
-
-    const t = window.setInterval(measure, 800);
-
-    return () => {
-      window.clearInterval(t);
-      window.removeEventListener("resize", measure);
-      window.removeEventListener("orientationchange", measure);
-      if (el && ro) ro.unobserve(el);
-      if (ro) ro.disconnect();
-    };
-  }, []);
-
-  return px;
-}
-
 export default function MobileStickyAddToCart({
   productId,
-  variantId,
-  price,
+  productTitle = null,
+  productImageUrl = null,
+  variantId = null,
+  price = null,
   compareAtPrice = null,
-  selectedOptionValueIds,
-  selectedOptions,
+  currencyCode = null,
+  currencySymbol = "",
+  currencyDecimals = 0,
+  selectedOptionValueIds = [],
+  selectedOptions = [],
   disabled = false,
   allowFileUpload = false,
   allowNote = false,
-  onOpenCart,
+  enableToast = true,
 }: Props) {
   const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
   const [qty, setQty] = useState(1);
-
   const [extrasOpen, setExtrasOpen] = useState(false);
-  const [noteOpen, setNoteOpen] = useState(false);
   const [note, setNote] = useState("");
   const [attachedImages, setAttachedImages] = useState<File[]>([]);
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const loadingTimerRef = useRef<number | null>(null);
 
-  const bottomOffsetPx = useBottomOffsetPx();
+  const safeCurrencyCode = s(currencyCode).toUpperCase();
+  const safeCurrencySymbol = s(currencySymbol);
+  const safeCurrencyDecimals = clampDecimals(currencyDecimals);
 
-  const priceIsValid = hasValidPrice(price);
+  const cleanProductTitle = s(productTitle) || "المنتج";
+  const cleanProductImageUrl = s(productImageUrl);
+
+  const hasOptions = (selectedOptionValueIds?.length ?? 0) > 0;
+  const variantMissing = hasOptions && !variantId;
+  const baseDisabled = disabled || variantMissing;
+
   const hasExtras = allowFileUpload || allowNote;
-  const hasVariantChoices = selectedOptionValueIds.length > 0;
-  const variantMissing = hasVariantChoices && !variantId;
+  const hasExtrasValue = Boolean(attachedImages.length || note.trim());
+
+  const canBuy = useMemo(() => {
+    if (loading) return false;
+    if (baseDisabled) return false;
+    return true;
+  }, [loading, baseDisabled]);
+
+  const clearLoadingTimer = useCallback(() => {
+    if (!loadingTimerRef.current) return;
+
+    window.clearTimeout(loadingTimerRef.current);
+    loadingTimerRef.current = null;
+  }, []);
+
+  const stopLoading = useCallback(() => {
+    clearLoadingTimer();
+    setLoading(false);
+  }, [clearLoadingTimer]);
+
+  const armLoadingFallback = useCallback(
+    (ms = 12000) => {
+      clearLoadingTimer();
+
+      loadingTimerRef.current = window.setTimeout(() => {
+        loadingTimerRef.current = null;
+        setLoading(false);
+      }, ms);
+    },
+    [clearLoadingTimer],
+  );
 
   useEffect(() => {
-    setQty(1);
-    setMsg(null);
-  }, [productId, variantId, selectedOptionValueIds.join("|")]);
+    const isSameProduct = (detail: any) => {
+      const ids = [
+        detail?.product_id,
+        detail?.productId,
+        detail?.id,
+        detail?.product?.id,
+        detail?.product?.product_id,
+        detail?.product?.productId,
+        detail?.item?.id,
+        detail?.item?.product_id,
+        detail?.item?.productId,
+      ]
+        .map((value) => s(value))
+        .filter(Boolean);
 
-  const canSubmit = useMemo(() => {
-    if (!productId) return false;
-    if (loading) return false;
-    if (disabled) return false;
-    if (variantMissing) return false;
-    if (qty < 1) return false;
-    return true;
-  }, [productId, qty, loading, disabled, variantMissing]);
+      return ids.includes(s(productId));
+    };
+
+    const onDone = (event: Event) => {
+      const detail = (event as CustomEvent<any>).detail;
+      if (!isSameProduct(detail)) return;
+      stopLoading();
+    };
+
+    const onError = (event: Event) => {
+      const detail = (event as CustomEvent<any>).detail;
+      if (!isSameProduct(detail)) return;
+      stopLoading();
+    };
+
+    const onCartChanged = () => {
+      stopLoading();
+    };
+
+    window.addEventListener("product:add-to-cart:done", onDone as EventListener);
+    window.addEventListener(
+      "product:add-to-cart:error",
+      onError as EventListener,
+    );
+    window.addEventListener("cart:changed", onCartChanged as EventListener);
+
+    return () => {
+      window.removeEventListener(
+        "product:add-to-cart:done",
+        onDone as EventListener,
+      );
+      window.removeEventListener(
+        "product:add-to-cart:error",
+        onError as EventListener,
+      );
+      window.removeEventListener("cart:changed", onCartChanged as EventListener);
+    };
+  }, [productId, stopLoading]);
+
+  useEffect(() => {
+    return () => {
+      clearLoadingTimer();
+    };
+  }, [clearLoadingTimer]);
 
   function flash(message: string) {
-    setMsg(message);
+    if (!enableToast) return;
+
     window.dispatchEvent(
       new CustomEvent("toast", {
         detail: { message },
@@ -200,14 +246,17 @@ export default function MobileStickyAddToCart({
     const picked = Array.from(filesList || []);
     if (!picked.length) return;
 
-    const invalidType = picked.find((f) => !isAllowedImageFile(f));
+    const invalidType = picked.find((file) => !isAllowedImageFile(file));
     if (invalidType) {
       flash("مسموح فقط بصور JPG / PNG / WEBP");
       resetFileInput();
       return;
     }
 
-    const tooLarge = picked.find((f) => Number(f.size || 0) > MAX_IMAGE_BYTES);
+    const tooLarge = picked.find(
+      (file) => Number(file.size || 0) > MAX_IMAGE_BYTES,
+    );
+
     if (tooLarge) {
       flash("حجم كل صورة يجب ألا يتجاوز 7MB");
       resetFileInput();
@@ -239,25 +288,26 @@ export default function MobileStickyAddToCart({
     resetFileInput();
   }
 
-  async function addToCart() {
+  function removeImageAt(index: number) {
+    setAttachedImages((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  async function handleAddToCart() {
     if (variantMissing) {
       flash("اختر الخيارات أولاً");
       return;
     }
 
-    if (!canSubmit) return;
-
-    setLoading(true);
-    setMsg(null);
+    if (baseDisabled || loading) return;
 
     try {
+      setLoading(true);
+
       const uploadedImages: UploadedImage[] = [];
 
       if (allowFileUpload && attachedImages.length) {
         for (const file of attachedImages) {
-          if (!isAllowedImageFile(file)) {
-            throw new Error("IMAGES_ONLY");
-          }
+          if (!isAllowedImageFile(file)) throw new Error("IMAGES_ONLY");
 
           if (Number(file.size || 0) > MAX_IMAGE_BYTES) {
             throw new Error("IMAGE_TOO_LARGE");
@@ -292,54 +342,124 @@ export default function MobileStickyAddToCart({
           name: `__attachment_${n}_name`,
           value: img.name,
         });
+
         finalSelectedOptions.push({
           name: `__attachment_${n}_type`,
           value: img.type || "image/*",
         });
+
         finalSelectedOptions.push({
           name: `__attachment_${n}_size`,
           value: String(img.size),
         });
+
         finalSelectedOptions.push({
           name: `__attachment_${n}_url`,
           value: img.url,
         });
       });
 
-      const formData = new FormData();
-      formData.append("product_id", productId);
-      if (variantId) formData.append("variant_id", variantId);
-      formData.append("qty", String(qty));
+      const productPayload = {
+        id: productId,
+        product_id: productId,
+        productId,
 
-      for (const id of selectedOptionValueIds || []) {
-        formData.append("selected_option_value_ids[]", String(id));
-      }
+        name: cleanProductTitle,
+        title: cleanProductTitle,
 
-      formData.append("selected_options", JSON.stringify(finalSelectedOptions));
+        image_url: cleanProductImageUrl,
+        imageUrl: cleanProductImageUrl,
 
-      const res = await fetch("/api/cart/items", {
-        method: "POST",
-        credentials: "include",
-        body: formData,
-      });
+        price,
+        unit_price: price,
+        unitPrice: price,
+        sale_price: price,
+        salePrice: price,
 
-      const json = await res.json().catch(() => null);
+        compare_at_price: compareAtPrice,
+        compareAtPrice,
 
-      if (!res.ok) {
-        flash(json?.message || json?.error || "تعذر إضافة المنتج للسلة");
-        return;
-      }
+        currency: safeCurrencyCode,
+        currency_code: safeCurrencyCode,
+        currencyCode: safeCurrencyCode,
 
-      window.dispatchEvent(new CustomEvent("cart:changed"));
+        currency_symbol: safeCurrencySymbol,
+        currencySymbol: safeCurrencySymbol,
+        symbol: safeCurrencySymbol,
+
+        currency_decimals: safeCurrencyDecimals,
+        currencyDecimals: safeCurrencyDecimals,
+        decimal_digits: safeCurrencyDecimals,
+        decimalDigits: safeCurrencyDecimals,
+      };
+
+      window.dispatchEvent(
+        new CustomEvent("product:add-to-cart", {
+          detail: {
+            id: productId,
+            product_id: productId,
+            productId,
+
+            title: cleanProductTitle,
+            name: cleanProductTitle,
+
+            imageUrl: cleanProductImageUrl,
+            image_url: cleanProductImageUrl,
+
+            price,
+            unit_price: price,
+            unitPrice: price,
+            sale_price: price,
+            salePrice: price,
+
+            compare_at_price: compareAtPrice,
+            compareAtPrice,
+
+            currency: safeCurrencyCode,
+            currency_code: safeCurrencyCode,
+            currencyCode: safeCurrencyCode,
+
+            currency_symbol: safeCurrencySymbol,
+            currencySymbol: safeCurrencySymbol,
+            symbol: safeCurrencySymbol,
+
+            currency_decimals: safeCurrencyDecimals,
+            currencyDecimals: safeCurrencyDecimals,
+            decimal_digits: safeCurrencyDecimals,
+            decimalDigits: safeCurrencyDecimals,
+
+            qty,
+
+            variant_id: variantId,
+            variantId,
+
+            selected_option_value_ids: selectedOptionValueIds || [],
+            selectedOptionValueIds: selectedOptionValueIds || [],
+
+            selected_options: finalSelectedOptions,
+            selectedOptions: finalSelectedOptions,
+
+            product: productPayload,
+
+            item: {
+              ...productPayload,
+              qty,
+            },
+
+            quickView: false,
+          },
+        }),
+      );
+
+      armLoadingFallback();
 
       setNote("");
-      setNoteOpen(false);
-      setExtrasOpen(false);
       setAttachedImages([]);
+      setExtrasOpen(false);
       resetFileInput();
-
-      onOpenCart();
     } catch (e: any) {
+      stopLoading();
+
       if (e?.message === "IMAGES_ONLY") {
         flash("مسموح فقط بصور JPG / PNG / WEBP");
       } else if (e?.message === "IMAGE_TOO_LARGE") {
@@ -354,143 +474,189 @@ export default function MobileStickyAddToCart({
       } else if (e?.message === "UPLOAD_FAILED") {
         flash("فشل رفع الصور");
       } else {
-        flash("تعذر إضافة المنتج للسلة");
+        flash("خطأ في الإضافة");
       }
-    } finally {
-      setLoading(false);
     }
   }
 
   return (
     <div
       dir="rtl"
-      className="mksac-wrap"
-      style={
-        {
-          "--mksac-bottom-offset": `${bottomOffsetPx}px`,
-        } as CSSProperties
-      }
+      className={[
+        "mk-mcart",
+        hasExtras ? "has-extras" : "",
+        extrasOpen ? "is-extras-open" : "",
+        hasExtrasValue ? "has-extras-value" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
     >
-      <div className="mksac-card">
-        {msg ? <div className="mksac-error">{msg}</div> : null}
-
-        {hasExtras && extrasOpen ? (
-          <div className="mksac-extrasPanel">
-            <div className="mksac-extrasBtns">
-              {allowFileUpload ? (
-                <>
-                  <button
-                    type="button"
-                    className="mksac-extraBtn"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={loading || attachedImages.length >= MAX_IMAGES}
-                  >
-                    إرفاق صور
-                  </button>
-
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-                    multiple
-                    className="mksac-fileInput"
-                    onChange={(e) => handlePickImages(e.target.files)}
-                  />
-                </>
-              ) : null}
-
-              {allowNote ? (
-                <button
-                  type="button"
-                  className="mksac-extraBtn"
-                  onClick={() => setNoteOpen((v) => !v)}
-                  disabled={loading}
-                >
-                  إضافة ملاحظة
-                </button>
-              ) : null}
+      {hasExtras && extrasOpen ? (
+        <div className="mk-mcart-extras">
+          <div className="mk-mcart-extras__head">
+            <div>
+              <strong>المرفقات</strong>
+              <span>اختياري قبل الإضافة للسلة</span>
             </div>
 
-            {attachedImages.length ? (
-              <div className="mksac-files">
-                {attachedImages.map((file, index) => (
-                  <span key={`${file.name}-${file.size}-${index}`}>
-                    صورة {index + 1}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-
-            {allowNote && noteOpen ? (
-              <textarea
-                className="mksac-note"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="اكتب ملاحظتك هنا"
-                rows={2}
-              />
-            ) : null}
-          </div>
-        ) : null}
-
-        <div
-          className={`mksac-main ${
-            hasExtras ? "mksac-main--withExtras" : "mksac-main--noExtras"
-          }`}
-        >
-          {hasExtras ? (
             <button
               type="button"
-              className={`mksac-more ${extrasOpen ? "mksac-more--active" : ""}`}
-              onClick={() => setExtrasOpen((v) => !v)}
-              aria-label="المرفقات والملاحظات"
+              onClick={() => setExtrasOpen(false)}
+              className="mk-mcart-extras__close"
+              aria-label="إغلاق المرفقات"
             >
-              <span className="mksac-moreIcon" aria-hidden="true">
-                📎
-              </span>
-              <span className="mksac-moreText">مرفقات</span>
+              ×
             </button>
+          </div>
+
+          <div
+            className={[
+              "mk-mcart-extras__actions",
+              allowFileUpload && allowNote
+                ? "mk-mcart-extras__actions--two"
+                : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
+            {allowFileUpload ? (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="mk-mcart-extraBtn"
+                disabled={loading}
+              >
+                <span>إرفاق صور</span>
+                <b>{attachedImages.length ? attachedImages.length : "＋"}</b>
+              </button>
+            ) : null}
+
+            {allowNote ? (
+              <button
+                type="button"
+                onClick={() => setNote((value) => value)}
+                className="mk-mcart-extraBtn"
+                disabled={loading}
+              >
+                <span>ملاحظة</span>
+                <b>{note.trim() ? "✓" : "＋"}</b>
+              </button>
+            ) : null}
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+            multiple
+            className="mk-mcart-fileInput"
+            onChange={(event) => handlePickImages(event.target.files)}
+            disabled={loading}
+          />
+
+          {allowNote ? (
+            <textarea
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              placeholder="اكتب ملاحظتك هنا"
+              rows={2}
+              className="mk-mcart-note"
+              disabled={loading}
+            />
           ) : null}
 
-          <div className="mksac-qty">
-            <button
-              type="button"
-              onClick={() => setQty((q) => Math.max(1, q - 1))}
-              disabled={loading || qty <= 1}
-              aria-label="نقص"
-            >
-              −
-            </button>
+          {allowFileUpload ? (
+            <div className="mk-mcart-hint">
+              حتى 4 صور بصيغة JPG / PNG / WEBP، الحد الأقصى لكل صورة 7MB
+            </div>
+          ) : null}
 
-            <span>{qty}</span>
+          {attachedImages.length ? (
+            <div className="mk-mcart-files">
+              {attachedImages.map((file, idx) => {
+                const preview = URL.createObjectURL(file);
 
-            <button
-              type="button"
-              onClick={() => setQty((q) => clampQty(q + 1))}
-              disabled={loading}
-              aria-label="زيادة"
-            >
-              +
-            </button>
-          </div>
+                return (
+                  <div
+                    key={`${file.name}-${file.size}-${file.lastModified}-${idx}`}
+                    className="mk-mcart-file"
+                  >
+                    <img src={preview} alt={file.name} />
+
+                    <button
+                      type="button"
+                      onClick={() => removeImageAt(idx)}
+                      disabled={loading}
+                      aria-label="إزالة الصورة"
+                    >
+                      ×
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="mk-mcart-bar">
+        <div className="mk-mcart-qty" aria-label="الكمية">
+          <button
+            type="button"
+            onClick={() => setQty((value) => Math.max(1, value - 1))}
+            disabled={loading}
+            aria-label="تقليل الكمية"
+          >
+            −
+          </button>
+
+          <span>{qty}</span>
 
           <button
             type="button"
-            className="mksac-submit"
-            onClick={addToCart}
-            disabled={!canSubmit}
+            onClick={() => setQty((value) => value + 1)}
+            disabled={loading}
+            aria-label="زيادة الكمية"
           >
-            <span>{loading ? "جارٍ الإضافة..." : "أضف للسلة"}</span>
-
-            {priceIsValid ? <b>{formatPrice(price)} ر.س</b> : null}
+            +
           </button>
         </div>
 
-        {priceIsValid && compareAtPrice && compareAtPrice > price ? (
-          <div className="mksac-compare">
-            بدلاً من {formatPrice(compareAtPrice)} ر.س
-          </div>
+        {hasExtras ? (
+          <button
+            type="button"
+            className="mk-mcart-extrasBtn"
+            onClick={() => setExtrasOpen((value) => !value)}
+            disabled={loading}
+            aria-pressed={extrasOpen}
+          >
+            <span>{hasExtrasValue ? "تمت" : "مرفقات"}</span>
+          </button>
         ) : null}
+
+        <button
+          type="button"
+          disabled={!canBuy}
+          aria-busy={loading ? "true" : "false"}
+          data-loading={loading ? "true" : "false"}
+          data-mk-cart-product-id={productId}
+          data-disabled={baseDisabled ? "true" : "false"}
+          data-mk-original-disabled={baseDisabled ? "true" : "false"}
+          className={["mk-mcart-submit", loading ? "is-loading" : ""]
+            .filter(Boolean)
+            .join(" ")}
+          onClick={() => void handleAddToCart()}
+        >
+          <span className="mk-mcart-submit__label">
+            {loading ? "جارٍ الإضافة..." : "أضف للسلة"}
+          </span>
+
+          {typeof price === "number" ? (
+            <span className="mk-mcart-submit__price">
+              {formatMoney(price, safeCurrencySymbol, safeCurrencyDecimals)}
+            </span>
+          ) : null}
+        </button>
       </div>
     </div>
   );

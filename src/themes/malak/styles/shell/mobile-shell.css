@@ -1,14 +1,41 @@
- /**
- * apps/storefront/src/themes/malak/styles/shell/mobile-shell.css
+/**
+ * FILE: apps/storefront/src/themes/malak/styles/shell/mobile-shell.css
  */
- .mk-mobile-shell {
-  min-height: 100dvh;
+
+.mk-mobile-shell {
+  --mk-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --mk-safe-top: env(safe-area-inset-top, 0px);
+  --mk-tabbar-h: 72px;
+  --mk-tabbar-total-h: calc(var(--mk-tabbar-h) + var(--mk-safe-bottom));
+
+  min-height: 100vh;
+  min-height: 100svh;
   background: var(--mk-bg-page);
   color: var(--mk-text-main);
-  overflow-x: hidden;
+  overflow-x: clip;
+  isolation: isolate;
 }
 
 .mk-mobile-content {
-  min-height: 100dvh;
-  padding-bottom: var(--mk-tabbar-total-h);
+  min-height: 100vh;
+  min-height: 100svh;
+  padding-bottom: calc(var(--mk-tabbar-total-h) + 14px);
 }
+
+.mk-screen-container {
+  min-height: calc(100svh - var(--mk-tabbar-total-h));
+}
+
+.mk-mobile-shell[data-mk-route="product"] .mk-mobile-content,
+.mk-mobile-shell[data-mk-route="cart"] .mk-mobile-content {
+  padding-bottom: calc(var(--mk-tabbar-total-h) + 22px);
+}
+
+@supports not (height: 100svh) {
+  .mk-mobile-shell,
+  .mk-mobile-content {
+    min-height: 100dvh;
+  }
+}
+
+

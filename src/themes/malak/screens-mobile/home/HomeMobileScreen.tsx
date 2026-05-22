@@ -10,6 +10,11 @@ import { Pagination, Autoplay } from "swiper/modules";
 import "swiper/css";
 import "swiper/css/pagination";
 
+import {
+  toProductCardVM,
+  type ProductCardVM,
+} from "@/data/viewmodels/product.vm";
+
 import type {
   HomeDynamicItem,
   HomeDynamicSection,
@@ -94,6 +99,152 @@ function cleanDynamicText(value: any) {
 
   const text = getValueText(value) || "";
   return text === "[object Object]" ? "" : text;
+}
+
+function resolveCurrenciesFromData(data: any) {
+  return (
+    data?.bootstrap?.currencies ||
+    data?.currencies ||
+    data?.store?.currencies ||
+    data?.theme?.currencies ||
+    data?.settings?.currencies ||
+    null
+  );
+}
+
+function resolveTaxFromData(data: any) {
+  return (
+    data?.bootstrap?.tax ||
+    data?.theme?.bootstrap?.tax ||
+    data?.themeData?.bootstrap?.tax ||
+    data?.theme_data?.bootstrap?.tax ||
+    data?.storefront?.bootstrap?.tax ||
+    data?.tax ||
+    data?.store?.tax ||
+    data?.theme?.tax ||
+    data?.settings?.tax ||
+    data?.themeOptions?.tax ||
+    data?.theme_options?.tax ||
+    null
+  );
+}
+
+function getProductHref(product: any) {
+  return (
+    s(product?.href) ||
+    s(product?.url) ||
+    s(product?.permalink) ||
+    s(product?.link) ||
+    ""
+  );
+}
+
+function normalizeProductCard(args: {
+  product: any;
+  currencies?: any;
+  tax?: any;
+}): ProductCardVM | null {
+  const product = args.product;
+  if (!product) return null;
+
+  const href = getProductHref(product);
+
+  const vm = toProductCardVM({
+    storeSlug: "",
+    currencies: args.currencies,
+    tax: args.tax,
+    product: {
+      ...product,
+      href: href || product?.href,
+      showDashInstead: true,
+    },
+  } as any);
+
+  if (!s((vm as any)?.id) && !s((vm as any)?.title)) return null;
+
+  return vm;
+}
+
+function normalizeProductCards(args: {
+  products: any[];
+  currencies?: any;
+  tax?: any;
+  limit?: number;
+}) {
+  const rows = Array.isArray(args.products) ? args.products : [];
+  const limit = Number(args.limit || 0);
+
+  const slicedRows = limit > 0 ? rows.slice(0, limit) : rows;
+
+  return slicedRows
+    .map((product) =>
+      normalizeProductCard({
+        product,
+        currencies: args.currencies,
+        tax: args.tax,
+      }),
+    )
+    .filter(Boolean) as ProductCardVM[];
+}
+
+function clampDecimals(value: unknown, fallback = 2) {
+  const n = Number(value ?? fallback);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0, Math.min(4, Math.floor(n)));
+}
+
+function formatVmMoney(product: ProductCardVM, field: "price" | "compare") {
+  const row: any = product || {};
+
+  const direct =
+    field === "price"
+      ? s(
+          row.priceText ||
+            row.price_text ||
+            row.priceFormatted ||
+            row.price_formatted,
+        )
+      : s(
+          row.comparePriceText ||
+            row.compare_price_text ||
+            row.compareAtPriceFormatted ||
+            row.compare_at_price_formatted,
+        );
+
+  if (direct) return direct;
+
+  const amount = field === "price" ? row.price : row.compareAtPrice;
+  const numeric = Number(amount);
+
+  if (!Number.isFinite(numeric) || numeric <= 0) return "";
+
+  if (field === "compare") {
+    const price = Number(row.price);
+    if (Number.isFinite(price) && numeric <= price) return "";
+  }
+
+  const decimals = clampDecimals(
+    row.currencyDecimals ??
+      row.currency_decimals ??
+      row.decimal_digits ??
+      row.decimals,
+    2,
+  );
+
+  const symbol =
+    s(row.currencySymbol) ||
+    s(row.currency_symbol) ||
+    s(row.symbol) ||
+    s(row.currency_code) ||
+    s(row.currencyCode) ||
+    s(row.currency);
+
+  const formatted = new Intl.NumberFormat("ar-SA", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: decimals,
+  }).format(numeric);
+
+  return `${formatted}${symbol ? ` ${symbol}` : ""}`.trim();
 }
 
 function MobileSectionTitle({
@@ -339,7 +490,7 @@ function MobileStatsSection({ section }: { section: HomeDynamicSection }) {
   const image = getImageFromValue(values?.field_4);
 
   const bgColor = s(values?.field_5) || "#FFFFFF";
-  const accentColor = s(values?.field_6) || "#A97057";
+  const accentColor = s(values?.field_6) || "var(--mk-color-primary)";
 
   const rows = Array.isArray(values?.field_7) ? values.field_7 : [];
 
@@ -557,14 +708,24 @@ function MobileCountdownOfferSection({
   );
 }
 
-function MobileProductCard({ product }: { product: any }) {
+function MobileProductCard({ product }: { product: ProductCardVM }) {
+  const item: any = product || {};
+
+  const title = s(item.title);
+  const href = s(item.href) || "#";
+  const imageUrl = s(item.imageUrl || item.image_url || item.thumbnail_url);
+  const brand = s(item.brand || item.brandName || item.brand_name);
+
+  const priceText = formatVmMoney(product, "price");
+  const compareText = formatVmMoney(product, "compare");
+
   return (
-    <a href={product.href || "#"} className="mk-mobile-product-card">
+    <a href={href} className="mk-mobile-product-card">
       <div className="mk-mobile-product-card__imageBox">
-        {product.imageUrl ? (
+        {imageUrl ? (
           <img
-            src={product.imageUrl}
-            alt={product.title || "product"}
+            src={imageUrl}
+            alt={title || "product"}
             loading="lazy"
             className="mk-mobile-product-card__image"
           />
@@ -572,24 +733,28 @@ function MobileProductCard({ product }: { product: any }) {
       </div>
 
       <div className="mk-mobile-product-card__body">
-        {product.brand ? (
-          <div className="mk-mobile-product-card__brand">{product.brand}</div>
+        {brand ? (
+          <div className="mk-mobile-product-card__brand">{brand}</div>
         ) : null}
 
-        <h3 className="mk-mobile-product-card__title">{product.title}</h3>
+        {title ? (
+          <h3 className="mk-mobile-product-card__title">{title}</h3>
+        ) : null}
 
         <div className="mk-mobile-product-card__priceRow">
-          {product.compareAtPrice ? (
+          {compareText ? (
             <span className="mk-mobile-product-card__compare">
-              {product.compareAtPrice}
+              {compareText}
             </span>
           ) : (
             <span />
           )}
 
-          <span className="mk-mobile-product-card__price" dir="rtl">
-            {product.price}
-          </span>
+          {priceText ? (
+            <span className="mk-mobile-product-card__price" dir="rtl">
+              {priceText}
+            </span>
+          ) : null}
         </div>
       </div>
     </a>
@@ -600,10 +765,14 @@ function MobileProductsTabsSection({
   section,
   data,
   seoMode,
+  currencies,
+  tax,
 }: {
   section: HomeDynamicSection;
   data: any;
   seoMode: any;
+  currencies?: any;
+  tax?: any;
 }) {
   const tabs = useMemo(
     () => getProductsTabs(section, data, seoMode),
@@ -624,6 +793,13 @@ function MobileProductsTabsSection({
   if (!tabs.length) return null;
 
   const activeTab = tabs.find((tab) => tab.id === activeId) || tabs[0];
+
+  const products = normalizeProductCards({
+    products: activeTab.products,
+    currencies,
+    tax,
+    limit: activeTab.limit || 12,
+  });
 
   return (
     <section className="mk-mobile-products">
@@ -649,10 +825,13 @@ function MobileProductsTabsSection({
         })}
       </div>
 
-      {activeTab.products.length ? (
+      {products.length ? (
         <div className="mk-mobile-products-grid">
-          {activeTab.products.slice(0, activeTab.limit || 12).map((product) => (
-            <MobileProductCard key={product.id} product={product} />
+          {products.map((product, index) => (
+            <MobileProductCard
+              key={`${s((product as any).id) || "product"}-${index}`}
+              product={product}
+            />
           ))}
         </div>
       ) : (
@@ -666,10 +845,14 @@ function MobileAdvancedProductsCollectionSection({
   section,
   data,
   seoMode,
+  currencies,
+  tax,
 }: {
   section: HomeDynamicSection;
   data: any;
   seoMode: any;
+  currencies?: any;
+  tax?: any;
 }) {
   const values = getSectionValues(section);
 
@@ -692,7 +875,7 @@ function MobileAdvancedProductsCollectionSection({
     [tabsEnabled, values, section, data, seoMode],
   );
 
-  const products = useMemo(
+  const rawProducts = useMemo(
     () =>
       tabsEnabled ? [] : getAdvancedCollectionProducts(values, data, seoMode),
     [tabsEnabled, values, data, seoMode],
@@ -710,9 +893,16 @@ function MobileAdvancedProductsCollectionSection({
   }, [tabsEnabled, tabs]);
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) || tabs[0];
-  const visibleProducts = tabsEnabled ? activeTab?.products || [] : products;
+  const visibleRawProducts = tabsEnabled ? activeTab?.products || [] : rawProducts;
 
-  if (!title && !description && !image && !visibleProducts.length) return null;
+  const products = normalizeProductCards({
+    products: visibleRawProducts,
+    currencies,
+    tax,
+    limit: 12,
+  });
+
+  if (!title && !description && !image && !products.length) return null;
 
   return (
     <section className="mk-mobile-products">
@@ -756,10 +946,13 @@ function MobileAdvancedProductsCollectionSection({
         </div>
       ) : null}
 
-      {visibleProducts.length ? (
+      {products.length ? (
         <div className="mk-mobile-products-grid">
-          {visibleProducts.slice(0, 12).map((product: any) => (
-            <MobileProductCard key={product.id} product={product} />
+          {products.map((product, index) => (
+            <MobileProductCard
+              key={`${s((product as any).id) || "product"}-${index}`}
+              product={product}
+            />
           ))}
         </div>
       ) : (
@@ -1039,10 +1232,14 @@ function MobileDynamicSectionRenderer({
   section,
   data,
   seoMode,
+  currencies,
+  tax,
 }: {
   section: HomeDynamicSection;
   data: any;
   seoMode: any;
+  currencies?: any;
+  tax?: any;
 }) {
   if (isResponsiveHeroSliderSection(section)) {
     return (
@@ -1080,6 +1277,8 @@ function MobileDynamicSectionRenderer({
         section={section}
         data={data}
         seoMode={seoMode}
+        currencies={currencies}
+        tax={tax}
       />
     );
   }
@@ -1090,6 +1289,8 @@ function MobileDynamicSectionRenderer({
         section={section}
         data={data}
         seoMode={seoMode}
+        currencies={currencies}
+        tax={tax}
       />
     );
   }
@@ -1155,6 +1356,8 @@ function MobileDynamicSectionRenderer({
 
 export default function HomeMobileScreen({ data, seoMode }: Props) {
   const dynamicSections = buildDynamicSections(data, seoMode);
+  const currencies = resolveCurrenciesFromData(data);
+  const tax = resolveTaxFromData(data);
 
   return (
     <div className="mk-mobile-home">
@@ -1164,6 +1367,8 @@ export default function HomeMobileScreen({ data, seoMode }: Props) {
           section={section}
           data={data}
           seoMode={seoMode}
+          currencies={currencies}
+          tax={tax}
         />
       ))}
     </div>
