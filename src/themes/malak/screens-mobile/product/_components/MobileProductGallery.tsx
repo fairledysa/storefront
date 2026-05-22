@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-
+import SquareArrowRight02 from "@/components/icon/huge/SquareArrowRight02";
 type Props = {
   images?: string[];
   productName?: string | null;
@@ -212,7 +212,7 @@ export default function MobileProductGallery({
               aria-label="رجوع"
               onClick={handleBack}
             >
-              ←
+             <SquareArrowRight02 className="mk-mpg-backIcon" aria-hidden="true" />
             </button>
 
             <div className="mk-mpg-header__title">
@@ -253,7 +253,7 @@ export default function MobileProductGallery({
               aria-label="رجوع"
               onClick={handleBack}
             >
-              ←
+              <SquareArrowRight02 className="mk-mpg-backIcon" aria-hidden="true" />
             </button>
 
             <div className="mk-mpg-header__title">

@@ -3133,3 +3133,531 @@
     bottom: 13px !important;
   }
 }
+
+
+
+
+
+
+
+
+/* =========================================================
+   EMERGENCY CLEANUP — Product Mobile remove extra frames
+   لازم آخر شيء في product.css
+   ========================================================= */
+
+/* الصفحة بدون براويز إضافية */
+.mk-mproduct {
+  overflow-x: hidden !important;
+  background: var(--mk-product-bg, var(--mk-bg-page)) !important;
+}
+
+/* الهيرو بعرض مساحة الجوال بدون إطار أبيض داخلي */
+.mk-mproduct-hero {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* الصورة نفسها: كرت واحد فقط */
+.mk-mpg {
+  width: 100% !important;
+  max-width: 100% !important;
+  gap: 0 !important;
+}
+
+.mk-mpg-stage {
+  width: 100% !important;
+  max-width: 100% !important;
+  border: 0 !important;
+  border-radius: 0 0 24px 24px !important;
+  background: var(--mk-product-card-soft, #f6f7f8) !important;
+  box-shadow: none !important;
+}
+
+.mk-mpg-stage__button {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+.mk-mpg-stage__img {
+  width: 100% !important;
+  max-width: 100% !important;
+  height: min(76svh, 690px) !important;
+  object-fit: cover !important;
+  object-position: center top !important;
+  display: block !important;
+}
+
+/* لا أسهم */
+.mk-mpg-nav {
+  display: none !important;
+}
+
+/* الهيدر خفيف جدًا */
+.mk-mpg-header {
+  grid-template-columns: 40px minmax(0, 1fr) !important;
+  padding:
+    calc(env(safe-area-inset-top, 0px) + 10px)
+    12px
+    42px !important;
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.24) 0%,
+    rgba(15, 23, 42, 0.08) 45%,
+    rgba(15, 23, 42, 0) 100%
+  ) !important;
+  pointer-events: none !important;
+}
+
+.mk-mpg-header__back {
+  width: 40px !important;
+  height: 40px !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  background: rgba(255, 255, 255, 0.94) !important;
+  color: #111827 !important;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12) !important;
+  pointer-events: auto !important;
+}
+
+.mk-mpg-header__title {
+  padding-top: 3px !important;
+  justify-content: flex-start !important;
+}
+
+.mk-mpg-header__title span {
+  max-width: calc(100vw - 86px) !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  color: #fff !important;
+  font-size: 11.5px !important;
+  font-weight: 950 !important;
+  line-height: 1.45 !important;
+  text-shadow:
+    0 2px 10px rgba(0, 0, 0, 0.55),
+    0 1px 2px rgba(0, 0, 0, 0.45) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* عداد أنظف */
+.mk-mpg-counter {
+  inset-inline-start: auto !important;
+  inset-inline-end: 12px !important;
+  bottom: 13px !important;
+  min-width: 48px !important;
+  height: 28px !important;
+  border-radius: 999px !important;
+  background: rgba(17, 24, 39, 0.68) !important;
+  color: #fff !important;
+  font-size: 10.5px !important;
+  font-weight: 950 !important;
+  box-shadow: none !important;
+}
+
+.mk-mpg-progress {
+  inset-inline: 14px !important;
+  bottom: 7px !important;
+  height: 2px !important;
+}
+
+/* لا thumbnails تحت الصورة */
+.mk-mpg-thumbs {
+  display: none !important;
+}
+
+/* أهم جزء: إلغاء التداخل والبراويز اللي خربت المحتوى */
+.mk-mproduct-content {
+  position: relative !important;
+  z-index: 1 !important;
+  margin-top: 0 !important;
+  padding-top: 10px !important;
+  border-radius: 0 !important;
+  background: var(--mk-product-bg, var(--mk-bg-page)) !important;
+  box-shadow: none !important;
+}
+
+/* إلغاء أي ظل/برواز فرضناه على أول كرت */
+.mk-mproduct-content > :first-child,
+.mk-mproduct-content .mk-pinfo:first-child,
+.mk-mproduct-content .mk-minfo:first-child {
+  margin-top: 0 !important;
+  border-radius: 22px !important;
+  box-shadow: none !important;
+}
+
+/* لا تخلي شريط الإضافة يغطي المحتوى */
+.mk-mproduct {
+  padding-bottom: calc(150px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+@media (max-width: 420px) {
+  .mk-mpg-stage__img {
+    height: min(74svh, 650px) !important;
+  }
+
+  .mk-mproduct-content {
+    padding-top: 8px !important;
+  }
+}
+
+
+
+
+
+
+
+/* =========================================================
+   FINAL PRODUCT MOBILE WIDTH FIX
+   يكسر حاوية المنتج فقط بدون لمس باقي صفحات الجوال
+   ========================================================= */
+
+.mk-mobile-shell[data-mk-route="product"] .mk-mobile-content {
+  overflow-x: hidden !important;
+}
+
+.mk-mobile-shell[data-mk-route="product"] .mk-screen-container,
+.mk-mobile-shell[data-mk-route="product"] .mk-mproduct {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding-inline: 0 !important;
+}
+
+/* الهيرو يطلع من أي padding داخلي */
+.mk-mobile-shell[data-mk-route="product"] .mk-mproduct-hero {
+  position: relative !important;
+  left: 50% !important;
+  right: 50% !important;
+  width: 100vw !important;
+  max-width: 100vw !important;
+  margin-left: -50vw !important;
+  margin-right: -50vw !important;
+  padding: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* معرض الصورة بعرض الشاشة */
+.mk-mobile-shell[data-mk-route="product"] .mk-mpg,
+.mk-mobile-shell[data-mk-route="product"] .mk-mpg-stage,
+.mk-mobile-shell[data-mk-route="product"] .mk-mpg-stage__button,
+.mk-mobile-shell[data-mk-route="product"] .mk-mpg-stage__img {
+  width: 100vw !important;
+  max-width: 100vw !important;
+}
+
+/* الصورة */
+.mk-mobile-shell[data-mk-route="product"] .mk-mpg-stage {
+  border-radius: 0 0 26px 26px !important;
+  box-shadow: none !important;
+  overflow: hidden !important;
+}
+
+.mk-mobile-shell[data-mk-route="product"] .mk-mpg-stage__img {
+  height: min(76svh, 690px) !important;
+  object-fit: cover !important;
+  object-position: center top !important;
+  display: block !important;
+}
+
+/* المحتوى تحت الصورة يرجع داخل padding مرتب */
+.mk-mobile-shell[data-mk-route="product"] .mk-mproduct-content {
+  width: 100% !important;
+  max-width: 560px !important;
+  margin: 0 auto !important;
+  padding: 10px 10px calc(150px + env(safe-area-inset-bottom, 0px)) !important;
+  background: var(--mk-product-bg, var(--mk-bg-page)) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+/* خفف أول كرت، لا تخليه يطلع فوق الصورة */
+.mk-mobile-shell[data-mk-route="product"] .mk-mproduct-content > :first-child {
+  margin-top: 0 !important;
+  box-shadow: none !important;
+}
+
+/* شريط الإضافة بعرض مضبوط */
+.mk-mobile-shell[data-mk-route="product"] .mk-mproduct-mobileCart {
+  inset-inline: 0 !important;
+  padding-inline: 8px !important;
+}
+
+.mk-mobile-shell[data-mk-route="product"] .mk-mcart {
+  width: min(100%, 560px) !important;
+  margin-inline: auto !important;
+}
+
+
+
+/* =========================================================
+   Mobile Product Gallery Back Icon
+   ========================================================= */
+
+.mk-mpg-header__back {
+  font-size: 0 !important;
+}
+
+.mk-mpg-backIcon {
+  width: 21px !important;
+  height: 21px !important;
+  display: block !important;
+  color: currentColor !important;
+  stroke-width: 1.9 !important;
+}
+
+@media (max-width: 420px) {
+  .mk-mpg-backIcon {
+    width: 20px !important;
+    height: 20px !important;
+  }
+}
+
+/* =========================================================
+   FINAL — Mobile Product Hero Header Polish 9/10
+   يكون آخر شيء في product.css
+   ========================================================= */
+
+.mk-mpg-header {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-start !important;
+  justify-content: flex-start !important;
+  gap: 9px !important;
+  padding:
+    calc(env(safe-area-inset-top, 0px) + 10px)
+    12px
+    70px !important;
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.26) 0%,
+    rgba(15, 23, 42, 0.1) 46%,
+    rgba(15, 23, 42, 0) 100%
+  ) !important;
+  pointer-events: none !important;
+}
+
+.mk-mpg-header__back {
+  order: 0 !important;
+  width: 40px !important;
+  height: 40px !important;
+  flex: 0 0 40px !important;
+  border: 1px solid rgba(255, 255, 255, 0.55) !important;
+  border-radius: 999px !important;
+  background: rgba(255, 255, 255, 0.94) !important;
+  color: #111827 !important;
+  box-shadow:
+    0 12px 28px rgba(15, 23, 42, 0.16),
+    0 1px 0 rgba(255, 255, 255, 0.75) inset !important;
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+  pointer-events: auto !important;
+  transform: none !important;
+}
+
+.mk-mpg-header__back:active {
+  transform: scale(0.94) !important;
+}
+
+.mk-mpg-backIcon {
+  width: 20px !important;
+  height: 20px !important;
+  display: block !important;
+  color: currentColor !important;
+}
+
+.mk-mpg-header__title {
+  order: 1 !important;
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  padding-top: 8px !important;
+  pointer-events: none !important;
+}
+
+.mk-mpg-header__title span {
+  max-width: min(245px, calc(100vw - 82px)) !important;
+  display: block !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: #ffffff !important;
+  font-size: 11.5px !important;
+  font-weight: 950 !important;
+  line-height: 1.35 !important;
+  letter-spacing: -0.01em !important;
+  text-shadow:
+    0 2px 12px rgba(0, 0, 0, 0.58),
+    0 1px 2px rgba(0, 0, 0, 0.46) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* عداد وبروغرس أنعم */
+.mk-mpg-counter {
+  inset-inline-start: 14px !important;
+  inset-inline-end: auto !important;
+  bottom: 17px !important;
+  min-width: 48px !important;
+  height: 28px !important;
+  padding: 0 10px !important;
+  border-radius: 999px !important;
+  background: rgba(17, 24, 39, 0.66) !important;
+  color: #fff !important;
+  font-size: 10.5px !important;
+  font-weight: 950 !important;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+}
+
+.mk-mpg-progress {
+  inset-inline: 16px !important;
+  bottom: 8px !important;
+  height: 2px !important;
+  border-radius: 999px !important;
+  background: rgba(255, 255, 255, 0.34) !important;
+}
+
+.mk-mpg-progress span {
+  background: rgba(255, 255, 255, 0.96) !important;
+}
+
+/* انتقال الصورة للكرت أخف */
+.mk-mpg-stage {
+  border-radius: 0 0 24px 24px !important;
+}
+
+.mk-mproduct-content {
+  padding-top: 8px !important;
+}
+
+@media (max-width: 420px) {
+  .mk-mpg-header {
+    gap: 8px !important;
+    padding:
+      calc(env(safe-area-inset-top, 0px) + 9px)
+      10px
+      64px !important;
+  }
+
+  .mk-mpg-header__back {
+    width: 38px !important;
+    height: 38px !important;
+    flex-basis: 38px !important;
+  }
+
+  .mk-mpg-backIcon {
+    width: 19px !important;
+    height: 19px !important;
+  }
+
+  .mk-mpg-header__title {
+    padding-top: 7px !important;
+  }
+
+  .mk-mpg-header__title span {
+    max-width: calc(100vw - 76px) !important;
+    font-size: 11px !important;
+  }
+
+  .mk-mpg-counter {
+    inset-inline-start: 12px !important;
+    bottom: 16px !important;
+  }
+
+  .mk-mpg-progress {
+    inset-inline: 14px !important;
+    bottom: 8px !important;
+  }
+}
+
+
+/* =========================================================
+   FINAL TUNE — Product Mobile less crowded
+   ========================================================= */
+
+/* قلل طول الصورة عشان يظهر كرت المنتج بدون زحمة */
+.mk-mobile-shell[data-mk-route="product"] .mk-mpg-stage__img,
+.mk-mpg-stage__img {
+  height: min(68svh, 610px) !important;
+  object-fit: cover !important;
+  object-position: center top !important;
+}
+
+/* انتقال أنعم بين الصورة وكرت المنتج */
+.mk-mpg-stage {
+  border-radius: 0 0 22px 22px !important;
+}
+
+.mk-mproduct-content {
+  padding-top: 12px !important;
+}
+
+/* شريط الإضافة يكون أخف وأقرب للأسفل */
+.mk-mproduct-mobileCart {
+  bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important;
+  padding-inline: 10px !important;
+}
+
+.mk-mcart-bar {
+  min-height: 56px !important;
+  border-radius: 20px !important;
+  padding: 7px !important;
+  box-shadow:
+    0 16px 42px rgba(15, 23, 42, 0.16),
+    0 0 0 1px rgba(255, 255, 255, 0.5) inset !important;
+}
+
+.mk-mcart-submit {
+  height: 42px !important;
+  border-radius: 15px !important;
+}
+
+.mk-mcart-qty {
+  height: 42px !important;
+  border-radius: 15px !important;
+}
+
+.mk-mcart-qty button {
+  height: 42px !important;
+}
+
+.mk-mcart-iconBtn {
+  height: 42px !important;
+  border-radius: 15px !important;
+}
+
+/* أزرار الواتساب والطلوع لا تدخل فوق اسم المنتج */
+.mk-mobile-shell[data-mk-route="product"] .mk-floating-actions {
+  bottom: calc(136px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+/* على الشاشات الصغيرة أكثر */
+@media (max-width: 420px) {
+  .mk-mobile-shell[data-mk-route="product"] .mk-mpg-stage__img,
+  .mk-mpg-stage__img {
+    height: min(66svh, 575px) !important;
+  }
+
+  .mk-mproduct-mobileCart {
+    bottom: calc(70px + env(safe-area-inset-bottom, 0px)) !important;
+    padding-inline: 8px !important;
+  }
+
+  .mk-mobile-shell[data-mk-route="product"] .mk-floating-actions {
+    bottom: calc(132px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
