@@ -97,11 +97,7 @@ export async function GET() {
       "/favicon.ico",
   );
 
-  const icon192 = normalizeUrl(icon.pwa_192 || icon.source || iconSource);
-  const icon512 = normalizeUrl(icon.pwa_512 || icon.source || iconSource);
-  const maskable512 = normalizeUrl(
-    icon.maskable_512 || icon.pwa_512 || icon.source || iconSource,
-  );
+  const maskableIcon = normalizeUrl(icon.maskable_512 || iconSource);
 
   const manifest = {
     id: "/",
@@ -119,18 +115,13 @@ export async function GET() {
     background_color: backgroundColor,
     icons: [
       {
-        src: icon192,
-        sizes: "192x192",
+        src: iconSource,
+        sizes: "1024x1024",
         purpose: "any",
       },
       {
-        src: icon512,
-        sizes: "512x512",
-        purpose: "any",
-      },
-      {
-        src: maskable512,
-        sizes: "512x512",
+        src: maskableIcon,
+        sizes: "1024x1024",
         purpose: "maskable",
       },
     ],

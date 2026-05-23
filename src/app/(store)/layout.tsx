@@ -1,4 +1,5 @@
 // FILE: apps/storefront/src/app/(store)/layout.tsx
+
 import Script from "next/script";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
@@ -7,6 +8,8 @@ import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store"
 import { loadCustomCode } from "@/theme-engine/injectors/custom-code";
 import { THEME_KIND, type ThemeCode } from "@/theme-engine/types";
 import { supabaseAdmin } from "@/data/store/supabase.server";
+
+const PWA_SETTING_SLUGS = ["app/pwa", "store.pwa", "pwa"];
 
 function s(value: unknown) {
   return String(value ?? "").trim();
@@ -18,6 +21,7 @@ function safeObject(value: any): Record<string, any> {
   if (typeof value === "string") {
     try {
       const parsed = JSON.parse(value);
+
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
         return parsed;
       }
@@ -27,20 +31,39 @@ function safeObject(value: any): Record<string, any> {
   return {};
 }
 
+function normalizeUrl(value: unknown) {
+  const url = s(value);
+
+  if (!url) return "";
+  if (url.startsWith("http://")) return url;
+  if (url.startsWith("https://")) return url;
+  if (url.startsWith("/")) return url;
+
+  return `/${url}`;
+}
+
+function cleanColor(value: unknown, fallback: string) {
+  const color = s(value);
+  return /^#[0-9a-f]{6}$/i.test(color) ? color : fallback;
+}
+
 async function loadPwaSettings(storeId: string) {
   const sb: any = supabaseAdmin();
 
-  const { data } = await sb
+  const { data, error } = await sb
     .from("store_settings")
-    .select("value,updated_at,created_at")
+    .select("slug,value,updated_at,created_at")
     .eq("store_id", storeId)
-    .eq("slug", "app/pwa")
+    .in("slug", PWA_SETTING_SLUGS)
     .order("updated_at", { ascending: false })
     .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
 
-  return safeObject(data?.value);
+  if (error || !Array.isArray(data) || !data.length) {
+    return {};
+  }
+
+  return safeObject(data[0]?.value);
 }
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -49,41 +72,53 @@ export async function generateMetadata(): Promise<Metadata> {
 
   if (!store) return {};
 
-  const pwa = await loadPwaSettings(store.id);
+  const pwa = await loadPwaSettings(String(store.id));
   const icon = safeObject(pwa.icon);
 
-  const appName = s(pwa.app_name) || s(store.name);
+  const appName = s(pwa.app_name) || s(store.name) || "Store";
   const shortName = (s(pwa.short_name) || appName).slice(0, 18);
+  const themeColor = cleanColor(pwa.theme_color, "#0D3B45");
 
-  const iconUrl =
-    s(icon.apple_180) ||
-    s(icon.source) ||
-    s(store.favicon_url) ||
-    s(store.logo_url) ||
-    "/favicon.ico";
+  const iconUrl = normalizeUrl(
+    icon.apple_180 ||
+      icon.source ||
+      icon.pwa_192 ||
+      icon.pwa_512 ||
+      icon.maskable_512 ||
+      store.favicon_url ||
+      store.logo_url ||
+      "/favicon.ico",
+  );
 
   return {
     title: appName,
-    description: store.description || undefined,
+    description: s(store.description) || undefined,
+
     applicationName: appName,
     manifest: "/manifest.webmanifest",
+
     icons: {
       icon: iconUrl,
       apple: iconUrl,
+      shortcut: iconUrl,
     },
+
     appleWebApp: {
       capable: true,
       title: shortName,
       statusBarStyle: "default",
     },
+
     formatDetection: {
       telephone: false,
     },
+
     other: {
+      "theme-color": themeColor,
       "mobile-web-app-capable": "yes",
       "apple-mobile-web-app-capable": "yes",
       "apple-mobile-web-app-title": shortName,
-      "theme-color": s(pwa.theme_color) || "#0D3B45",
+      "apple-mobile-web-app-status-bar-style": "default",
     },
   };
 }
@@ -130,11 +165,11 @@ export default async function StoreLayout({
         />
       ) : null}
 
-      {custom.scripts.map((s) => (
+      {custom.scripts.map((script) => (
         <Script
-          key={s.src}
-          src={s.src}
-          strategy={s.strategy || "afterInteractive"}
+          key={script.src}
+          src={script.src}
+          strategy={script.strategy || "afterInteractive"}
         />
       ))}
     </>
@@ -149,8 +184,9 @@ export default async function StoreLayout({
     );
   }
 
-  const { default: StorefrontHeader } =
-    await import("@/components/storefront/header");
+  const { default: StorefrontHeader } = await import(
+    "@/components/storefront/header"
+  );
 
   return (
     <>
