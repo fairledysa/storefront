@@ -25,14 +25,30 @@ function routeExists(routes: any, key: string) {
   return Boolean(routes[key]?.component);
 }
 
+function hasOrderLikeData(data: any) {
+  if (!isPlainObject(data)) return false;
+
+  return Boolean(
+    text(data.orderNo) ||
+      text(data.order_no) ||
+      text(data.orderNumber) ||
+      text(data.order_number) ||
+      text(data.statusLabel) ||
+      text(data.paymentLabel) ||
+      Array.isArray(data.items),
+  );
+}
+
 function inferRouteFromData(data: any) {
   if (!isPlainObject(data)) return "";
 
-  if (isPlainObject(data.product)) return "product";
-  if (isPlainObject(data.category)) return "category";
-
   const route = text(data.route);
   if (route) return route;
+
+  if (hasOrderLikeData(data)) return "thankyou";
+
+  if (isPlainObject(data.product)) return "product";
+  if (isPlainObject(data.category)) return "category";
 
   return "";
 }
@@ -43,12 +59,25 @@ function inferRouteFromPathname(pathname: string | null) {
 
   if (!path || path === "/") return "home";
 
+  if (
+    lower === "/thankyou" ||
+    lower.startsWith("/thankyou?") ||
+    lower === "/thank-you" ||
+    lower.startsWith("/thank-you?") ||
+    lower.includes("/thankyou/") ||
+    lower.includes("/thank-you/")
+  ) {
+    return "thankyou";
+  }
+
   if (lower === "/categories" || lower.startsWith("/categories?")) {
     return "categories";
   }
-if (lower === "/search" || lower.startsWith("/search?")) {
-  return "search";
-}
+
+  if (lower === "/search" || lower.startsWith("/search?")) {
+    return "search";
+  }
+
   if (lower === "/cart" || lower.startsWith("/cart?")) {
     return "cart";
   }

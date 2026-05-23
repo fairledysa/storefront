@@ -1,0 +1,560 @@
+/* FILE: apps/storefront/src/themes/malak/styles/screens-mobile/thankyou.css */
+
+.mk-mthank {
+  --mk-mthank-bg: var(--mk-bg-page, #f8f7f4);
+  --mk-mthank-card: var(--mk-bg-card, #ffffff);
+  --mk-mthank-ink: var(--mk-text-main, #111827);
+  --mk-mthank-muted: var(--mk-text-muted, #667085);
+  --mk-mthank-brand: var(--mk-color-primary, var(--mk-primary, #0c3943));
+  --mk-mthank-brand-dark: var(--mk-color-primary-dark, #061f25);
+  --mk-mthank-accent: var(--mk-color-accent, var(--mk-accent, #b08a52));
+  --mk-mthank-line: rgba(15, 23, 42, 0.08);
+  --mk-mthank-line-strong: rgba(15, 23, 42, 0.13);
+  --mk-mthank-success: #15803d;
+  --mk-mthank-bottom-nav: var(
+    --mk-mobile-bottom-nav-height,
+    var(--mk-bottom-nav-height, 76px)
+  );
+
+  min-height: 100dvh;
+  background: var(--mk-mthank-bg);
+  color: var(--mk-mthank-ink);
+  padding: calc(var(--mk-safe-top, 0px) + 14px) 12px
+    calc(var(--mk-mthank-bottom-nav) + env(safe-area-inset-bottom, 0px) + 24px);
+}
+
+.mk-mthank *,
+.mk-mthank *::before,
+.mk-mthank *::after {
+  box-sizing: border-box;
+}
+
+.mk-mthank a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.mk-mthank button {
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mk-mthank-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 30px;
+  border: 1px solid rgba(15, 23, 42, 0.075);
+  background:
+    radial-gradient(circle at 18% 0%, color-mix(in srgb, var(--mk-mthank-brand) 12%, transparent), transparent 34%),
+    linear-gradient(180deg, #ffffff, color-mix(in srgb, var(--mk-mthank-bg) 74%, #ffffff)),
+    #fff;
+  padding: 22px 16px 18px;
+  text-align: center;
+  box-shadow:
+    0 18px 54px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.86);
+}
+
+.mk-mthank-hero__check {
+  width: 72px;
+  height: 72px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto;
+  border-radius: 26px;
+  background:
+    linear-gradient(135deg, var(--mk-mthank-brand), var(--mk-mthank-brand-dark)),
+    var(--mk-mthank-brand);
+  color: #fff;
+  box-shadow: 0 18px 36px color-mix(in srgb, var(--mk-mthank-brand) 28%, transparent);
+}
+
+.mk-mthank-hero__eyebrow {
+  margin-top: 14px;
+  color: var(--mk-mthank-muted);
+  font-size: 11px;
+  font-weight: 1000;
+}
+
+.mk-mthank-hero h1 {
+  margin: 5px 0 0;
+  color: var(--mk-mthank-ink);
+  font-size: 25px;
+  font-weight: 1000;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+
+.mk-mthank-hero p {
+  max-width: 310px;
+  margin: 9px auto 0;
+  color: var(--mk-mthank-muted);
+  font-size: 12.5px;
+  font-weight: 850;
+  line-height: 1.8;
+}
+
+.mk-mthank-hero__chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 15px;
+}
+
+.mk-mthank-hero__chips span {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.075);
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--mk-mthank-ink);
+  padding: 0 11px;
+  font-size: 11px;
+  font-weight: 1000;
+}
+
+.mk-mthank-hero__chips strong {
+  font-weight: 1000;
+}
+
+.mk-mthank-total {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.mk-mthank-total div {
+  min-width: 0;
+  border-radius: 22px;
+  border: 1px solid rgba(15, 23, 42, 0.075);
+  background: #fff;
+  padding: 14px 12px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.045);
+}
+
+.mk-mthank-total span,
+.mk-mthank-total strong {
+  display: block;
+}
+
+.mk-mthank-total span {
+  color: var(--mk-mthank-muted);
+  font-size: 10.5px;
+  font-weight: 900;
+}
+
+.mk-mthank-total strong {
+  margin-top: 6px;
+  overflow: hidden;
+  color: var(--mk-mthank-ink);
+  font-size: 14px;
+  font-weight: 1000;
+  line-height: 1.35;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mk-mthank-actions {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr 0.8fr;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.mk-mthank-action {
+  min-width: 0;
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 18px;
+  background: #fff;
+  color: var(--mk-mthank-ink);
+  padding: 0 10px;
+  font-size: 11.5px;
+  font-weight: 1000;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.045);
+}
+
+.mk-mthank-action.is-primary {
+  border: 0;
+  background:
+    linear-gradient(135deg, var(--mk-mthank-brand), var(--mk-mthank-brand-dark)),
+    var(--mk-mthank-brand);
+  color: #fff;
+  box-shadow: 0 16px 34px color-mix(in srgb, var(--mk-mthank-brand) 28%, transparent);
+}
+
+.mk-mthank-action:active {
+  transform: scale(0.97);
+}
+
+.mk-mthank-card {
+  overflow: hidden;
+  margin-top: 12px;
+  border-radius: 26px;
+  border: 1px solid rgba(15, 23, 42, 0.075);
+  background: #fff;
+  padding: 14px;
+  box-shadow:
+    0 14px 38px rgba(15, 23, 42, 0.055),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+}
+
+.mk-mthank-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 13px;
+}
+
+.mk-mthank-card__head strong {
+  color: var(--mk-mthank-ink);
+  font-size: 15px;
+  font-weight: 1000;
+}
+
+.mk-mthank-card__head > span {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--mk-mthank-brand) 8%, #ffffff);
+  color: var(--mk-mthank-brand);
+}
+
+.mk-mthank-timeline {
+  display: grid;
+  gap: 0;
+}
+
+.mk-mthank-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  padding: 0 0 16px;
+}
+
+.mk-mthank-step:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  top: 31px;
+  right: 16px;
+  width: 2px;
+  height: calc(100% - 26px);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.08);
+}
+
+.mk-mthank-step__dot {
+  position: relative;
+  z-index: 1;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: #fff;
+  color: var(--mk-mthank-muted);
+}
+
+.mk-mthank-step.is-done .mk-mthank-step__dot {
+  border-color: color-mix(in srgb, var(--mk-mthank-success) 22%, #ffffff);
+  background: var(--mk-mthank-success);
+  color: #fff;
+}
+
+.mk-mthank-step strong {
+  display: block;
+  color: var(--mk-mthank-ink);
+  font-size: 13px;
+  font-weight: 1000;
+}
+
+.mk-mthank-step p {
+  margin: 4px 0 0;
+  color: var(--mk-mthank-muted);
+  font-size: 11.5px;
+  font-weight: 800;
+  line-height: 1.65;
+}
+
+.mk-mthank-products {
+  display: grid;
+  gap: 10px;
+}
+
+.mk-mthank-product {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border-radius: 20px;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  background: #fff;
+  padding: 9px;
+}
+
+.mk-mthank-product__img {
+  width: 58px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 17px;
+  background: #f3f4f6;
+  color: var(--mk-mthank-muted);
+}
+
+.mk-mthank-product__img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+}
+
+.mk-mthank-product__text {
+  min-width: 0;
+}
+
+.mk-mthank-product__text strong,
+.mk-mthank-product__text span,
+.mk-mthank-product__text em {
+  display: block;
+}
+
+.mk-mthank-product__text strong {
+  overflow: hidden;
+  color: var(--mk-mthank-ink);
+  font-size: 12.5px;
+  font-weight: 1000;
+  line-height: 1.45;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mk-mthank-product__text span {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--mk-mthank-muted);
+  font-size: 10.5px;
+  font-weight: 850;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mk-mthank-product__text em {
+  width: fit-content;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.045);
+  color: var(--mk-mthank-muted);
+  padding: 4px 8px;
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 1000;
+}
+
+.mk-mthank-product__price {
+  max-width: 92px;
+  overflow: hidden;
+  color: var(--mk-mthank-ink);
+  font-size: 11.5px;
+  font-weight: 1000;
+  text-align: left;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mk-mthank-empty {
+  border-radius: 18px;
+  border: 1px dashed rgba(15, 23, 42, 0.12);
+  background: #fafafa;
+  color: var(--mk-mthank-muted);
+  padding: 14px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.mk-mthank-moneyBox {
+  display: grid;
+  gap: 2px;
+  margin-top: 12px;
+  border-radius: 21px;
+  background: #f8fafc;
+  padding: 10px 12px;
+}
+
+.mk-mthank-moneyRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.mk-mthank-moneyRow span {
+  color: var(--mk-mthank-muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.mk-mthank-moneyRow strong {
+  color: var(--mk-mthank-ink);
+  font-size: 12.5px;
+  font-weight: 1000;
+  white-space: nowrap;
+}
+
+.mk-mthank-moneyRow.is-negative strong {
+  color: #b45309;
+}
+
+.mk-mthank-moneyRow.is-strong {
+  margin-top: 4px;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  padding-top: 12px;
+}
+
+.mk-mthank-moneyRow.is-strong span {
+  color: var(--mk-mthank-ink);
+  font-size: 14px;
+  font-weight: 1000;
+}
+
+.mk-mthank-moneyRow.is-strong strong {
+  font-size: 18px;
+}
+
+.mk-mthank-details {
+  display: grid;
+  gap: 10px;
+}
+
+.mk-mthank-detail {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 10px;
+  border-radius: 20px;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  background: #fff;
+  padding: 12px;
+}
+
+.mk-mthank-detail__icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--mk-mthank-brand) 8%, #ffffff);
+  color: var(--mk-mthank-brand);
+}
+
+.mk-mthank-detail strong {
+  display: block;
+  color: var(--mk-mthank-ink);
+  font-size: 12.5px;
+  font-weight: 1000;
+}
+
+.mk-mthank-detail__value {
+  margin-top: 4px;
+  color: var(--mk-mthank-ink);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.65;
+}
+
+.mk-mthank-detail__hint {
+  margin-top: 5px;
+  color: var(--mk-mthank-muted);
+  font-size: 10.8px;
+  font-weight: 800;
+  line-height: 1.6;
+}
+
+.mk-mthank-payStatus {
+  display: inline-flex;
+  border-radius: 999px;
+  background: rgba(21, 128, 61, 0.08);
+  color: var(--mk-mthank-success);
+  padding: 4px 9px;
+  font-size: 10.5px;
+  font-weight: 1000;
+}
+
+.mk-mthank-support p {
+  margin: 0;
+  color: var(--mk-mthank-muted);
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1.8;
+}
+
+.mk-mthank-support__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.mk-mthank-support__actions a {
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: #fff;
+  color: var(--mk-mthank-ink);
+  padding: 0 13px;
+  font-size: 11.5px;
+  font-weight: 1000;
+}
+
+@media (max-width: 380px) {
+  .mk-mthank {
+    padding-inline: 9px;
+  }
+
+  .mk-mthank-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .mk-mthank-action {
+    height: 46px;
+  }
+
+  .mk-mthank-product {
+    grid-template-columns: 54px minmax(0, 1fr);
+  }
+
+  .mk-mthank-product__price {
+    grid-column: 2;
+    max-width: 100%;
+    text-align: right;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mk-mthank *,
+  .mk-mthank *::before,
+  .mk-mthank *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}

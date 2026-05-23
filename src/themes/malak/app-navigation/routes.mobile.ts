@@ -16,6 +16,7 @@ import TicketsMobileScreen from "../screens-mobile/account/TicketsMobileScreen";
 import WalletMobileScreen from "../screens-mobile/account/WalletMobileScreen";
 import OrderDetailsMobileScreen from "../screens-mobile/account/OrderDetailsMobileScreen";
 import SearchMobileScreen from "../screens-mobile/search/SearchMobileScreen";
+import ThankYouMobileScreen from "../screens-mobile/thankyou/ThankYouMobileScreen";
 
 export const MOBILE_ROUTES = {
   home: {
@@ -46,6 +47,12 @@ export const MOBILE_ROUTES = {
     key: "cart",
     path: "/cart",
     component: CartMobileScreen,
+  },
+
+  thankyou: {
+    key: "thankyou",
+    path: "/thankyou",
+    component: ThankYouMobileScreen,
   },
 
   account: {
@@ -107,12 +114,12 @@ export const MOBILE_ROUTES = {
     path: "/account/orders/:orderNo",
     component: OrderDetailsMobileScreen,
   },
-  search: {
-  key: "search",
-  path: "/search",
-  component: SearchMobileScreen,
-},
 
+  search: {
+    key: "search",
+    path: "/search",
+    component: SearchMobileScreen,
+  },
 } as const;
 
 export type MobileRouteKey = keyof typeof MOBILE_ROUTES;

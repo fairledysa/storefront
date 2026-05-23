@@ -1,5 +1,5 @@
 Folder PATH listing for volume Data
-Volume serial number is 0000005E 60BC:862A
+Volume serial number is 00000021 60BC:862A
 D:.
 |   structure2.txt
 |   
@@ -221,10 +221,12 @@ D:.
 |   |   |       4K.tsx
 |   |   |       Abacus.tsx
 |   |   |       Absolute.tsx
-|   |   |       Acceleration.tsx
-|   |   |       Access.tsx
-|   |   |       Accident.tsx
-|   |   |       AccountSetting01.tsx
+|   |   |       Zeppelin.tsx
+|   |   |       Zip01.tsx
+|   |   |       Zip02.tsx
+|   |   |       Zoom.tsx
+|   |   |       ZoomCircle.tsx
+|   |   |       ZoomInArea.tsx
 |   |   |       ZoomOutArea.tsx
 |   |   |       ZoomSquare.tsx
 |   |   |       Zsh.tsx
@@ -443,8 +445,6 @@ D:.
 |   |   |       get-cart-count.server.ts
 |   |   |       
 |   |   +---screens
-|   |   |   |   e2.txt
-|   |   |   |   
 |   |   |   +---account
 |   |   |   |   |   AccountLayout.tsx
 |   |   |   |   |   AccountScreen.tsx
@@ -589,15 +589,22 @@ D:.
 |   |   |   |           MobilePromoStrip.tsx
 |   |   |   |           MobileQuickCategories.tsx
 |   |   |   |           
-|   |   |   \---product
-|   |   |       |   ProductMobileScreen.tsx
-|   |   |       |   
-|   |   |       \---_components
-|   |   |               MobileProductGallery.tsx
-|   |   |               MobileProductInfo.tsx
-|   |   |               MobileProductTabs.tsx
-|   |   |               MobileStickyAddToCart.tsx
-|   |   |               
+|   |   |   +---product
+|   |   |   |   |   ProductMobileScreen.tsx
+|   |   |   |   |   
+|   |   |   |   \---_components
+|   |   |   |           MobileProductGallery.tsx
+|   |   |   |           MobileProductInfo.tsx
+|   |   |   |           MobileProductTabs.tsx
+|   |   |   |           MobileRecommendedProducts.tsx
+|   |   |   |           MobileStickyAddToCart.tsx
+|   |   |   |           
+|   |   |   +---search
+|   |   |   |       SearchMobileScreen.tsx
+|   |   |   |       
+|   |   |   \---thankyou
+|   |   |           ThankYouMobileScreen.tsx
+|   |   |           
 |   |   +---styles
 |   |   |   |   animations.css
 |   |   |   |   colors.css
@@ -668,6 +675,8 @@ D:.
 |   |   |   |       home.css
 |   |   |   |       order-details.css
 |   |   |   |       product.css
+|   |   |   |       search.css
+|   |   |   |       thankyou.css
 |   |   |   |       
 |   |   |   \---shell
 |   |   |           app-shell.css
