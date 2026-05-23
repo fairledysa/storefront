@@ -32,6 +32,15 @@ function bool(value: unknown, fallback: boolean) {
     if (["false", "0", "no", "off"].includes(v)) return false;
   }
 
+  if (value && typeof value === "object") {
+    const obj = value as any;
+
+    if ("enabled" in obj) return bool(obj.enabled, fallback);
+    if ("is_enabled" in obj) return bool(obj.is_enabled, fallback);
+    if ("checked" in obj) return bool(obj.checked, fallback);
+    if ("value" in obj) return bool(obj.value, fallback);
+  }
+
   return fallback;
 }
 
@@ -57,7 +66,6 @@ function detectDevice(): DeviceKind {
     (platform === "MacIntel" && maxTouchPoints > 1);
 
   if (isIos) return "ios";
-
   if (/android/i.test(ua)) return "android";
 
   const isSmallScreen = window.matchMedia?.("(max-width: 820px)")?.matches;
@@ -76,11 +84,12 @@ function isMobileViewport() {
 }
 
 function storageKey(storeId: string) {
-  return `mk_install_prompt_dismissed:${storeId || "store"}:v2`;
+  return `mk_install_prompt_dismissed:${storeId || "store"}:v4`;
 }
 
 export default function InstallAppPrompt({ bootstrap }: Props) {
-  const pwa = (bootstrap as any)?.pwa || null;
+  const pwa = (bootstrap as any)?.pwa || {};
+  const installPrompt = pwa?.install_prompt || {};
 
   const storeId = s(bootstrap?.store?.id);
   const storeName = s(pwa?.app_name) || s(bootstrap?.store?.name) || "المتجر";
@@ -93,10 +102,12 @@ export default function InstallAppPrompt({ bootstrap }: Props) {
   const [helpOpen, setHelpOpen] = useState(false);
   const [device, setDevice] = useState<DeviceKind>("unknown");
 
+  const hasStoreBootstrap = Boolean(bootstrap?.store?.id || bootstrap?.store?.name);
+
   const isEnabled = Boolean(
-    pwa &&
-      bool(pwa.enabled, true) &&
-      bool(pwa.install_prompt?.enabled, true),
+    hasStoreBootstrap &&
+      bool(pwa?.enabled, true) &&
+      bool(installPrompt?.enabled, true),
   );
 
   const iconUrl =
@@ -107,10 +118,10 @@ export default function InstallAppPrompt({ bootstrap }: Props) {
     s(bootstrap?.store?.logo_url);
 
   const installTitle =
-    s(pwa?.install_prompt?.title) || `ثبّت ${storeName} كتطبيق`;
+    s(installPrompt?.title) || `ثبّت ${storeName} كتطبيق`;
 
   const installDescription =
-    s(pwa?.install_prompt?.description) ||
+    s(installPrompt?.description) ||
     "افتح المتجر من شاشة جوالك مباشرة واستمتع بتجربة أسرع وأسهل.";
 
   const canUseNativePrompt = Boolean(deferredPrompt && device !== "ios");
