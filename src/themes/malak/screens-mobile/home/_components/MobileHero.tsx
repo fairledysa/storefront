@@ -28,6 +28,15 @@ type Props = {
   slides: MobileHeroSlide[];
 };
 
+const SWIPE_MIN_DISTANCE = 36;
+const SWIPE_LOCK_DISTANCE = 10;
+const AUTOPLAY_DELAY = 4200;
+const RESUME_AFTER_INTERACTION = 5200;
+const SNAP_AFTER_MS = 460;
+
+const SLIDE_TRANSITION =
+  "transform 420ms cubic-bezier(0.22, 0.85, 0.22, 1)";
+
 function s(value: any) {
   return String(value ?? "").trim();
 }
@@ -62,6 +71,11 @@ function resolveInternalHref(rawHref: string) {
   }
 }
 
+function normalizeIndex(index: number, total: number) {
+  if (total <= 0) return 0;
+  return ((index % total) + total) % total;
+}
+
 export default function MobileHero({ slides }: Props) {
   const router = useRouter();
 
@@ -74,20 +88,73 @@ export default function MobileHero({ slides }: Props) {
   const total = cleanSlides.length;
   const hasMany = total > 1;
 
-  const [activeIndex, setActiveIndex] = useState(0);
+  const renderSlides = useMemo(() => {
+    if (!cleanSlides.length) return [];
+
+    if (!hasMany) {
+      return cleanSlides.map((slide, index) => ({
+        key: slide.id || `slide-${index}`,
+        slide,
+        originalIndex: index,
+      }));
+    }
+
+    const first = cleanSlides[0];
+    const last = cleanSlides[cleanSlides.length - 1];
+
+    return [
+      {
+        key: `clone-last-${last.id || "last"}`,
+        slide: last,
+        originalIndex: total - 1,
+      },
+      ...cleanSlides.map((slide, index) => ({
+        key: slide.id || `slide-${index}`,
+        slide,
+        originalIndex: index,
+      })),
+      {
+        key: `clone-first-${first.id || "first"}`,
+        slide: first,
+        originalIndex: 0,
+      },
+    ];
+  }, [cleanSlides, hasMany, total]);
+
+  const [visualIndex, setVisualIndex] = useState(hasMany ? 1 : 0);
+  const [dragX, setDragX] = useState(0);
+  const [dragging, setDragging] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [transitionEnabled, setTransitionEnabled] = useState(true);
+
+  const resumeTimerRef = useRef<number | null>(null);
+  const snapTimerRef = useRef<number | null>(null);
 
   const pointerRef = useRef({
     active: false,
+    pointerId: 0,
     startX: 0,
     startY: 0,
+    locked: false,
+    moved: false,
   });
 
+  const clickBlockedRef = useRef(false);
+
+  const actualIndex = hasMany ? normalizeIndex(visualIndex - 1, total) : 0;
+
   useEffect(() => {
-    if (activeIndex > total - 1) {
-      setActiveIndex(0);
-    }
-  }, [activeIndex, total]);
+    setTransitionEnabled(false);
+    setVisualIndex(hasMany ? 1 : 0);
+    setDragX(0);
+    setDragging(false);
+
+    const frame = window.requestAnimationFrame(() => {
+      setTransitionEnabled(true);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [hasMany, total]);
 
   useEffect(() => {
     cleanSlides.slice(0, 3).forEach((slide) => {
@@ -104,59 +171,233 @@ export default function MobileHero({ slides }: Props) {
   }, [cleanSlides, router]);
 
   useEffect(() => {
-    if (!hasMany || paused) return;
+    if (!hasMany || paused || dragging) return;
 
     const timer = window.setInterval(() => {
-      setActiveIndex((index) => (index + 1) % total);
-    }, 4200);
+      setTransitionEnabled(true);
+      setDragX(0);
+
+      setVisualIndex((index) => {
+        if (index >= total + 1) return 1;
+        return index + 1;
+      });
+    }, AUTOPLAY_DELAY);
 
     return () => window.clearInterval(timer);
-  }, [hasMany, paused, total]);
+  }, [dragging, hasMany, paused, total]);
 
-  if (!cleanSlides.length) return null;
+  useEffect(() => {
+    if (!hasMany) return;
+    if (visualIndex !== 0 && visualIndex !== total + 1) return;
 
-  const activeSlide = cleanSlides[activeIndex] || cleanSlides[0];
+    if (snapTimerRef.current) {
+      window.clearTimeout(snapTimerRef.current);
+    }
+
+    snapTimerRef.current = window.setTimeout(() => {
+      setTransitionEnabled(false);
+      setDragX(0);
+      setVisualIndex(visualIndex === 0 ? total : 1);
+
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          setTransitionEnabled(true);
+        });
+      });
+
+      snapTimerRef.current = null;
+    }, SNAP_AFTER_MS);
+
+    return () => {
+      if (snapTimerRef.current) {
+        window.clearTimeout(snapTimerRef.current);
+        snapTimerRef.current = null;
+      }
+    };
+  }, [hasMany, total, visualIndex]);
+
+  useEffect(() => {
+    return () => {
+      if (resumeTimerRef.current) {
+        window.clearTimeout(resumeTimerRef.current);
+      }
+
+      if (snapTimerRef.current) {
+        window.clearTimeout(snapTimerRef.current);
+      }
+    };
+  }, []);
+
+  if (!cleanSlides.length || !renderSlides.length) return null;
+
+  function pauseThenResume() {
+    setPaused(true);
+
+    if (resumeTimerRef.current) {
+      window.clearTimeout(resumeTimerRef.current);
+    }
+
+    resumeTimerRef.current = window.setTimeout(() => {
+      setPaused(false);
+      resumeTimerRef.current = null;
+    }, RESUME_AFTER_INTERACTION);
+  }
+
+  function blockNextClick() {
+    clickBlockedRef.current = true;
+
+    window.setTimeout(() => {
+      clickBlockedRef.current = false;
+    }, 280);
+  }
 
   function goTo(index: number) {
     if (!hasMany) return;
 
-    setPaused(true);
-    setActiveIndex(index);
-
-    window.setTimeout(() => {
-      setPaused(false);
-    }, 5200);
+    pauseThenResume();
+    setDragging(false);
+    setTransitionEnabled(true);
+    setDragX(0);
+    setVisualIndex(index + 1);
   }
 
   function goPrev() {
     if (!hasMany) return;
-    goTo((activeIndex - 1 + total) % total);
+
+    pauseThenResume();
+    setDragging(false);
+    setTransitionEnabled(true);
+    setDragX(0);
+
+    setVisualIndex((index) => {
+      if (index <= 0) return total;
+      return index - 1;
+    });
   }
 
   function goNext() {
     if (!hasMany) return;
-    goTo((activeIndex + 1) % total);
+
+    pauseThenResume();
+    setDragging(false);
+    setTransitionEnabled(true);
+    setDragX(0);
+
+    setVisualIndex((index) => {
+      if (index >= total + 1) return 1;
+      return index + 1;
+    });
+  }
+
+  function resetPointer() {
+    pointerRef.current = {
+      active: false,
+      pointerId: 0,
+      startX: 0,
+      startY: 0,
+      locked: false,
+      moved: false,
+    };
   }
 
   function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
     if (!hasMany) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
 
     pointerRef.current = {
       active: true,
+      pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
+      locked: false,
+      moved: false,
     };
+
+    pauseThenResume();
+    setDragging(true);
+    setTransitionEnabled(false);
+    setDragX(0);
+
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // ignore
+    }
+  }
+
+  function handlePointerMove(event: PointerEvent<HTMLDivElement>) {
+    const pointer = pointerRef.current;
+
+    if (!hasMany || !pointer.active) return;
+    if (pointer.pointerId && pointer.pointerId !== event.pointerId) return;
+
+    const dx = event.clientX - pointer.startX;
+    const dy = event.clientY - pointer.startY;
+
+    if (!pointer.locked) {
+      const absX = Math.abs(dx);
+      const absY = Math.abs(dy);
+
+      if (absX < SWIPE_LOCK_DISTANCE && absY < SWIPE_LOCK_DISTANCE) return;
+
+      if (absX > absY * 1.12) {
+        pointer.locked = true;
+        pointer.moved = true;
+      } else {
+        resetPointer();
+        setDragging(false);
+        setDragX(0);
+        return;
+      }
+    }
+
+    if (pointer.locked) {
+      event.preventDefault();
+      event.stopPropagation();
+      setDragX(dx);
+    }
   }
 
   function handlePointerUp(event: PointerEvent<HTMLDivElement>) {
-    if (!pointerRef.current.active) return;
+    const pointer = pointerRef.current;
 
-    const dx = event.clientX - pointerRef.current.startX;
-    const dy = event.clientY - pointerRef.current.startY;
+    if (!hasMany || !pointer.active) {
+      resetPointer();
+      setDragging(false);
+      setDragX(0);
+      return;
+    }
 
-    pointerRef.current.active = false;
+    if (pointer.pointerId && pointer.pointerId !== event.pointerId) return;
 
-    if (Math.abs(dx) < 42 || Math.abs(dx) < Math.abs(dy)) return;
+    const dx = event.clientX - pointer.startX;
+    const dy = event.clientY - pointer.startY;
+
+    const isHorizontalSwipe =
+      Math.abs(dx) >= SWIPE_MIN_DISTANCE && Math.abs(dx) > Math.abs(dy) * 1.08;
+
+    const moved = pointer.moved || pointer.locked || Math.abs(dx) > 10;
+
+    resetPointer();
+
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // ignore
+    }
+
+    setDragging(false);
+    setTransitionEnabled(true);
+    setDragX(0);
+
+    if (!isHorizontalSwipe) {
+      if (moved) blockNextClick();
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    blockNextClick();
 
     if (dx > 0) {
       goPrev();
@@ -165,8 +406,66 @@ export default function MobileHero({ slides }: Props) {
     }
   }
 
+  function handlePointerCancel(event: PointerEvent<HTMLDivElement>) {
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // ignore
+    }
+
+    resetPointer();
+    setDragging(false);
+    setTransitionEnabled(true);
+    setDragX(0);
+  }
+
+  function handleTrackTransitionEnd(event?: any) {
+    if (!hasMany) return;
+
+    if (
+      event?.target &&
+      event?.currentTarget &&
+      event.target !== event.currentTarget
+    ) {
+      return;
+    }
+
+    if (visualIndex === 0) {
+      setTransitionEnabled(false);
+      setDragX(0);
+      setVisualIndex(total);
+
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          setTransitionEnabled(true);
+        });
+      });
+
+      return;
+    }
+
+    if (visualIndex === total + 1) {
+      setTransitionEnabled(false);
+      setDragX(0);
+      setVisualIndex(1);
+
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          setTransitionEnabled(true);
+        });
+      });
+    }
+  }
+
   function handleLinkClick(event: MouseEvent<HTMLAnchorElement>, href: string) {
     if (event.defaultPrevented) return;
+
+    if (clickBlockedRef.current || dragging) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
     if (isModifiedClick(event)) return;
 
     const internalHref = resolveInternalHref(href);
@@ -188,60 +487,102 @@ export default function MobileHero({ slides }: Props) {
     router.push(internalHref);
   }
 
+  const count = renderSlides.length;
+  const slideSize = 100 / Math.max(1, count);
+
+  const trackTransform = `translate3d(calc(-${
+    visualIndex * slideSize
+  }% + ${dragX}px), 0, 0)`;
+
   return (
     <section dir="rtl" className="mk-mhero">
       <div
-        className="mk-mhero__wrap"
+        className={["mk-mhero__wrap", dragging ? "is-dragging" : ""]
+          .filter(Boolean)
+          .join(" ")}
         onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        onPointerCancel={() => {
-          pointerRef.current.active = false;
-        }}
+        onPointerCancel={handlePointerCancel}
+        onPointerLeave={handlePointerCancel}
+        style={{ touchAction: "pan-y" }}
       >
         <div className="mk-mhero__swiper">
-          <div className="mk-mhero__slide">
-            <div className="mk-mhero__slideInner">
-              <Link
-                href={activeSlide.href || "#"}
-                className="mk-mhero__link"
-                aria-label={activeSlide.title || `slide-${activeIndex + 1}`}
-                onClick={(event) => handleLinkClick(event, activeSlide.href)}
-                style={
-                  {
-                    "--mk-mhero-bg": cssUrl(activeSlide.image),
-                  } as CSSProperties
-                }
-              >
-                <img
-                  className="mk-mhero__img"
-                  src={activeSlide.image}
-                  alt={activeSlide.title || `slide-${activeIndex + 1}`}
-                  loading={activeIndex === 0 ? "eager" : "lazy"}
-                  fetchPriority={activeIndex === 0 ? "high" : "low"}
-                  decoding="async"
-                  width={1242}
-                  height={1427}
-                  sizes="100vw"
-                />
+          <div className="mk-mhero__viewport" dir="ltr">
+            <div
+              className="mk-mhero__track"
+              onTransitionEnd={handleTrackTransitionEnd}
+              style={
+                {
+                  width: `${count * 100}%`,
+                  transform: trackTransform,
+                  transition:
+                    transitionEnabled && !dragging
+                      ? SLIDE_TRANSITION
+                      : "none",
+                } as CSSProperties
+              }
+            >
+              {renderSlides.map(({ key, slide, originalIndex }) => (
+                <div
+                  key={key}
+                  className="mk-mhero__slide"
+                  dir="rtl"
+                  style={
+                    {
+                      width: `${slideSize}%`,
+                      flex: `0 0 ${slideSize}%`,
+                    } as CSSProperties
+                  }
+                >
+                  <div className="mk-mhero__slideInner">
+                    <Link
+                      href={slide.href || "#"}
+                      className="mk-mhero__link"
+                      aria-label={slide.title || `slide-${originalIndex + 1}`}
+                      draggable={false}
+                      onClick={(event) => handleLinkClick(event, slide.href)}
+                      onDragStart={(event) => event.preventDefault()}
+                      style={
+                        {
+                          "--mk-mhero-bg": cssUrl(slide.image),
+                        } as CSSProperties
+                      }
+                    >
+                      <img
+                        className="mk-mhero__img"
+                        src={slide.image}
+                        alt={slide.title || `slide-${originalIndex + 1}`}
+                        loading={originalIndex === 0 ? "eager" : "lazy"}
+                        fetchPriority={originalIndex === 0 ? "high" : "low"}
+                        decoding="async"
+                        width={1242}
+                        height={1427}
+                        sizes="100vw"
+                        draggable={false}
+                      />
 
-                <div className="mk-mhero__content" aria-hidden="true">
-                  {activeSlide.title ? (
-                    <h2 className="mk-mhero__title">{activeSlide.title}</h2>
-                  ) : null}
+                      <div className="mk-mhero__content" aria-hidden="true">
+                        {slide.title ? (
+                          <h2 className="mk-mhero__title">{slide.title}</h2>
+                        ) : null}
 
-                  {activeSlide.description ? (
-                    <p className="mk-mhero__desc">
-                      {activeSlide.description}
-                    </p>
-                  ) : null}
+                        {slide.description ? (
+                          <p className="mk-mhero__desc">
+                            {slide.description}
+                          </p>
+                        ) : null}
 
-                  {activeSlide.buttonText ? (
-                    <span className="mk-mhero__button">
-                      {activeSlide.buttonText}
-                    </span>
-                  ) : null}
+                        {slide.buttonText ? (
+                          <span className="mk-mhero__button">
+                            {slide.buttonText}
+                          </span>
+                        ) : null}
+                      </div>
+                    </Link>
+                  </div>
                 </div>
-              </Link>
+              ))}
             </div>
           </div>
 
@@ -253,13 +594,14 @@ export default function MobileHero({ slides }: Props) {
                   type="button"
                   className={[
                     "swiper-pagination-bullet",
-                    index === activeIndex
+                    index === actualIndex
                       ? "swiper-pagination-bullet-active"
                       : "",
                   ]
                     .filter(Boolean)
                     .join(" ")}
                   aria-label={`عرض الشريحة ${index + 1}`}
+                  onPointerDown={(event) => event.stopPropagation()}
                   onClick={() => goTo(index)}
                 />
               ))}

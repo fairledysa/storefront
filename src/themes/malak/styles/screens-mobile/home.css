@@ -108,11 +108,9 @@
   line-height: 1.75;
 }
  
-
-
-/* =========================
+ /* =========================
    Responsive Hero Slider - Mobile
-   App Hero - Full Width
+   App Hero - Full Width + Smooth Track
    ========================= */
 
 .mk-mhero {
@@ -120,6 +118,7 @@
   margin: 0;
   padding: 0;
   background: var(--mk-m-bg);
+  overflow: hidden;
 }
 
 .mk-mhero__wrap {
@@ -135,6 +134,7 @@
   );
   box-shadow: none;
   transform: translateZ(0);
+  touch-action: pan-y;
 }
 
 .mk-mhero__wrap::before,
@@ -142,24 +142,43 @@
   display: none !important;
 }
 
-.mk-mhero__swiper,
-.mk-mhero__slide,
-.mk-mhero__slideInner,
-.mk-mhero__link {
-  width: 100%;
-}
-
 .mk-mhero__swiper {
   position: relative;
+  width: 100%;
   overflow: hidden;
+}
+
+.mk-mhero__viewport {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  direction: ltr !important;
+}
+
+.mk-mhero__track {
+  display: flex;
+  align-items: stretch;
+  direction: ltr !important;
+  will-change: transform;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.mk-mhero__wrap.is-dragging .mk-mhero__track {
+  cursor: grabbing;
 }
 
 .mk-mhero__slide {
   position: relative;
+  min-width: 0;
+  direction: rtl !important;
 }
 
 .mk-mhero__slideInner {
   position: relative;
+  width: 100%;
+  direction: rtl !important;
 }
 
 .mk-mhero__link {
@@ -173,12 +192,15 @@
   background:
     var(--mk-mhero-bg) center center / cover no-repeat,
     color-mix(in srgb, var(--mk-bg-page) 90%, var(--mk-color-primary) 10%);
+  color: inherit;
   text-decoration: none;
   line-height: 0;
+  direction: rtl !important;
+  user-select: none;
+  -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
 
-/* خلفية خفيفة من نفس صورة السلايد حتى الصور الغريبة ما تطلع فراغات */
 .mk-mhero__link::before {
   content: "";
   position: absolute;
@@ -193,7 +215,6 @@
   pointer-events: none;
 }
 
-/* تنعيم نهاية السلايد بدون ما يخرب الصورة */
 .mk-mhero__link::after {
   content: "";
   position: absolute;
@@ -220,6 +241,10 @@
   object-fit: cover !important;
   object-position: center top !important;
   transform: none !important;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
 }
 
 /* البنر نفسه يحتوي النص، لذلك نخفي نص النظام */
@@ -258,10 +283,34 @@
     transparent
   ) !important;
   opacity: 1 !important;
+  transition:
+    width 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
 }
 
 .mk-mhero__swiper .swiper-pagination-bullet-active {
   width: 24px !important;
+  background: var(--mk-color-primary) !important;
+}
+
+/* إذا كانت دوائر التطبيق مدمجة تحت السلايد نرفع نقاط السلايدر فوق */
+.mk-mhero:has(+ .mk-mobile-app-circles--merged)
+  .mk-mhero__swiper
+  .swiper-pagination {
+  bottom: 78px !important;
+}
+
+.mk-mhero:has(+ .mk-mobile-app-circles--merged)
+  .mk-mhero__swiper
+  .swiper-pagination-bullet {
+  background: rgba(255, 255, 255, 0.62) !important;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.18);
+}
+
+.mk-mhero:has(+ .mk-mobile-app-circles--merged)
+  .mk-mhero__swiper
+  .swiper-pagination-bullet-active {
   background: var(--mk-color-primary) !important;
 }
 
@@ -271,10 +320,20 @@
   padding-top: 18px;
 }
 
+.mk-mhero + .mk-mobile-app-circles--merged {
+  padding-top: 0;
+}
+
 @media (max-width: 430px) {
   .mk-mhero__link {
     height: clamp(382px, 104vw, 480px);
     min-height: 382px;
+  }
+
+  .mk-mhero:has(+ .mk-mobile-app-circles--merged)
+    .mk-mhero__swiper
+    .swiper-pagination {
+    bottom: 76px !important;
   }
 }
 
@@ -283,6 +342,12 @@
     height: clamp(365px, 105vw, 450px);
     min-height: 365px;
   }
+
+  .mk-mhero:has(+ .mk-mobile-app-circles--merged)
+    .mk-mhero__swiper
+    .swiper-pagination {
+    bottom: 72px !important;
+  }
 }
 
 @media (max-width: 360px) {
@@ -290,9 +355,13 @@
     height: 350px;
     min-height: 350px;
   }
+
+  .mk-mhero:has(+ .mk-mobile-app-circles--merged)
+    .mk-mhero__swiper
+    .swiper-pagination {
+    bottom: 68px !important;
+  }
 }
-
-
 
 
 
@@ -440,7 +509,204 @@
 
 
 
+/* =========================================================
+   Mobile App Circles
+   دوائر خاصة بتطبيق الجوال + خيار الدمج مع السلايد
+   ========================================================= */
 
+.mk-mobile-app-circles {
+  position: relative;
+  z-index: 8;
+  direction: rtl;
+  padding: 12px 0 10px;
+  overflow: hidden;
+}
+
+.mk-mobile-app-circles--merged {
+  z-index: 12;
+  margin-top: -54px;
+  padding-top: 0;
+  padding-bottom: 14px;
+  background:
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      color-mix(in srgb, var(--mk-bg-page) 72%, transparent) 36%,
+      var(--mk-bg-page) 100%
+    );
+}
+
+.mk-mobile-app-circles__rail {
+  display: flex;
+  gap: 13px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0 var(--mk-m-page-x) 5px;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mk-mobile-app-circles__rail::-webkit-scrollbar {
+  display: none;
+}
+
+.mk-mobile-app-circles__item {
+  flex: 0 0 68px;
+  width: 68px;
+  min-width: 68px;
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  color: var(--mk-text-main);
+  text-align: center;
+  text-decoration: none;
+  scroll-snap-align: start;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mk-mobile-app-circles__image {
+  position: relative;
+  display: block;
+  width: 62px;
+  height: 62px;
+  overflow: hidden;
+  border-radius: 999px;
+  background:
+    radial-gradient(
+      circle at 50% 10%,
+      color-mix(in srgb, var(--mk-bg-product) 96%, #ffffff 4%),
+      transparent 58%
+    ),
+    color-mix(in srgb, var(--mk-bg-product) 92%, var(--mk-color-primary) 8%);
+  border: 2px solid color-mix(in srgb, var(--mk-bg-product) 92%, transparent);
+  box-shadow:
+    0 10px 24px color-mix(in srgb, var(--mk-text-main) 7%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--mk-border-soft) 78%, transparent);
+  transform: translateZ(0);
+}
+
+.mk-mobile-app-circles__image::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 45%),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+
+.mk-mobile-app-circles__image img {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center center;
+  transform: scale(1.02);
+}
+
+.mk-mobile-app-circles__title {
+  display: -webkit-box;
+  max-width: 74px;
+  min-height: 30px;
+  color: var(--mk-text-main);
+  font-size: 10.7px;
+  font-weight: 900;
+  line-height: 1.42;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.mk-mobile-app-circles__item:active .mk-mobile-app-circles__image {
+  transform: scale(0.96);
+}
+
+.mk-mobile-app-circles--merged + .mk-mobile-home-section,
+.mk-mobile-app-circles--merged + .mk-mobile-home-section--lg,
+.mk-mobile-app-circles--merged + .mk-mobile-products,
+.mk-mobile-app-circles--merged + .mk-mobile-advanced-products {
+  padding-top: 4px !important;
+}
+
+@media (max-width: 430px) {
+  .mk-mobile-app-circles--merged {
+    margin-top: -50px;
+  }
+
+  .mk-mobile-app-circles__rail {
+    gap: 12px;
+  }
+
+  .mk-mobile-app-circles__item {
+    flex-basis: 66px;
+    width: 66px;
+    min-width: 66px;
+  }
+
+  .mk-mobile-app-circles__image {
+    width: 60px;
+    height: 60px;
+  }
+
+  .mk-mobile-app-circles__title {
+    font-size: 10.5px;
+  }
+}
+
+@media (max-width: 390px) {
+  .mk-mobile-app-circles--merged {
+    margin-top: -46px;
+  }
+
+  .mk-mobile-app-circles__rail {
+    gap: 11px;
+  }
+
+  .mk-mobile-app-circles__item {
+    flex-basis: 64px;
+    width: 64px;
+    min-width: 64px;
+  }
+
+  .mk-mobile-app-circles__image {
+    width: 58px;
+    height: 58px;
+  }
+}
+
+@media (max-width: 360px) {
+  .mk-mobile-app-circles--merged {
+    margin-top: -42px;
+  }
+
+  .mk-mobile-app-circles__rail {
+    gap: 10px;
+    padding-inline: 10px;
+  }
+
+  .mk-mobile-app-circles__item {
+    flex-basis: 61px;
+    width: 61px;
+    min-width: 61px;
+  }
+
+  .mk-mobile-app-circles__image {
+    width: 56px;
+    height: 56px;
+  }
+
+  .mk-mobile-app-circles__title {
+    font-size: 10px;
+  }
+}
 
 
 

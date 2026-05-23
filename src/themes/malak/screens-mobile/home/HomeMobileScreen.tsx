@@ -2,7 +2,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 
 import {
   toProductCardVM,
@@ -12,12 +12,10 @@ import {
 import type {
   HomeDynamicItem,
   HomeDynamicSection,
- 
   TestimonialItem,
   TestimonialNameMode,
 } from "../../screens/home/_dynamic/types";
 
- 
 import DynamicThemeIcon from "../../screens/home/_dynamic/icons";
 
 import {
@@ -31,36 +29,36 @@ import { resolveLinkHref } from "../../screens/home/_dynamic/link-utils";
 
 import {
   buildDynamicSections,
+  fetchStoreTestimonialsPage,
+  formatTestimonialDate,
   getAdvancedCollectionProducts,
   getAdvancedCollectionTabs,
   getCountdownContent,
   getCountdownParts,
+  getFaqContent,
   getFeaturedMosaicOfferContent,
   getProductsTabs,
   getSectionValues,
+  getStatsHeroSplitContent,
+  getTestimonialsContent,
   isAdvancedProductsCollectionSection,
   isBannersSliderSection,
   isCircleLinksSection,
   isCountdownOfferSection,
   isDoubleBannerSection,
+  isFaqSection,
   isFeaturedMosaicOfferSection,
   isProductsTabsSection,
   isResponsiveHeroSliderSection,
   isSquareLinksSection,
+  isStatsHeroSplitSection,
   isStatsSection,
+  isTestimonialsSection,
   isTripleBannerSection,
   isWideBannerSection,
-  getStatsHeroSplitContent,
-isStatsHeroSplitSection,
-getFaqContent,
-isFaqSection,
-fetchStoreTestimonialsPage,
-formatTestimonialDate,
-getTestimonialsContent,
-isTestimonialsSection,
-maskCustomerName,
-
+  maskCustomerName,
 } from "../../screens/home/_dynamic/section-utils";
+
 import MobileHero, {
   type MobileHeroSlide,
 } from "./_components/MobileHero";
@@ -72,6 +70,13 @@ type Props = {
 
 type ImageLinksGridLayout = "2" | "3" | "3_inline" | "4" | "4_inline";
 
+type MobileCircleLinkItem = {
+  id: string;
+  src: string;
+  title: string;
+  href: string;
+};
+
 function normalizeImageLinksGridLayout(value: unknown): ImageLinksGridLayout {
   const layout = s(value);
 
@@ -81,13 +86,6 @@ function normalizeImageLinksGridLayout(value: unknown): ImageLinksGridLayout {
   if (layout === "3") return "3";
 
   return "2";
-}
-
-function resolveGridHref(linkValue: any, data: any, seoMode: any) {
-  if (!linkValue) return "#";
-
-  const href = resolveLinkHref(linkValue, data, seoMode);
-  return href || "#";
 }
 
 function cleanDynamicText(value: any) {
@@ -112,6 +110,30 @@ function cleanDynamicText(value: any) {
 
   const text = getValueText(value) || "";
   return text === "[object Object]" ? "" : text;
+}
+
+function getBooleanFlag(value: any, fallback = false) {
+  if (value === true) return true;
+  if (value === false) return false;
+
+  const raw = s(value).toLowerCase();
+
+  if (!raw) return fallback;
+
+  return (
+    raw === "1" ||
+    raw === "true" ||
+    raw === "yes" ||
+    raw === "on" ||
+    raw === "enabled"
+  );
+}
+
+function resolveGridHref(linkValue: any, data: any, seoMode: any) {
+  if (!linkValue) return "#";
+
+  const href = resolveLinkHref(linkValue, data, seoMode);
+  return href || "#";
 }
 
 function resolveCurrenciesFromData(data: any) {
@@ -186,7 +208,6 @@ function normalizeProductCards(args: {
 }) {
   const rows = Array.isArray(args.products) ? args.products : [];
   const limit = Number(args.limit || 0);
-
   const slicedRows = limit > 0 ? rows.slice(0, limit) : rows;
 
   return slicedRows
@@ -279,6 +300,221 @@ function MobileSectionTitle({
     </div>
   );
 }
+
+/* =========================================================
+   Mobile only circle links
+   ========================================================= */
+
+function isMobileCircleLinksSection(section: HomeDynamicSection) {
+  const key = s(section.key);
+  const slug = s(section.slug);
+  const renderKey = s(section.renderKey);
+  const rawKey = s(section.raw?.key);
+  const rawSlug = s(section.raw?.slug);
+  const rawId = s(section.raw?.id);
+
+  return (
+    key === "mobile_circle_links" ||
+    slug === "mobile_circle_links" ||
+    renderKey === "mobile_circle_links" ||
+    rawKey === "mobile_circle_links" ||
+    rawSlug === "mobile_circle_links" ||
+    rawId === "mobile_circle_links"
+  );
+}
+
+function shouldMergeMobileCircleLinks(section: HomeDynamicSection) {
+  const values = getSectionValues(section);
+  return getBooleanFlag(values?.field_2, true);
+}
+
+function shouldShowMobileCircleLabels(section: HomeDynamicSection) {
+  const values = getSectionValues(section);
+  return getBooleanFlag(values?.field_3, true);
+}
+
+function getMobileCircleLinksItems(
+  section: HomeDynamicSection,
+  data: any,
+  seoMode: any,
+): MobileCircleLinkItem[] {
+  const values = getSectionValues(section);
+
+  const rows = Array.isArray(values?.field_1)
+    ? values.field_1
+    : Array.isArray(values?.items)
+      ? values.items
+      : Array.isArray(values?.links)
+        ? values.links
+        : [];
+
+  return rows
+    .map((row: any, index: number) => {
+      const image =
+        getImageFromValue(row?.field_1) ||
+        getImageFromValue(row?.image) ||
+        getImageFromValue(row?.src);
+
+      if (!image) return null;
+
+      const title =
+        getTextValue(row, ["field_2", "title", "name", "label"]) ||
+        cleanDynamicText(row?.field_2) ||
+        cleanDynamicText(row?.title) ||
+        "";
+
+      const linkValue =
+        row?.field_3 || row?.link || row?.href || row?.url || null;
+
+      return {
+        id: s(row?.id) || `${section.id}-mobile-circle-${index}`,
+        src: image,
+        title,
+        href: linkValue ? resolveGridHref(linkValue, data, seoMode) : "#",
+      };
+    })
+    .filter(Boolean) as MobileCircleLinkItem[];
+}
+
+function MobileCircleLinksSection({
+  section,
+  data,
+  seoMode,
+  merged = false,
+}: {
+  section: HomeDynamicSection;
+  data: any;
+  seoMode: any;
+  merged?: boolean;
+}) {
+  const items = getMobileCircleLinksItems(section, data, seoMode);
+  const showLabels = shouldShowMobileCircleLabels(section);
+
+  if (!items.length) return null;
+
+  return (
+    <section
+      className={[
+        "mk-mobile-app-circles",
+        merged ? "mk-mobile-app-circles--merged" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      dir="rtl"
+    >
+      <div className="mk-mobile-app-circles__rail">
+        {items.map((item, index) => (
+          <a
+            key={item.id}
+            href={item.href || "#"}
+            className="mk-mobile-app-circles__item"
+            aria-label={item.title || `رابط ${index + 1}`}
+          >
+            <span className="mk-mobile-app-circles__image">
+              <img
+                src={item.src}
+                alt={item.title || `رابط ${index + 1}`}
+                loading={index < 8 ? "eager" : "lazy"}
+                decoding="async"
+              />
+            </span>
+
+            {showLabels && item.title ? (
+              <span className="mk-mobile-app-circles__title">
+                {item.title}
+              </span>
+            ) : null}
+          </a>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* =========================================================
+   Hero
+   ========================================================= */
+
+function MobileResponsiveHeroSliderSection({
+  section,
+  data,
+  seoMode,
+}: {
+  section: HomeDynamicSection;
+  data: any;
+  seoMode: any;
+}) {
+  const values = getSectionValues(section);
+
+  const rows = Array.isArray(values?.field_1)
+    ? values.field_1
+    : Array.isArray(values?.slides)
+      ? values.slides
+      : Array.isArray(values?.items)
+        ? values.items
+        : [];
+
+  const slides = rows
+    .map((row: any, index: number) => {
+      const title =
+        getTextValue(row, ["field_1", "title", "heading"]) ||
+        getValueText(row?.field_1) ||
+        "";
+
+      const description =
+        getTextValue(row, ["field_2", "description", "subtitle", "text"]) ||
+        getValueText(row?.field_2) ||
+        "";
+
+      const buttonText =
+        getTextValue(row, ["field_3", "button_text", "buttonText", "cta"]) ||
+        getValueText(row?.field_3) ||
+        "";
+
+      const linkValue =
+        row?.field_4 ||
+        row?.link ||
+        row?.href ||
+        row?.button_link ||
+        row?.buttonLink ||
+        "";
+
+      const desktopImage =
+        getImageFromValue(row?.field_5) ||
+        getImageFromValue(row?.desktop_image) ||
+        getImageFromValue(row?.desktopImage) ||
+        getImageFromValue(row?.image);
+
+      const mobileImage =
+        getImageFromValue(row?.field_6) ||
+        getImageFromValue(row?.mobile_image) ||
+        getImageFromValue(row?.mobileImage) ||
+        desktopImage;
+
+      const image = mobileImage || desktopImage;
+
+      if (!image) return null;
+
+      return {
+        id: s(row?.id) || `${section.id}-mobile-slide-${index}`,
+        title,
+        description,
+        buttonText,
+        href: linkValue ? resolveLinkHref(linkValue, data, seoMode) : "#",
+        image,
+      };
+    })
+    .filter(Boolean) as MobileHeroSlide[];
+
+  if (!slides.length) return null;
+
+  return <MobileHero slides={slides} />;
+}
+
+/* =========================================================
+   Banners
+   ========================================================= */
+
 function getMobileBannersSliderItems(
   section: HomeDynamicSection,
   data: any,
@@ -311,12 +547,7 @@ function getMobileBannersSliderItems(
 
       if (!src) return null;
 
-      const linkValue =
-        row?.field_2 ||
-        row?.link ||
-        row?.href ||
-        row?.url ||
-        "";
+      const linkValue = row?.field_2 || row?.link || row?.href || row?.url || "";
 
       const title =
         getTextValue(row, ["field_4", "title", "label", "name"]) ||
@@ -334,9 +565,9 @@ function getMobileBannersSliderItems(
 
   if (fromRows.length) return fromRows;
 
-  return section.items || [];
+  return Array.isArray(section.items) ? section.items : [];
 }
- 
+
 function MobileBannersSection({
   section,
   data,
@@ -374,8 +605,7 @@ function MobileBannersSection({
   );
 }
 
-
- function MobileWideBannerSection({
+function MobileWideBannerSection({
   section,
   data,
   seoMode,
@@ -388,6 +618,7 @@ function MobileBannersSection({
   const firstItem = Array.isArray(section.items) ? section.items[0] : null;
 
   const mobileImage =
+    getImageFromValue(values?.field_6) ||
     getImageFromValue(values?.mobile_image) ||
     getImageFromValue(values?.mobileImage);
 
@@ -450,7 +681,7 @@ function MobileGridBannersSection({
   items: HomeDynamicItem[];
   limit: number;
 }) {
-  const visibleItems = items.slice(0, limit);
+  const visibleItems = Array.isArray(items) ? items.slice(0, limit) : [];
 
   if (!visibleItems.length) return null;
 
@@ -469,7 +700,9 @@ function MobileGridBannersSection({
               limit === 3 && index === 0
                 ? "mk-mobile-banner-card--span"
                 : "",
-            ].join(" ")}
+            ]
+              .filter(Boolean)
+              .join(" ")}
             aria-label={item.title || `banner-${index + 1}`}
           >
             <img
@@ -490,6 +723,135 @@ function MobileGridBannersSection({
     </section>
   );
 }
+
+/* =========================================================
+   Image links grid
+   ========================================================= */
+
+function isImageLinksGridSection(section: HomeDynamicSection) {
+  const key = s(section.key);
+  const slug = s(section.slug);
+  const renderKey = s(section.renderKey);
+  const rawKey = s(section.raw?.key);
+  const rawId = s(section.raw?.id);
+
+  return (
+    key === "image_links_grid" ||
+    slug === "image_links_grid" ||
+    renderKey === "image_links_grid" ||
+    rawKey === "image_links_grid" ||
+    rawId === "image_links_grid"
+  );
+}
+
+function getMobileImageLinksGridItems(
+  section: HomeDynamicSection,
+  data: any,
+  seoMode: any,
+) {
+  const values = getSectionValues(section);
+  const layout = normalizeImageLinksGridLayout(values?.field_1);
+
+  const allItems = [
+    {
+      image: getImageFromValue(values?.field_2),
+      alt: getTextValue(values, ["field_3"]) || s(values?.field_3),
+      link: values?.field_4,
+    },
+    {
+      image: getImageFromValue(values?.field_5),
+      alt: getTextValue(values, ["field_6"]) || s(values?.field_6),
+      link: values?.field_7,
+    },
+    {
+      image: getImageFromValue(values?.field_8),
+      alt: getTextValue(values, ["field_9"]) || s(values?.field_9),
+      link: values?.field_10,
+    },
+    {
+      image: getImageFromValue(values?.field_11),
+      alt: getTextValue(values, ["field_12"]) || s(values?.field_12),
+      link: values?.field_13,
+    },
+  ];
+
+  const limit =
+    layout === "4" || layout === "4_inline"
+      ? 4
+      : layout === "3" || layout === "3_inline"
+        ? 3
+        : 2;
+
+  return {
+    layout,
+    items: allItems
+      .slice(0, limit)
+      .map((item, index) => ({
+        id: `${section.id}-mobile-image-links-grid-${index + 1}`,
+        src: item.image,
+        alt: item.alt || section.title || `banner-${index + 1}`,
+        href: resolveGridHref(item.link, data, seoMode),
+      }))
+      .filter((item) => item.src),
+  };
+}
+
+function MobileImageLinksGridSection({
+  section,
+  data,
+  seoMode,
+}: {
+  section: HomeDynamicSection;
+  data: any;
+  seoMode: any;
+}) {
+  const { layout, items } = getMobileImageLinksGridItems(section, data, seoMode);
+
+  if (!items.length) return null;
+
+  return (
+    <section className="mk-mobile-home-section">
+      <div
+        className={[
+          "mk-mobile-image-links-grid",
+          layout === "2" ? "mk-mobile-image-links-grid--two" : "",
+          layout === "3" ? "mk-mobile-image-links-grid--three" : "",
+          layout === "3_inline"
+            ? "mk-mobile-image-links-grid--three-inline"
+            : "",
+          layout === "4" ? "mk-mobile-image-links-grid--four" : "",
+          layout === "4_inline"
+            ? "mk-mobile-image-links-grid--four-inline"
+            : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        dir="rtl"
+      >
+        {items.map((item, index) => (
+          <Link
+            key={item.id}
+            href={item.href || "#"}
+            className="mk-mobile-image-links-grid__card"
+            aria-label={item.alt || `image-link-${index + 1}`}
+          >
+            <img
+              src={item.src}
+              alt={item.alt || "banner"}
+              loading={index === 0 ? "eager" : "lazy"}
+              decoding="async"
+              className="mk-mobile-image-links-grid__img"
+            />
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* =========================================================
+   Circle / Square links
+   ========================================================= */
 
 function MobileLinksSection({
   section,
@@ -513,7 +875,9 @@ function MobileLinksSection({
     "text",
   ]);
 
-  if (!items.length) return null;
+  const safeItems = Array.isArray(items) ? items : [];
+
+  if (!safeItems.length) return null;
 
   return (
     <section className="mk-mobile-home-section--lg">
@@ -527,7 +891,7 @@ function MobileLinksSection({
             : "mk-mobile-links-scroll--circle",
         ].join(" ")}
       >
-        {items.map((item, index) => {
+        {safeItems.map((item, index) => {
           const itemTitle = cleanDynamicText(item.title);
           const itemDescription = cleanDynamicText(item.description);
 
@@ -582,6 +946,10 @@ function MobileLinksSection({
     </section>
   );
 }
+
+/* =========================================================
+   Stats
+   ========================================================= */
 
 function MobileStatsSection({ section }: { section: HomeDynamicSection }) {
   const values = getSectionValues(section);
@@ -719,6 +1087,88 @@ function MobileStatsSection({ section }: { section: HomeDynamicSection }) {
   );
 }
 
+function MobileStatsHeroSplitSection({
+  section,
+}: {
+  section: HomeDynamicSection;
+}) {
+  const content = getStatsHeroSplitContent(section);
+
+  if (
+    !content.eyebrow &&
+    !content.title &&
+    !content.highlightedTitle &&
+    !content.description &&
+    !content.stats.length
+  ) {
+    return null;
+  }
+
+  return (
+    <section className="mk-mobile-shs" dir="rtl">
+      <div className="mk-mobile-shs__inner">
+        <div className="mk-mobile-shs__content">
+          {content.eyebrow ? (
+            <span className="mk-mobile-shs__eyebrow">{content.eyebrow}</span>
+          ) : null}
+
+          {content.title || content.highlightedTitle ? (
+            <h2 className="mk-mobile-shs__title">
+              {content.title ? <span>{content.title}</span> : null}
+              {content.highlightedTitle ? (
+                <em>{content.highlightedTitle}</em>
+              ) : null}
+            </h2>
+          ) : null}
+
+          {content.description ? (
+            <p className="mk-mobile-shs__desc">{content.description}</p>
+          ) : null}
+        </div>
+
+        {content.stats.length ? (
+          <div className="mk-mobile-shs__stats">
+            {content.stats.slice(0, 4).map((item: any, index: number) => {
+              const icon = s(item?.icon);
+
+              return (
+                <article
+                  key={`${item.value}-${item.label}-${index}`}
+                  className="mk-mobile-shs__card"
+                >
+                  {icon ? (
+                    <span
+                      className="mk-mobile-shs__icon"
+                      style={{
+                        background: item.iconBg || "var(--mk-color-primary)",
+                        borderColor: item.iconBorder || "transparent",
+                      }}
+                    >
+                      <DynamicThemeIcon name={icon} />
+                    </span>
+                  ) : null}
+
+                  <div className="mk-mobile-shs__number" dir="ltr">
+                    {item.value}
+                  </div>
+
+                  {item.label ? (
+                    <p className="mk-mobile-shs__label">{item.label}</p>
+                  ) : null}
+                </article>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+/* =========================================================
+   Countdown
+   ========================================================= */
+
 function MobileCountdownCircle({
   value,
   label,
@@ -731,6 +1181,7 @@ function MobileCountdownCircle({
       <div className="mk-mobile-countdown-circle__value" dir="ltr">
         {String(value).padStart(2, "0")}
       </div>
+
       <div className="mk-mobile-countdown-circle__label">{label}</div>
     </div>
   );
@@ -751,6 +1202,8 @@ function MobileCountdownOfferSection({
   useEffect(() => {
     setParts(getCountdownParts(content.target));
 
+    if (!content.target) return;
+
     const timer = window.setInterval(() => {
       setParts(getCountdownParts(content.target));
     }, 1000);
@@ -763,6 +1216,8 @@ function MobileCountdownOfferSection({
   const href = content.buttonHref
     ? resolveLinkHref(content.buttonHref, data, seoMode)
     : "#";
+
+  const labels = content.labels || {};
 
   return (
     <section className="mk-mobile-offer">
@@ -790,19 +1245,19 @@ function MobileCountdownOfferSection({
             <div className="mk-mobile-offer__timer" dir="rtl">
               <MobileCountdownCircle
                 value={parts.days}
-                label={content.labels.days}
+                label={s(labels.days) || "يوم"}
               />
               <MobileCountdownCircle
                 value={parts.hours}
-                label={content.labels.hours}
+                label={s(labels.hours) || "ساعة"}
               />
               <MobileCountdownCircle
                 value={parts.minutes}
-                label={content.labels.minutes}
+                label={s(labels.minutes) || "دقيقة"}
               />
               <MobileCountdownCircle
                 value={parts.seconds}
-                label={content.labels.seconds}
+                label={s(labels.seconds) || "ثانية"}
               />
             </div>
           ) : null}
@@ -817,6 +1272,10 @@ function MobileCountdownOfferSection({
     </section>
   );
 }
+
+/* =========================================================
+   Products
+   ========================================================= */
 
 function MobileProductCard({ product }: { product: ProductCardVM }) {
   const item: any = product || {};
@@ -872,7 +1331,7 @@ function MobileProductCard({ product }: { product: ProductCardVM }) {
   );
 }
 
- function MobileProductsTabsSection({
+function MobileProductsTabsSection({
   section,
   data,
   seoMode,
@@ -909,7 +1368,7 @@ function MobileProductCard({ product }: { product: ProductCardVM }) {
     products: activeTab.products,
     currencies,
     tax,
-    limit: activeTab.limit || 12,
+    limit: (activeTab as any).limit || 12,
   });
 
   return (
@@ -926,7 +1385,9 @@ function MobileProductCard({ product }: { product: ProductCardVM }) {
               className={[
                 "mk-mobile-products-tabs__btn",
                 active ? "is-active" : "",
-              ].join(" ")}
+              ]
+                .filter(Boolean)
+                .join(" ")}
             >
               {tab.title}
             </button>
@@ -949,9 +1410,6 @@ function MobileProductCard({ product }: { product: ProductCardVM }) {
     </section>
   );
 }
-
-
-
 
 function MobileAdvancedProductsCollectionSection({
   section,
@@ -1063,7 +1521,9 @@ function MobileAdvancedProductsCollectionSection({
                     className={[
                       "mk-mobile-advanced-products__tab",
                       active ? "is-active" : "",
-                    ].join(" ")}
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
                   >
                     {tab.title}
                   </button>
@@ -1090,212 +1550,9 @@ function MobileAdvancedProductsCollectionSection({
   );
 }
 
-
-
-
-function MobileResponsiveHeroSliderSection({
-  section,
-  data,
-  seoMode,
-}: {
-  section: HomeDynamicSection;
-  data: any;
-  seoMode: any;
-}) {
-  const values = getSectionValues(section);
-
-  const rows = Array.isArray(values?.field_1)
-    ? values.field_1
-    : Array.isArray(values?.slides)
-      ? values.slides
-      : Array.isArray(values?.items)
-        ? values.items
-        : [];
-
-  const slides = rows
-    .map((row: any, index: number) => {
-      const title =
-        getTextValue(row, ["field_1", "title", "heading"]) ||
-        getValueText(row?.field_1) ||
-        "";
-
-      const description =
-        getTextValue(row, ["field_2", "description", "subtitle", "text"]) ||
-        getValueText(row?.field_2) ||
-        "";
-
-      const buttonText =
-        getTextValue(row, ["field_3", "button_text", "buttonText", "cta"]) ||
-        getValueText(row?.field_3) ||
-        "";
-
-      const linkValue =
-        row?.field_4 ||
-        row?.link ||
-        row?.href ||
-        row?.button_link ||
-        row?.buttonLink ||
-        "";
-
-      const desktopImage =
-        getImageFromValue(row?.field_5) ||
-        getImageFromValue(row?.desktop_image) ||
-        getImageFromValue(row?.desktopImage) ||
-        getImageFromValue(row?.image);
-
-      const mobileImage =
-        getImageFromValue(row?.field_6) ||
-        getImageFromValue(row?.mobile_image) ||
-        getImageFromValue(row?.mobileImage) ||
-        desktopImage;
-
-      const image = mobileImage || desktopImage;
-
-      if (!image) return null;
-
-      return {
-        id: s(row?.id) || `${section.id}-mobile-slide-${index}`,
-        title,
-        description,
-        buttonText,
-        href: linkValue ? resolveLinkHref(linkValue, data, seoMode) : "#",
-        image,
-      };
-    })
-    .filter(Boolean) as MobileHeroSlide[];
-
-  if (!slides.length) return null;
-
-  return <MobileHero slides={slides} />;
-}
-
-function isImageLinksGridSection(section: HomeDynamicSection) {
-  const key = s(section.key);
-  const slug = s(section.slug);
-  const renderKey = s(section.renderKey);
-  const rawKey = s(section.raw?.key);
-  const rawId = s(section.raw?.id);
-
-  return (
-    key === "image_links_grid" ||
-    slug === "image_links_grid" ||
-    renderKey === "image_links_grid" ||
-    rawKey === "image_links_grid" ||
-    rawId === "image_links_grid"
-  );
-}
-
-function getMobileImageLinksGridItems(
-  section: HomeDynamicSection,
-  data: any,
-  seoMode: any,
-) {
-  const values = getSectionValues(section);
-  const layout = normalizeImageLinksGridLayout(values?.field_1);
-
-  const allItems = [
-    {
-      image: getImageFromValue(values?.field_2),
-      alt: getTextValue(values, ["field_3"]) || s(values?.field_3),
-      link: values?.field_4,
-    },
-    {
-      image: getImageFromValue(values?.field_5),
-      alt: getTextValue(values, ["field_6"]) || s(values?.field_6),
-      link: values?.field_7,
-    },
-    {
-      image: getImageFromValue(values?.field_8),
-      alt: getTextValue(values, ["field_9"]) || s(values?.field_9),
-      link: values?.field_10,
-    },
-    {
-      image: getImageFromValue(values?.field_11),
-      alt: getTextValue(values, ["field_12"]) || s(values?.field_12),
-      link: values?.field_13,
-    },
-  ];
-
-  const limit =
-    layout === "4" || layout === "4_inline"
-      ? 4
-      : layout === "3" || layout === "3_inline"
-        ? 3
-        : 2;
-
-  return {
-    layout,
-    items: allItems
-      .slice(0, limit)
-      .map((item, index) => ({
-        id: `${section.id}-mobile-image-links-grid-${index + 1}`,
-        src: item.image,
-        alt: item.alt || section.title || `banner-${index + 1}`,
-        href: resolveGridHref(item.link, data, seoMode),
-      }))
-      .filter((item) => item.src),
-  };
-}
-
-function MobileImageLinksGridSection({
-  section,
-  data,
-  seoMode,
-}: {
-  section: HomeDynamicSection;
-  data: any;
-  seoMode: any;
-}) {
-  const { layout, items } = getMobileImageLinksGridItems(section, data, seoMode);
-
-  if (!items.length) return null;
-
-  return (
-    <section className="mk-mobile-home-section">
-      <div
-        className={[
-          "mk-mobile-image-links-grid",
-          layout === "2" ? "mk-mobile-image-links-grid--two" : "",
-          layout === "3" ? "mk-mobile-image-links-grid--three" : "",
-          layout === "3_inline"
-            ? "mk-mobile-image-links-grid--three-inline"
-            : "",
-          layout === "4" ? "mk-mobile-image-links-grid--four" : "",
-          layout === "4_inline"
-            ? "mk-mobile-image-links-grid--four-inline"
-            : "",
-        ].join(" ")}
-        dir="rtl"
-      >
-        {items.map((item, index) => (
-          <Link
-            key={item.id}
-            href={item.href || "#"}
-            className="mk-mobile-image-links-grid__card"
-            aria-label={item.alt || `image-link-${index + 1}`}
-          >
-            <img
-              src={item.src}
-              alt={item.alt || "banner"}
-              loading={index === 0 ? "eager" : "lazy"}
-              decoding="async"
-              className="mk-mobile-image-links-grid__img"
-            />
-          </Link>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-
-
-
- 
-
-
-
-
+/* =========================================================
+   Featured mosaic offer
+   ========================================================= */
 
 function MobileFeaturedMosaicOfferSection({
   section,
@@ -1425,103 +1682,11 @@ function MobileFeaturedMosaicOfferSection({
   );
 }
 
+/* =========================================================
+   FAQ
+   ========================================================= */
 
-
-
-
-
-
- function MobileStatsHeroSplitSection({
-  section,
-}: {
-  section: HomeDynamicSection;
-}) {
-  const content = getStatsHeroSplitContent(section);
-
-  if (
-    !content.eyebrow &&
-    !content.title &&
-    !content.highlightedTitle &&
-    !content.description &&
-    !content.stats.length
-  ) {
-    return null;
-  }
-
-  return (
-    <section className="mk-mobile-shs" dir="rtl">
-      <div className="mk-mobile-shs__inner">
-        <div className="mk-mobile-shs__content">
-          {content.eyebrow ? (
-            <span className="mk-mobile-shs__eyebrow">
-              {content.eyebrow}
-            </span>
-          ) : null}
-
-          {content.title || content.highlightedTitle ? (
-            <h2 className="mk-mobile-shs__title">
-              {content.title ? <span>{content.title}</span> : null}
-              {content.highlightedTitle ? (
-                <em>{content.highlightedTitle}</em>
-              ) : null}
-            </h2>
-          ) : null}
-
-          {content.description ? (
-            <p className="mk-mobile-shs__desc">{content.description}</p>
-          ) : null}
-        </div>
-
-        {content.stats.length ? (
-          <div className="mk-mobile-shs__stats">
-            {content.stats.slice(0, 4).map((item: any, index: number) => {
-              const icon = s(item?.icon);
-
-              return (
-                <article
-                  key={`${item.value}-${item.label}-${index}`}
-                  className="mk-mobile-shs__card"
-                >
-                  {icon ? (
-                    <span
-                      className="mk-mobile-shs__icon"
-                      style={{
-                        background: item.iconBg || "var(--mk-color-primary)",
-                        borderColor: item.iconBorder || "transparent",
-                      }}
-                    >
-                      <DynamicThemeIcon name={icon} />
-                    </span>
-                  ) : null}
-
-                  <div className="mk-mobile-shs__number" dir="ltr">
-                    {item.value}
-                  </div>
-
-                  {item.label ? (
-                    <p className="mk-mobile-shs__label">{item.label}</p>
-                  ) : null}
-                </article>
-              );
-            })}
-          </div>
-        ) : null}
-      </div>
-    </section>
-  );
-}
-
-
-
-
-
-
-
-function MobileFaqSection({
-  section,
-}: {
-  section: HomeDynamicSection;
-}) {
+function MobileFaqSection({ section }: { section: HomeDynamicSection }) {
   const content = getFaqContent(section);
 
   if (!content.title && !content.description && !content.items.length) {
@@ -1575,10 +1740,9 @@ function MobileFaqSection({
   );
 }
 
-
-
-
-
+/* =========================================================
+   Testimonials
+   ========================================================= */
 
 function MobileStarsView({ rating }: { rating: number }) {
   const fullStars = Math.round(Math.min(5, Math.max(0, rating || 0)));
@@ -1734,10 +1898,7 @@ function MobileTestimonialsSection({
         {visibleItems.length ? (
           <div className="mk-mobile-testimonials__rail">
             {visibleItems.map((item) => (
-              <div
-                key={item.id}
-                className="mk-mobile-testimonials__slide"
-              >
+              <div key={item.id} className="mk-mobile-testimonials__slide">
                 <MobileTestimonialCard
                   item={item}
                   nameMode={content.nameMode}
@@ -1843,12 +2004,9 @@ function MobileTestimonialsSection({
   );
 }
 
-
-
-
-
-
-
+/* =========================================================
+   Renderer
+   ========================================================= */
 
 function MobileDynamicSectionRenderer({
   section,
@@ -1866,6 +2024,16 @@ function MobileDynamicSectionRenderer({
   if (isResponsiveHeroSliderSection(section)) {
     return (
       <MobileResponsiveHeroSliderSection
+        section={section}
+        data={data}
+        seoMode={seoMode}
+      />
+    );
+  }
+
+  if (isMobileCircleLinksSection(section)) {
+    return (
+      <MobileCircleLinksSection
         section={section}
         data={data}
         seoMode={seoMode}
@@ -1917,46 +2085,47 @@ function MobileDynamicSectionRenderer({
     );
   }
 
- if (isFeaturedMosaicOfferSection(section)) {
-  return (
-    <MobileFeaturedMosaicOfferSection
-      section={section}
-      data={data}
-      seoMode={seoMode}
-    />
-  );
-}
+  if (isFeaturedMosaicOfferSection(section)) {
+    return (
+      <MobileFeaturedMosaicOfferSection
+        section={section}
+        data={data}
+        seoMode={seoMode}
+      />
+    );
+  }
 
-if (isStatsHeroSplitSection(section)) {
-  return <MobileStatsHeroSplitSection section={section} />;
-}
+  if (isStatsHeroSplitSection(section)) {
+    return <MobileStatsHeroSplitSection section={section} />;
+  }
 
-if (isStatsSection(section)) {
-  return <MobileStatsSection section={section} />;
-}
+  if (isStatsSection(section)) {
+    return <MobileStatsSection section={section} />;
+  }
 
-if (isFaqSection(section)) {
-  return <MobileFaqSection section={section} />;
-}
-if (isTestimonialsSection(section)) {
-  return <MobileTestimonialsSection section={section} data={data} />;
-}
+  if (isFaqSection(section)) {
+    return <MobileFaqSection section={section} />;
+  }
 
-if (isCircleLinksSection(section)) {
-  return (
-    <MobileLinksSection
-      section={section}
-      items={section.items}
-      variant="circle"
-    />
-  );
-}
+  if (isTestimonialsSection(section)) {
+    return <MobileTestimonialsSection section={section} data={data} />;
+  }
+
+  if (isCircleLinksSection(section)) {
+    return (
+      <MobileLinksSection
+        section={section}
+        items={section.items || []}
+        variant="circle"
+      />
+    );
+  }
 
   if (isSquareLinksSection(section)) {
     return (
       <MobileLinksSection
         section={section}
-        items={section.items}
+        items={section.items || []}
         variant="square"
       />
     );
@@ -1966,7 +2135,7 @@ if (isCircleLinksSection(section)) {
     return (
       <MobileGridBannersSection
         section={section}
-        items={section.items}
+        items={section.items || []}
         limit={3}
       />
     );
@@ -1976,7 +2145,7 @@ if (isCircleLinksSection(section)) {
     return (
       <MobileGridBannersSection
         section={section}
-        items={section.items}
+        items={section.items || []}
         limit={2}
       />
     );
@@ -1994,30 +2163,22 @@ if (isCircleLinksSection(section)) {
 
   if (isBannersSliderSection(section)) {
     return (
-      <MobileBannersSection
-        section={section}
-        data={data}
-        seoMode={seoMode}
-      />
+      <MobileBannersSection section={section} data={data} seoMode={seoMode} />
     );
   }
 
-  if (section.items.length) {
+  if ((section.items || []).length) {
     return (
-      <MobileBannersSection
-        section={section}
-        data={data}
-        seoMode={seoMode}
-      />
+      <MobileBannersSection section={section} data={data} seoMode={seoMode} />
     );
   }
 
   return null;
 }
 
-
-
- 
+/* =========================================================
+   Screen
+   ========================================================= */
 
 export default function HomeMobileScreen({ data, seoMode }: Props) {
   const dynamicSections = useMemo(() => {
@@ -2032,18 +2193,68 @@ export default function HomeMobileScreen({ data, seoMode }: Props) {
     return resolveTaxFromData(data);
   }, [data]);
 
+  const mergedMobileCircleSection = useMemo(() => {
+    return dynamicSections.find(
+      (section) =>
+        isMobileCircleLinksSection(section) &&
+        shouldMergeMobileCircleLinks(section),
+    );
+  }, [dynamicSections]);
+
+  const hasResponsiveHero = useMemo(() => {
+    return dynamicSections.some((section) =>
+      isResponsiveHeroSliderSection(section),
+    );
+  }, [dynamicSections]);
+
+  let didInjectMergedCircles = false;
+
   return (
     <div className="mk-mobile-home">
-      {dynamicSections.map((section) => (
-        <MobileDynamicSectionRenderer
-          key={section.id}
-          section={section}
-          data={data}
-          seoMode={seoMode}
-          currencies={currencies}
-          tax={tax}
-        />
-      ))}
+      {dynamicSections.map((section) => {
+        const shouldSkipMergedCircle =
+          hasResponsiveHero &&
+          mergedMobileCircleSection?.id === section.id &&
+          shouldMergeMobileCircleLinks(section);
+
+        if (shouldSkipMergedCircle) {
+          return null;
+        }
+
+        const node = (
+          <MobileDynamicSectionRenderer
+            key={section.id}
+            section={section}
+            data={data}
+            seoMode={seoMode}
+            currencies={currencies}
+            tax={tax}
+          />
+        );
+
+        if (
+          !didInjectMergedCircles &&
+          mergedMobileCircleSection &&
+          isResponsiveHeroSliderSection(section)
+        ) {
+          didInjectMergedCircles = true;
+
+          return (
+            <Fragment key={`${section.id}-with-mobile-circles`}>
+              {node}
+
+              <MobileCircleLinksSection
+                section={mergedMobileCircleSection}
+                data={data}
+                seoMode={seoMode}
+                merged
+              />
+            </Fragment>
+          );
+        }
+
+        return node;
+      })}
     </div>
   );
 }
