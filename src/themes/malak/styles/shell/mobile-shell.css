@@ -60,25 +60,26 @@ body.mk-mobile-route-is-leaving .mk-screen-container {
   }
 }
 
-
-
-
-
-
+/* =========================================================
+   Install App Prompt
+   يظهر فوق BottomNav في نسخة الجوال
+   ========================================================= */
 
 .mk-install-app-prompt {
   position: fixed;
   left: 12px;
   right: 12px;
-  bottom: calc(var(--mk-bottom-nav-h, 76px) + var(--mk-safe-bottom, 0px) + 12px);
-  z-index: calc(var(--mk-z-bottom-nav, 300) + 4);
-  min-height: 76px;
+  bottom: calc(var(--mk-tabbar-total-h, 72px) + 12px);
+  z-index: calc(var(--mk-z-bottom-nav, 300) + 40);
+  min-height: 78px;
   border: 1px solid rgb(15 23 42 / 0.1);
   border-radius: 22px;
   background:
-    linear-gradient(135deg, rgb(255 255 255 / 0.96), rgb(255 255 255 / 0.9)),
+    linear-gradient(135deg, rgb(255 255 255 / 0.98), rgb(255 255 255 / 0.92)),
     var(--mk-install-bg, #ffffff);
-  box-shadow: 0 18px 46px rgb(15 23 42 / 0.18);
+  box-shadow:
+    0 18px 46px rgb(15 23 42 / 0.18),
+    0 1px 0 rgb(255 255 255 / 0.7) inset;
   padding: 12px 12px 12px 10px;
   display: grid;
   grid-template-columns: 48px minmax(0, 1fr) auto;
@@ -86,6 +87,7 @@ body.mk-mobile-route-is-leaving .mk-screen-container {
   align-items: center;
   color: var(--mk-text-main, #111827);
   animation: mkInstallPromptIn 220ms ease both;
+  direction: rtl;
 }
 
 .mk-install-app-prompt__close {
@@ -103,6 +105,7 @@ body.mk-mobile-route-is-leaving .mk-screen-container {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 8px 18px rgb(15 23 42 / 0.22);
 }
 
 .mk-install-app-prompt__icon {
@@ -141,7 +144,7 @@ body.mk-mobile-route-is-leaving .mk-screen-container {
   margin: 4px 0 0;
   color: var(--mk-text-muted, #6b7280);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
   line-height: 1.6;
 }
 
@@ -155,6 +158,7 @@ body.mk-mobile-route-is-leaving .mk-screen-container {
   font-size: 12px;
   font-weight: 900;
   white-space: nowrap;
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--mk-install-theme, #0d3b45) 28%, transparent);
 }
 
 @keyframes mkInstallPromptIn {
@@ -166,5 +170,192 @@ body.mk-mobile-route-is-leaving .mk-screen-container {
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+/* =========================================================
+   Install Help Bottom Sheet
+   ========================================================= */
+
+.mk-install-help {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--mk-z-bottom-nav, 300) + 80);
+  direction: rtl;
+}
+
+.mk-install-help__backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgb(15 23 42 / 0.42);
+  backdrop-filter: blur(10px);
+}
+
+.mk-install-help__sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding:
+    10px 18px
+    calc(var(--mk-safe-bottom, 0px) + 18px);
+  border-radius: 28px 28px 0 0;
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.98), rgb(255 255 255 / 0.96)),
+    var(--mk-bg-card, #ffffff);
+  box-shadow: 0 -22px 60px rgb(15 23 42 / 0.24);
+  animation: mkInstallSheetIn 220ms ease both;
+}
+
+.mk-install-help__handle {
+  width: 44px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgb(15 23 42 / 0.16);
+  margin: 0 auto 16px;
+}
+
+.mk-install-help__head {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.mk-install-help__icon {
+  width: 58px;
+  height: 58px;
+  border-radius: 18px;
+  background: var(--mk-install-theme, #0d3b45);
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.mk-install-help__icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mk-install-help__head h3 {
+  margin: 0;
+  color: var(--mk-text-main, #111827);
+  font-size: 18px;
+  font-weight: 950;
+  line-height: 1.35;
+}
+
+.mk-install-help__head p {
+  margin: 5px 0 0;
+  color: var(--mk-text-muted, #6b7280);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.7;
+}
+
+.mk-install-help__steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.mk-install-help__steps li {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid rgb(15 23 42 / 0.08);
+  border-radius: 18px;
+  background: rgb(248 250 252 / 0.88);
+}
+
+.mk-install-help__steps span {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: var(--mk-install-theme, #0d3b45);
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.mk-install-help__steps p {
+  margin: 0;
+  color: var(--mk-text-main, #111827);
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.8;
+}
+
+.mk-install-help__steps b {
+  color: var(--mk-install-theme, #0d3b45);
+  font-weight: 950;
+}
+
+.mk-install-help__actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.mk-install-help__primary,
+.mk-install-help__ghost {
+  height: 46px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.mk-install-help__primary {
+  border: 0;
+  background: var(--mk-install-theme, #0d3b45);
+  color: #ffffff;
+}
+
+.mk-install-help__ghost {
+  border: 1px solid rgb(15 23 42 / 0.1);
+  background: #ffffff;
+  color: var(--mk-text-muted, #6b7280);
+  padding-inline: 14px;
+}
+
+@keyframes mkInstallSheetIn {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 380px) {
+  .mk-install-app-prompt {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+
+  .mk-install-app-prompt__action {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .mk-install-help__actions {
+    grid-template-columns: 1fr;
   }
 }
