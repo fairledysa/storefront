@@ -329,13 +329,13 @@ export default function MobileShell({
           <Footer bootstrap={shellBootstrap} />
         </div>
 
-        <BottomNav
-          seoMode={seoMode}
-          bootstrap={shellBootstrap}
-          initialCartCount={initialCartCount}
-        />
+ <BottomNav
+  seoMode={seoMode}
+  bootstrap={shellBootstrap}
+  initialCartCount={initialCartCount}
+/>
 
-        <InstallAppPrompt bootstrap={shellBootstrap} />
+<InstallAppPrompt bootstrap={shellBootstrap} />
 
         <SearchOverlay
           open={searchOpen && showSearch}

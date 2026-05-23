@@ -21,34 +21,12 @@ function s(value: unknown) {
   return String(value ?? "").trim();
 }
 
-function bool(value: unknown, fallback: boolean) {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "number") return value === 1;
-
-  if (typeof value === "string") {
-    const v = value.trim().toLowerCase();
-
-    if (["true", "1", "yes", "on"].includes(v)) return true;
-    if (["false", "0", "no", "off"].includes(v)) return false;
-  }
-
-  if (value && typeof value === "object") {
-    const obj = value as any;
-
-    if ("enabled" in obj) return bool(obj.enabled, fallback);
-    if ("is_enabled" in obj) return bool(obj.is_enabled, fallback);
-    if ("checked" in obj) return bool(obj.checked, fallback);
-    if ("value" in obj) return bool(obj.value, fallback);
-  }
-
-  return fallback;
-}
-
 function isStandaloneMode() {
   if (typeof window === "undefined") return false;
 
   const mediaStandalone =
     window.matchMedia?.("(display-mode: standalone)")?.matches;
+
   const iosStandalone = Boolean((window.navigator as any).standalone);
 
   return Boolean(mediaStandalone || iosStandalone);
@@ -74,41 +52,26 @@ function detectDevice(): DeviceKind {
   return "desktop";
 }
 
-function isMobileViewport() {
-  if (typeof window === "undefined") return false;
-
-  const byWidth = window.matchMedia?.("(max-width: 820px)")?.matches;
-  const byTouch = Number((window.navigator as any).maxTouchPoints || 0) > 0;
-
-  return Boolean(byWidth || byTouch);
+function storageKey(storeId: string) {
+  return `mk_install_prompt_dismissed:${storeId || "store"}:force-v1`;
 }
 
-function storageKey(storeId: string) {
-  return `mk_install_prompt_dismissed:${storeId || "store"}:v4`;
+function shouldForcePrompt() {
+  if (typeof window === "undefined") return false;
+
+  try {
+    return new URLSearchParams(window.location.search).get("installPrompt") === "1";
+  } catch {
+    return false;
+  }
 }
 
 export default function InstallAppPrompt({ bootstrap }: Props) {
   const pwa = (bootstrap as any)?.pwa || {};
   const installPrompt = pwa?.install_prompt || {};
 
-  const storeId = s(bootstrap?.store?.id);
+  const storeId = s(bootstrap?.store?.id) || "store";
   const storeName = s(pwa?.app_name) || s(bootstrap?.store?.name) || "المتجر";
-
-  const [ready, setReady] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
-  const [dismissed, setDismissed] = useState(true);
-  const [deferredPrompt, setDeferredPrompt] =
-    useState<BeforeInstallPromptEvent | null>(null);
-  const [helpOpen, setHelpOpen] = useState(false);
-  const [device, setDevice] = useState<DeviceKind>("unknown");
-
-  const hasStoreBootstrap = Boolean(bootstrap?.store?.id || bootstrap?.store?.name);
-
-  const isEnabled = Boolean(
-    hasStoreBootstrap &&
-      bool(pwa?.enabled, true) &&
-      bool(installPrompt?.enabled, true),
-  );
 
   const iconUrl =
     s(pwa?.icon?.source) ||
@@ -124,6 +87,13 @@ export default function InstallAppPrompt({ bootstrap }: Props) {
     s(installPrompt?.description) ||
     "افتح المتجر من شاشة جوالك مباشرة واستمتع بتجربة أسرع وأسهل.";
 
+  const [mounted, setMounted] = useState(false);
+  const [visible, setVisible] = useState(false);
+  const [device, setDevice] = useState<DeviceKind>("unknown");
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] =
+    useState<BeforeInstallPromptEvent | null>(null);
+
   const canUseNativePrompt = Boolean(deferredPrompt && device !== "ios");
 
   const actionLabel = useMemo(() => {
@@ -133,26 +103,63 @@ export default function InstallAppPrompt({ bootstrap }: Props) {
   }, [device, canUseNativePrompt]);
 
   useEffect(() => {
-    if (!isEnabled) return;
     if (typeof window === "undefined") return;
 
+    const forced = shouldForcePrompt();
+
+    setMounted(true);
     setDevice(detectDevice());
-    setIsMobile(isMobileViewport());
+
+    if (forced) {
+      try {
+        window.localStorage.removeItem(storageKey(storeId));
+      } catch {}
+
+      setVisible(true);
+      return;
+    }
+
+    if (isStandaloneMode()) {
+      setVisible(false);
+      return;
+    }
+
+    try {
+      setVisible(window.localStorage.getItem(storageKey(storeId)) !== "1");
+    } catch {
+      setVisible(true);
+    }
+
+    function handleBeforeInstallPrompt(event: Event) {
+      event.preventDefault();
+      setDeferredPrompt(event as BeforeInstallPromptEvent);
+      setVisible(true);
+    }
+
+    function handleAppInstalled() {
+      dismiss();
+    }
 
     function handleResize() {
       setDevice(detectDevice());
-      setIsMobile(isMobileViewport());
     }
 
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("appinstalled", handleAppInstalled);
     window.addEventListener("resize", handleResize);
 
     return () => {
+      window.removeEventListener(
+        "beforeinstallprompt",
+        handleBeforeInstallPrompt,
+      );
+      window.removeEventListener("appinstalled", handleAppInstalled);
       window.removeEventListener("resize", handleResize);
     };
-  }, [isEnabled]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storeId]);
 
   useEffect(() => {
-    if (!isEnabled) return;
     if (typeof window === "undefined") return;
     if (!("serviceWorker" in navigator)) return;
 
@@ -171,59 +178,10 @@ export default function InstallAppPrompt({ bootstrap }: Props) {
     }
 
     globalThis.setTimeout(registerSw, 900);
-  }, [isEnabled]);
-
-  useEffect(() => {
-    if (!isEnabled) return;
-    if (typeof window === "undefined") return;
-
-    const key = storageKey(storeId);
-
-    const dismissedTimer = globalThis.setTimeout(() => {
-      if (isStandaloneMode()) {
-        setDismissed(true);
-        return;
-      }
-
-      try {
-        setDismissed(window.localStorage.getItem(key) === "1");
-      } catch {
-        setDismissed(false);
-      }
-    }, 0);
-
-    const readyTimer = globalThis.setTimeout(() => {
-      setReady(true);
-    }, 1100);
-
-    function handleBeforeInstallPrompt(event: Event) {
-      event.preventDefault();
-      setDeferredPrompt(event as BeforeInstallPromptEvent);
-      setReady(true);
-      setDismissed(false);
-    }
-
-    function handleAppInstalled() {
-      dismiss();
-    }
-
-    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
-    window.addEventListener("appinstalled", handleAppInstalled);
-
-    return () => {
-      globalThis.clearTimeout(dismissedTimer);
-      globalThis.clearTimeout(readyTimer);
-      window.removeEventListener(
-        "beforeinstallprompt",
-        handleBeforeInstallPrompt,
-      );
-      window.removeEventListener("appinstalled", handleAppInstalled);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEnabled, storeId]);
+  }, []);
 
   function dismiss() {
-    setDismissed(true);
+    setVisible(false);
     setHelpOpen(false);
 
     try {
@@ -255,11 +213,7 @@ export default function InstallAppPrompt({ bootstrap }: Props) {
     setDeferredPrompt(null);
   }
 
-  if (!isEnabled || !ready || dismissed || isStandaloneMode()) {
-    return null;
-  }
-
-  if (!isMobile && device === "desktop" && !deferredPrompt) {
+  if (!mounted || !visible) {
     return null;
   }
 
@@ -270,7 +224,12 @@ export default function InstallAppPrompt({ bootstrap }: Props) {
 
   return (
     <>
-      <div className="mk-install-app-prompt" style={style} dir="rtl">
+      <div
+        id="mk-install-app-prompt"
+        className="mk-install-app-prompt"
+        style={style}
+        dir="rtl"
+      >
         <button
           type="button"
           className="mk-install-app-prompt__close"
@@ -347,6 +306,7 @@ export default function InstallAppPrompt({ bootstrap }: Props) {
                     اضغط زر المشاركة <b>⬆</b> أسفل المتصفح.
                   </p>
                 </li>
+
                 <li>
                   <span>2</span>
                   <p>
@@ -354,6 +314,7 @@ export default function InstallAppPrompt({ bootstrap }: Props) {
                     <b>إضافة إلى الشاشة الرئيسية</b>.
                   </p>
                 </li>
+
                 <li>
                   <span>3</span>
                   <p>
@@ -369,12 +330,14 @@ export default function InstallAppPrompt({ bootstrap }: Props) {
                     اضغط قائمة المتصفح <b>⋮</b>.
                   </p>
                 </li>
+
                 <li>
                   <span>2</span>
                   <p>
                     اختر <b>Install app</b> أو <b>Add to Home screen</b>.
                   </p>
                 </li>
+
                 <li>
                   <span>3</span>
                   <p>اضغط تثبيت وسيظهر المتجر على شاشة جوالك.</p>
