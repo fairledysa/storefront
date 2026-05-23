@@ -1303,3 +1303,108 @@
     font-size: 9.5px !important;
   }
 }
+
+
+
+/* =========================================================
+   Mobile: disable hover image switching
+   لا نسمح لصورة الهوفر بالظهور عند اللمس في الجوال
+   ========================================================= */
+
+@media (hover: none), (pointer: coarse), (max-width: 767px) {
+  .mk-root[data-mk-device="mobile"] .mkpc-media-img--hover {
+    display: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+  }
+
+  .mk-root[data-mk-device="mobile"]
+    .mkpc-card--switch-image:hover
+    .mkpc-media-img--main {
+    opacity: 1 !important;
+  }
+
+  .mk-root[data-mk-device="mobile"]
+    .mkpc-card--switch-image:hover
+    .mkpc-media-img--hover {
+    display: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+  }
+
+  .mk-root[data-mk-device="mobile"] .mkpc-card:hover .mkpc-media-img {
+    transform: none !important;
+  }
+}
+
+
+
+
+/* =========================================================
+   Mobile Product Card: kill sticky hover on touch devices
+   يمنع خلفية/ظل/أزرار/صورة hover من التعليق بعد اللمس في الجوال
+   ========================================================= */
+
+@media (hover: none), (pointer: coarse), (max-width: 767px) {
+  .mk-root[data-mk-device="mobile"] .mkpc-card:hover .mkpc-card-inner {
+    transform: none !important;
+    border-color: var(
+      --mk-product-card-border-color,
+      rgba(15, 23, 42, 0.055)
+    ) !important;
+    box-shadow:
+      0 1px 2px rgba(15, 23, 42, 0.025),
+      0 10px 30px rgba(15, 23, 42, 0.055) !important;
+  }
+
+  .mk-root[data-mk-device="mobile"] .mkpc-card:hover .mkpc-media-img {
+    transform: none !important;
+    filter: none !important;
+  }
+
+  .mk-root[data-mk-device="mobile"] .mkpc-card--switch-image:hover .mkpc-media-img--main,
+  .mk-root[data-mk-device="mobile"] .mkpc-card:hover .mkpc-media-img--main {
+    opacity: 1 !important;
+    visibility: visible !important;
+  }
+
+  .mk-root[data-mk-device="mobile"] .mkpc-media-img--hover,
+  .mk-root[data-mk-device="mobile"] .mkpc-card--switch-image:hover .mkpc-media-img--hover,
+  .mk-root[data-mk-device="mobile"] .mkpc-card:hover .mkpc-media-img--hover {
+    display: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+  }
+
+  .mk-root[data-mk-device="mobile"][data-mk-product-hover-style="on_image_hover"]
+    .mkpc-actions {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    transform: translateY(6px) !important;
+    pointer-events: none !important;
+  }
+
+  .mk-root[data-mk-device="mobile"][data-mk-product-hover-style="on_image_hover"]
+    .mkpc-card:hover
+    .mkpc-actions {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    transform: translateY(6px) !important;
+    pointer-events: none !important;
+  }
+
+  .mk-root[data-mk-device="mobile"] .mkpc-card:hover .mkpc-cart-inline {
+    transform: none !important;
+    background: var(--mk-product-add-button-bg, #071226) !important;
+    color: var(--mk-product-add-button-color, #fff) !important;
+    box-shadow: 0 15px 32px rgba(7, 18, 38, 0.2) !important;
+  }
+
+  .mk-root[data-mk-device="mobile"] .mkpc-card:active .mkpc-card-inner {
+    transform: scale(0.992) !important;
+  }
+
+  .mk-root[data-mk-device="mobile"] .mkpc-card {
+    -webkit-tap-highlight-color: transparent !important;
+  }
+}

@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import SquareArrowRight02 from "@/components/icon/huge/SquareArrowRight02";
+import { startMobileNavigation } from "../../../app-navigation/mobile-navigation";
 
 type Props = {
   images?: string[];
@@ -94,6 +95,17 @@ export default function MobileProductGallery({
   }, [activeIndex, total]);
 
   useEffect(() => {
+    const href = s(backHref);
+    if (!href) return;
+
+    try {
+      router.prefetch(href);
+    } catch {
+      // ignore
+    }
+  }, [backHref, router]);
+
+  useEffect(() => {
     if (!lightboxOpen) return;
 
     const oldOverflow = document.body.style.overflow;
@@ -126,6 +138,12 @@ export default function MobileProductGallery({
 
   function handleBack() {
     const href = s(backHref) || "/";
+
+    startMobileNavigation({
+      href,
+      source: "programmatic",
+    });
+
     router.push(href);
   }
 
@@ -267,10 +285,13 @@ export default function MobileProductGallery({
               src={currentImage}
               alt={currentAlt}
               className="mk-mpg-stage__img"
-              loading="eager"
-              fetchPriority="high"
+              loading={activeIndex === 0 ? "eager" : "lazy"}
+              fetchPriority={activeIndex === 0 ? "high" : "low"}
               decoding="async"
               draggable={false}
+              width={900}
+              height={1100}
+              sizes="100vw"
             />
           </button>
 
@@ -311,8 +332,12 @@ export default function MobileProductGallery({
                     alt={thumbAlt}
                     className="mk-mpg-thumb__img"
                     loading="lazy"
+                    fetchPriority="low"
                     decoding="async"
                     draggable={false}
+                    width={96}
+                    height={96}
+                    sizes="72px"
                   />
                 </button>
               );
@@ -367,8 +392,12 @@ export default function MobileProductGallery({
               alt={currentAlt}
               className="mk-mpg-lightbox__img"
               loading="eager"
+              fetchPriority="high"
               decoding="async"
               draggable={false}
+              width={1100}
+              height={1400}
+              sizes="100vw"
             />
           </div>
 

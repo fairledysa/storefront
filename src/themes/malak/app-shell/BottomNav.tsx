@@ -24,6 +24,41 @@ function normalizeCount(value: unknown) {
   return Math.floor(n);
 }
 
+function readQty(value: any, fallback = 1) {
+  const direct =
+    value?.qty ??
+    value?.quantity ??
+    value?.addedQty ??
+    value?.added_qty ??
+    value?.item?.qty ??
+    value?.item?.quantity ??
+    value?.detail?.qty ??
+    value?.detail?.quantity;
+
+  const n = Number(direct);
+
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+
+  return Math.floor(n);
+}
+
+function readCount(value: any) {
+  return normalizeCount(
+    value?.count ??
+      value?.cartCount ??
+      value?.cart_count ??
+      value?.itemCount ??
+      value?.item_count ??
+      value?.total ??
+      value?.total_items ??
+      value?.data?.count ??
+      value?.data?.cartCount ??
+      value?.data?.cart_count ??
+      value?.data?.itemCount ??
+      value?.data?.item_count,
+  );
+}
+
 function isActivePath(pathname: string | null, href: string) {
   const path = String(pathname || "/").trim() || "/";
   const target = String(href || "/").trim() || "/";
@@ -53,21 +88,94 @@ export default function BottomNav({ initialCartCount = 0 }: Props) {
   const reset = useNavStack((s) => s.reset);
 
   const [pendingHref, setPendingHref] = useState("");
+  const [cartCount, setCartCount] = useState(() =>
+    normalizeCount(initialCartCount),
+  );
+
   const pendingRef = useRef(false);
+  const bumpTimerRef = useRef<number | null>(null);
+  const [cartBumped, setCartBumped] = useState(false);
 
-  const cartCount = normalizeCount(initialCartCount);
-useEffect(() => {
-  for (const item of BOTTOM_NAV_ITEMS) {
-    const href = String(item.href || "").trim();
-    if (!href || href === "/search") continue;
+  useEffect(() => {
+    for (const item of BOTTOM_NAV_ITEMS) {
+      const href = String(item.href || "").trim();
+      if (!href || href === "/search") continue;
 
-    try {
-      router.prefetch(href);
-    } catch {
-      // ignore
+      try {
+        router.prefetch(href);
+      } catch {
+        // ignore
+      }
     }
-  }
-}, [router]);
+  }, [router]);
+
+  useEffect(() => {
+    function bumpBadge() {
+      setCartBumped(true);
+
+      if (bumpTimerRef.current) {
+        window.clearTimeout(bumpTimerRef.current);
+      }
+
+      bumpTimerRef.current = window.setTimeout(() => {
+        setCartBumped(false);
+        bumpTimerRef.current = null;
+      }, 620);
+    }
+
+    function handleOptimisticAdd(event: Event) {
+      const detail = (event as CustomEvent<any>).detail;
+      const qty = readQty(detail, 1);
+
+      setCartCount((current) => normalizeCount(current + qty));
+      bumpBadge();
+    }
+
+    function handleCountIncrement(event: Event) {
+      const detail = (event as CustomEvent<any>).detail;
+      const qty = readQty(detail, 1);
+
+      setCartCount((current) => normalizeCount(current + qty));
+      bumpBadge();
+    }
+
+    function handleCountDecrement(event: Event) {
+      const detail = (event as CustomEvent<any>).detail;
+      const qty = readQty(detail, 1);
+
+      setCartCount((current) => normalizeCount(current - qty));
+      bumpBadge();
+    }
+
+    function handleCountSet(event: Event) {
+      const detail = (event as CustomEvent<any>).detail;
+
+      if (typeof detail === "number" || typeof detail === "string") {
+        setCartCount(normalizeCount(detail));
+        bumpBadge();
+        return;
+      }
+
+      setCartCount(readCount(detail));
+      bumpBadge();
+    }
+
+    window.addEventListener("cart:optimistic-add", handleOptimisticAdd);
+    window.addEventListener("cart:count:increment", handleCountIncrement);
+    window.addEventListener("cart:count:decrement", handleCountDecrement);
+    window.addEventListener("cart:count:set", handleCountSet);
+
+    return () => {
+      window.removeEventListener("cart:optimistic-add", handleOptimisticAdd);
+      window.removeEventListener("cart:count:increment", handleCountIncrement);
+      window.removeEventListener("cart:count:decrement", handleCountDecrement);
+      window.removeEventListener("cart:count:set", handleCountSet);
+
+      if (bumpTimerRef.current) {
+        window.clearTimeout(bumpTimerRef.current);
+      }
+    };
+  }, []);
 
   const items = useMemo(() => {
     return BOTTOM_NAV_ITEMS.map((item) => {
@@ -75,26 +183,28 @@ useEffect(() => {
         return {
           ...item,
           badge: cartCount > 0 ? cartCount : undefined,
+          bumped: cartBumped,
         };
       }
 
       return {
         ...item,
         badge: undefined,
+        bumped: false,
       };
     });
-  }, [cartCount]);
+  }, [cartCount, cartBumped]);
 
-useEffect(() => {
-  const timer = window.setTimeout(() => {
-    pendingRef.current = false;
-    setPendingHref("");
-  }, 0);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      pendingRef.current = false;
+      setPendingHref("");
+    }, 0);
 
-  return () => {
-    window.clearTimeout(timer);
-  };
-}, [pathname]);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [pathname]);
 
   return (
     <nav dir="rtl" className="mk-tabbar" aria-label="التنقل السفلي">
@@ -142,6 +252,7 @@ useEffect(() => {
                 "mk-tab-item",
                 active ? "active" : "",
                 pending ? "is-pending" : "",
+                item.bumped ? "is-cart-bumped" : "",
               ]
                 .filter(Boolean)
                 .join(" ")}

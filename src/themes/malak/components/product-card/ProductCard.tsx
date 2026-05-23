@@ -773,10 +773,12 @@ type ProductCardRootSettings = {
   taxPricesIncludeTax: boolean;
   taxIncludedInPrice: boolean;
   taxDisplayLabel: string;
+
+  device: string;
 };
 
 const ROOT_SETTINGS_DEFAULT =
-  "false|false|false|false|on_image_hover|false|VAT|0|false|false|";
+  "false|false|false|false|on_image_hover|false|VAT|0|false|false||desktop";
 
 const ROOT_SETTING_ATTRS = [
   "data-mk-disable-products-lazyload",
@@ -790,6 +792,7 @@ const ROOT_SETTING_ATTRS = [
   "data-mk-tax-prices-include-tax",
   "data-mk-tax-included-in-price",
   "data-mk-tax-display-label",
+  "data-mk-device",
 ];
 
 const rootSettingsListeners = new Set<() => void>();
@@ -821,6 +824,7 @@ function getRootSettingsSnapshot() {
     root.getAttribute("data-mk-tax-prices-include-tax") || "false",
     root.getAttribute("data-mk-tax-included-in-price") || "false",
     root.getAttribute("data-mk-tax-display-label") || "",
+root.getAttribute("data-mk-device") || "desktop",
   ].join("|");
 }
 
@@ -891,6 +895,7 @@ function parseRootSettingsSnapshot(
     taxPricesIncludeTax: boolFromAttr(parts[8], false),
     taxIncludedInPrice: boolFromAttr(parts[9], false),
     taxDisplayLabel: s(parts[10]),
+device: s(parts[11]) || "desktop",
   };
 }
 
@@ -1121,18 +1126,23 @@ export default function ProductCard({ item }: { item: ProductCardItem }) {
   const subtitleRaw = item.subtitle ?? item.metadata?.subtitle ?? null;
   const promoRaw = item.promotionTitle ?? item.metadata?.promotionTitle ?? null;
 
-  const imageUrl = s(item.imageUrl || item.image_url);
-  const rawHoverImageUrl = getHoverImage(item, imageUrl);
-  const hoverImageUrl =
-    rawHoverImageUrl && rawHoverImageUrl !== imageUrl ? rawHoverImageUrl : "";
+const imageUrl = s(item.imageUrl || item.image_url);
+const isMobileDevice = rootSettings.device === "mobile";
+
+const rawHoverImageUrl =
+  !isMobileDevice && switchImageOnHover ? getHoverImage(item, imageUrl) : "";
+
+const hoverImageUrl =
+  rawHoverImageUrl && rawHoverImageUrl !== imageUrl ? rawHoverImageUrl : "";
 
   const brand = s(item.brand);
   const title = s(item.title);
 
   const visibleOptions = useMemo(() => getVisibleOptions(item), [item]);
   const hasOptionsOverlay = showOptionsOnCard && visibleOptions.length > 0;
-  const canSwitchImage = Boolean(switchImageOnHover && imageUrl && hoverImageUrl);
-
+const canSwitchImage = Boolean(
+  !isMobileDevice && switchImageOnHover && imageUrl && hoverImageUrl,
+);
   const subtitle = useMemo(() => {
     const value = String(subtitleRaw ?? "").trim();
     return value ? value.slice(0, 58) : "";

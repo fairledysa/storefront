@@ -1,16 +1,15 @@
 // FILE: apps/storefront/src/themes/malak/screens-mobile/product/ProductMobileScreen.tsx
 "use client";
-
+import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 
 import MobileProductGallery from "./_components/MobileProductGallery";
 import MobileProductInfo from "./_components/MobileProductInfo";
 import MobileProductTabs from "./_components/MobileProductTabs";
 import MobileStickyAddToCart from "./_components/MobileStickyAddToCart";
-import MobileRecommendedProducts from "./_components/MobileRecommendedProducts";
+ 
 
-import ProductReviews from "../../screens/product/_components/ProductReviews";
-
+ 
 import {
   toProductDetailVM,
   type ProductDetailVM,
@@ -19,6 +18,22 @@ import type { SeoUrlMode } from "@/data/store/settings";
 import { parseStoreOptions } from "@/lib/store-options";
 import { buildCategoryHref as buildStoreCategoryHref } from "@/lib/seo/build-store-href";
 import type { MalakBootstrapProductOptions } from "../../bootstrap/types";
+
+const ProductReviews = dynamic(
+  () => import("../../screens/product/_components/ProductReviews"),
+  {
+    ssr: false,
+    loading: () => null,
+  },
+);
+
+const MobileRecommendedProducts = dynamic(
+  () => import("./_components/MobileRecommendedProducts"),
+  {
+    ssr: false,
+    loading: () => null,
+  },
+);
 
 type Props = { data?: any };
 

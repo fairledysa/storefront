@@ -1,12 +1,21 @@
 // FILE: apps/storefront/src/themes/malak/screens-mobile/product/_components/MobileRecommendedProducts.tsx
 "use client";
 
-import type { MouseEvent } from "react";
+import dynamic from "next/dynamic";
+import { useCallback, useMemo, type MouseEvent } from "react";
 import { useRouter } from "next/navigation";
 
 import type { SeoUrlMode } from "@/data/store/settings";
 import { buildProductHref } from "@/lib/seo/build-store-href";
-import ProductsSlider from "../../../screens/home/_components/ProductsSlider";
+import { startMobileNavigation } from "../../../app-navigation/mobile-navigation";
+
+const ProductsSlider = dynamic(
+  () => import("../../../screens/home/_components/ProductsSlider"),
+  {
+    ssr: false,
+    loading: () => null,
+  },
+);
 
 type Props = {
   items: any[];
@@ -188,37 +197,54 @@ export default function MobileRecommendedProducts({
   const router = useRouter();
 
   const enabled = storeOptions?.productRecommendations?.enabled ?? true;
-
-  if (!enabled) return null;
-  if (!Array.isArray(items) || items.length === 0) return null;
-
   const seoMode = normalizeMode(mode);
   const showDashInstead = storeOptions?.switches?.showDashInstead ?? true;
 
-  const products = normalizeProductsForSlider({
-    items,
-    mode: seoMode,
-    showDashInstead,
-  });
+  const products = useMemo(() => {
+    if (!enabled) return [];
+    if (!Array.isArray(items) || items.length === 0) return [];
 
+    return normalizeProductsForSlider({
+      items,
+      mode: seoMode,
+      showDashInstead,
+    });
+  }, [enabled, items, seoMode, showDashInstead]);
+
+  const handleRecommendedClick = useCallback(
+    (event: MouseEvent<HTMLElement>) => {
+      if (event.defaultPrevented) return;
+      if (isModifiedClick(event)) return;
+
+      const target = event.target as HTMLElement | null;
+      const anchor = target?.closest?.("a[href]") as HTMLAnchorElement | null;
+
+      if (!anchor) return;
+      if (anchor.target && anchor.target !== "_self") return;
+
+      const href = resolveInternalHref(anchor.getAttribute("href") || "");
+      if (!href) return;
+
+      event.preventDefault();
+
+      try {
+        router.prefetch(href);
+      } catch {
+        // ignore
+      }
+
+      startMobileNavigation({
+        href,
+        source: "programmatic",
+      });
+
+      router.push(href);
+    },
+    [router],
+  );
+
+  if (!enabled) return null;
   if (!products.length) return null;
-
-  function handleRecommendedClick(event: MouseEvent<HTMLElement>) {
-    if (event.defaultPrevented) return;
-    if (isModifiedClick(event)) return;
-
-    const target = event.target as HTMLElement | null;
-    const anchor = target?.closest?.("a[href]") as HTMLAnchorElement | null;
-
-    if (!anchor) return;
-    if (anchor.target && anchor.target !== "_self") return;
-
-    const href = resolveInternalHref(anchor.getAttribute("href") || "");
-    if (!href) return;
-
-    event.preventDefault();
-    router.push(href);
-  }
 
   return (
     <section
