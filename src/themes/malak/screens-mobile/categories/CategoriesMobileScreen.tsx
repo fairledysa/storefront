@@ -1,3 +1,4 @@
+// FILE: apps/storefront/src/themes/malak/screens-mobile/categories/CategoriesMobileScreen.tsx
 "use client";
 
 import Link from "next/link";
@@ -14,15 +15,20 @@ type Props = {
   seoMode: SeoUrlMode;
 };
 
+type SearchResult = {
+  id: string;
+  title: string;
+  href: string;
+  imageUrl: string;
+  imageAlt: string;
+  path: string;
+};
+
 function s(value: unknown) {
   return String(value ?? "").trim();
 }
 
-function cleanText(value: unknown) {
-  return s(value).replace(/\s+/g, " ");
-}
-
-function sortCategories(nodes: CategoryNode[] | undefined | null) {
+function cleanNodes(nodes: CategoryNode[] | undefined | null): CategoryNode[] {
   if (!Array.isArray(nodes)) return [];
 
   return [...nodes]
@@ -38,7 +44,15 @@ function sortCategories(nodes: CategoryNode[] | undefined | null) {
 }
 
 function getChildren(node: CategoryNode | null | undefined) {
-  return sortCategories(node?.children);
+  return cleanNodes(node?.children);
+}
+
+function getImageUrl(node: CategoryNode | null | undefined) {
+  return s(node?.image?.url);
+}
+
+function getImageAlt(node: CategoryNode | null | undefined) {
+  return s(node?.image?.alt) || s(node?.name) || "القسم";
 }
 
 function hrefForCategory(node: CategoryNode, seoMode: SeoUrlMode) {
@@ -51,104 +65,53 @@ function hrefForCategory(node: CategoryNode, seoMode: SeoUrlMode) {
   });
 }
 
-function categoryImage(node: CategoryNode | null | undefined): string {
-  return s(node?.image?.url);
-}
+function collectSearchResults(args: {
+  roots: CategoryNode[];
+  query: string;
+  seoMode: SeoUrlMode;
+}) {
+  const q = args.query.trim().toLowerCase();
+  if (!q) return [];
 
-function categoryAlt(node: CategoryNode | null | undefined) {
-  return s(node?.image?.alt) || cleanText(node?.name) || "القسم";
-}
+  const results: SearchResult[] = [];
 
-function firstLetter(node: CategoryNode | null | undefined) {
-  const name = cleanText(node?.name);
-  return name ? name.slice(0, 1) : "•";
-}
+  function walk(node: CategoryNode, parents: string[]) {
+    const title = s(node.name);
+    const path = [...parents, title].filter(Boolean).join(" / ");
 
-function firstDescendantImage(node: CategoryNode | null | undefined): string {
-  const children = getChildren(node);
-
-  for (const child of children) {
-    const direct = categoryImage(child);
-    if (direct) return direct;
-
-    const nested = firstDescendantImage(child);
-    if (nested) return nested;
-  }
-
-  return "";
-}
-
-function imageForNode(node: CategoryNode | null | undefined): string {
-  return categoryImage(node) || firstDescendantImage(node);
-}
-
-function collectImages(node: CategoryNode | null | undefined, limit = 5) {
-  const out: Array<{ url: string; alt: string }> = [];
-  const seen = new Set<string>();
-
-  function push(n: CategoryNode | null | undefined) {
-    if (!n || out.length >= limit) return;
-
-    const url = categoryImage(n);
-    if (url && !seen.has(url)) {
-      seen.add(url);
-      out.push({
-        url,
-        alt: categoryAlt(n),
+    if (title.toLowerCase().includes(q) || path.toLowerCase().includes(q)) {
+      results.push({
+        id: String(node.id),
+        title,
+        href: hrefForCategory(node, args.seoMode),
+        imageUrl: getImageUrl(node),
+        imageAlt: getImageAlt(node),
+        path,
       });
     }
 
-    for (const child of getChildren(n)) {
-      if (out.length >= limit) return;
-      push(child);
-    }
+    getChildren(node).forEach((child) => walk(child, [...parents, title]));
   }
 
-  push(node);
+  args.roots.forEach((root) => walk(root, []));
 
-  return out;
+  return results.slice(0, 40);
 }
 
-function flattenCategories(nodes: CategoryNode[]) {
-  const out: CategoryNode[] = [];
-
-  function walk(list: CategoryNode[]) {
-    for (const node of list) {
-      out.push(node);
-      walk(getChildren(node));
-    }
-  }
-
-  walk(nodes);
-
-  return out;
-}
-
-function CategoryVisual({
+function CategoryImage({
   node,
-  size = "md",
+  className,
 }: {
   node: CategoryNode;
-  size?: "sm" | "md" | "lg";
+  className: string;
 }) {
-  const img = imageForNode(node);
-  const name = categoryAlt(node);
+  const imageUrl = getImageUrl(node);
+
+  if (!imageUrl) return null;
 
   return (
-    <span className={`mk-mcat__visual mk-mcat__visual--${size}`}>
-      {img ? (
-        <img
-          src={img}
-          alt={name}
-          loading="lazy"
-          decoding="async"
-          className="mk-mcat__visualImg"
-        />
-      ) : (
-        <span className="mk-mcat__visualFallback" aria-hidden="true">
-          {firstLetter(node)}
-        </span>
-      )}
+    <span className={className}>
+      <img src={imageUrl} alt={getImageAlt(node)} loading="lazy" decoding="async" />
     </span>
   );
 }
@@ -158,57 +121,58 @@ function SearchIcon() {
 }
 
 function ArrowIcon() {
-  return <Icon icon={"ArrowLeft01" as any} size={16} />;
+  return <Icon icon={"ArrowLeft01" as any} size={15} />;
 }
 
 export default function CategoriesMobileScreen({ seoMode }: Props) {
   const { tree, loading, error } = useCategoriesTree({ maxDepth: 3 });
 
-  const roots = useMemo(() => sortCategories(tree), [tree]);
-
-  const [queryValue, setQueryValue] = useState("");
-  const query = queryValue.trim().toLowerCase();
-
+  const roots = useMemo(() => cleanNodes(tree), [tree]);
   const [activeId, setActiveId] = useState("");
+  const [q, setQ] = useState("");
+
+  const query = q.trim();
 
   useEffect(() => {
-    if (!roots.length) return;
+    if (!roots.length) {
+      setActiveId("");
+      return;
+    }
 
     const exists = roots.some((root) => String(root.id) === String(activeId));
-
-    if (!activeId || !exists) {
-      setActiveId(String(roots[0].id));
-    }
+    if (!activeId || !exists) setActiveId(String(roots[0].id));
   }, [roots, activeId]);
 
   const activeRoot = useMemo(() => {
+    if (!roots.length) return null;
+
     return (
-      roots.find((root) => String(root.id) === String(activeId)) ??
-      roots[0] ??
-      null
+      roots.find((root) => String(root.id) === String(activeId)) ?? roots[0]
     );
   }, [roots, activeId]);
 
-  const activeChildren = useMemo(() => getChildren(activeRoot), [activeRoot]);
+  const directChildren = useMemo(() => getChildren(activeRoot), [activeRoot]);
+
+  const childImages = useMemo(() => {
+    return directChildren.filter((child) => getImageUrl(child)).slice(0, 3);
+  }, [directChildren]);
 
   const groups = useMemo(() => {
-    return activeChildren
+    return directChildren
       .map((child) => ({
         node: child,
-        children: getChildren(child),
+        items: getChildren(child),
       }))
-      .filter((group) => group.children.length > 0);
-  }, [activeChildren]);
+      .filter((group) => group.items.length > 0);
+  }, [directChildren]);
 
   const searchResults = useMemo(() => {
-    if (!query) return [];
-
-    return flattenCategories(roots)
-      .filter((node) => s(node.name).toLowerCase().includes(query))
-      .slice(0, 40);
-  }, [roots, query]);
-
-  const heroImages = useMemo(() => collectImages(activeRoot, 5), [activeRoot]);
+    return collectSearchResults({
+      roots,
+      query,
+      seoMode,
+    });
+  }, [roots, query, seoMode]);
 
   if (loading) {
     return (
@@ -216,7 +180,7 @@ export default function CategoriesMobileScreen({ seoMode }: Props) {
         <div className="mk-mcat__state">
           <span className="mk-mcat__loader" />
           <strong>جاري تحميل الأقسام</strong>
-          <span>نجهز لك القائمة الآن…</span>
+          <small>لحظات ونجهز لك القائمة.</small>
         </div>
       </div>
     );
@@ -227,7 +191,7 @@ export default function CategoriesMobileScreen({ seoMode }: Props) {
       <div dir="rtl" className="mk-mcat">
         <div className="mk-mcat__state">
           <strong>تعذر تحميل الأقسام</strong>
-          <span>{error}</span>
+          <small>{error}</small>
         </div>
       </div>
     );
@@ -238,52 +202,78 @@ export default function CategoriesMobileScreen({ seoMode }: Props) {
       <div dir="rtl" className="mk-mcat">
         <div className="mk-mcat__state">
           <strong>لا توجد أقسام</strong>
-          <span>لم يتم إضافة أقسام للمتجر حتى الآن.</span>
+          <small>لم يتم إضافة أقسام لهذا المتجر بعد.</small>
         </div>
       </div>
     );
   }
 
-  const activeHref = hrefForCategory(activeRoot, seoMode);
+  const activeRootHref = hrefForCategory(activeRoot, seoMode);
+  const activeRootImage = getImageUrl(activeRoot);
 
   return (
     <div dir="rtl" className="mk-mcat">
-      <div className="mk-mcat__searchBar">
-        <label className="mk-mcat__search">
+      <header className="mk-mcat__searchBar">
+        <div className="mk-mcat__search">
           <span className="mk-mcat__searchIcon" aria-hidden="true">
             <SearchIcon />
           </span>
 
           <input
-            value={queryValue}
-            onChange={(event) => setQueryValue(event.target.value)}
+            value={q}
+            onChange={(event) => setQ(event.target.value)}
             className="mk-mcat__searchInput"
-            placeholder="بحث..."
-            autoComplete="off"
+            placeholder="ابحث في الأقسام..."
+            type="search"
           />
-        </label>
-      </div>
+
+          {query ? (
+            <button
+              type="button"
+              className="mk-mcat__searchClear"
+              onClick={() => setQ("")}
+              aria-label="مسح البحث"
+            >
+              ×
+            </button>
+          ) : null}
+        </div>
+      </header>
 
       {query ? (
         <main className="mk-mcat__searchPage">
-          <div className="mk-mcat__blockTitle">
+          <div className="mk-mcat__searchHead">
             <strong>نتائج البحث</strong>
             <span>{searchResults.length} نتيجة</span>
           </div>
 
           {searchResults.length ? (
             <div className="mk-mcat__resultList">
-              {searchResults.map((node) => (
+              {searchResults.map((result) => (
                 <Link
-                  key={node.id}
-                  href={hrefForCategory(node, seoMode)}
-                  className="mk-mcat__result"
+                  key={result.id}
+                  href={result.href}
+                  className={[
+                    "mk-mcat__result",
+                    result.imageUrl ? "has-image" : "is-text-only",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
                 >
-                  <CategoryVisual node={node} size="sm" />
+                  {result.imageUrl ? (
+                    <span className="mk-mcat__resultMedia">
+                      <img
+                        src={result.imageUrl}
+                        alt={result.imageAlt}
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    </span>
+                  ) : null}
 
                   <span className="mk-mcat__resultText">
-                    <strong>{node.name}</strong>
-                    <small>اضغط لعرض منتجات القسم</small>
+                    <strong>{result.title}</strong>
+                    <small>{result.path}</small>
                   </span>
 
                   <span className="mk-mcat__resultArrow" aria-hidden="true">
@@ -295,12 +285,12 @@ export default function CategoriesMobileScreen({ seoMode }: Props) {
           ) : (
             <div className="mk-mcat__empty">
               <strong>لا توجد نتائج</strong>
-              <span>جرّب كلمة بحث مختلفة.</span>
+              <small>جرّب اسم قسم آخر أو كلمة أقصر.</small>
             </div>
           )}
         </main>
       ) : (
-        <div className="mk-mcat__app">
+        <main className="mk-mcat__app">
           <aside className="mk-mcat__rail" aria-label="الأقسام الرئيسية">
             {roots.map((root) => {
               const isActive = String(root.id) === String(activeRoot.id);
@@ -323,25 +313,41 @@ export default function CategoriesMobileScreen({ seoMode }: Props) {
             })}
           </aside>
 
-          <main className="mk-mcat__content" aria-label="تفاصيل القسم">
-            <Link href={activeHref} className="mk-mcat__hero">
-              {heroImages.length ? (
-                <span className="mk-mcat__heroImages">
-                  {heroImages.slice(0, 4).map((image) => (
+          <section className="mk-mcat__content" aria-label="تفاصيل القسم">
+            <Link
+              href={activeRootHref}
+              className={[
+                "mk-mcat__hero",
+                activeRootImage ? "has-image" : "",
+                !activeRootImage && childImages.length ? "has-collage" : "",
+                !activeRootImage && !childImages.length ? "is-plain" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            >
+              {activeRootImage ? (
+                <img
+                  className="mk-mcat__heroImg"
+                  src={activeRootImage}
+                  alt={getImageAlt(activeRoot)}
+                  loading="eager"
+                  decoding="async"
+                />
+              ) : childImages.length ? (
+                <span className="mk-mcat__heroCollage" aria-hidden="true">
+                  {childImages.map((child) => (
                     <img
-                      key={image.url}
-                      src={image.url}
-                      alt={image.alt}
+                      key={child.id}
+                      src={getImageUrl(child)}
+                      alt=""
                       loading="lazy"
                       decoding="async"
                     />
                   ))}
                 </span>
-              ) : (
-                <span className="mk-mcat__heroFallback" aria-hidden="true">
-                  {firstLetter(activeRoot)}
-                </span>
-              )}
+              ) : null}
+
+              <span className="mk-mcat__heroShade" />
 
               <span className="mk-mcat__heroText">
                 <small>القسم الحالي</small>
@@ -353,61 +359,98 @@ export default function CategoriesMobileScreen({ seoMode }: Props) {
               <div className="mk-mcat__sectionHead">
                 <strong>{activeRoot.name}</strong>
 
-                <Link href={activeHref}>عرض الكل</Link>
+                <Link href={activeRootHref} className="mk-mcat__viewAll">
+                  عرض الكل
+                </Link>
               </div>
 
-              {activeChildren.length ? (
-                <div className="mk-mcat__iconGrid">
-                  {activeChildren.map((child) => (
-                    <Link
-                      key={child.id}
-                      href={hrefForCategory(child, seoMode)}
-                      className="mk-mcat__iconCard"
-                    >
-                      <CategoryVisual node={child} size="md" />
-                      <span>{child.name}</span>
-                    </Link>
-                  ))}
+              {directChildren.length ? (
+                <div className="mk-mcat__quickGrid">
+                  {directChildren.slice(0, 12).map((child) => {
+                    const href = hrefForCategory(child, seoMode);
+                    const imageUrl = getImageUrl(child);
+
+                    return (
+                      <Link
+                        key={child.id}
+                        href={href}
+                        className={[
+                          "mk-mcat__tile",
+                          imageUrl ? "has-image" : "is-text-only",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                      >
+                        <CategoryImage
+                          node={child}
+                          className="mk-mcat__tileMedia"
+                        />
+
+                        <span className="mk-mcat__tileTitle">{child.name}</span>
+                      </Link>
+                    );
+                  })}
                 </div>
               ) : (
-                <Link href={activeHref} className="mk-mcat__allProducts">
-                  جميع المنتجات
+                <Link href={activeRootHref} className="mk-mcat__singleLink">
+                  <span>عرض منتجات {activeRoot.name}</span>
+                  <ArrowIcon />
                 </Link>
               )}
 
-              {activeChildren.length ? (
-                <Link href={activeHref} className="mk-mcat__allProducts">
+              {directChildren.length ? (
+                <Link href={activeRootHref} className="mk-mcat__allProducts">
                   جميع المنتجات
                 </Link>
               ) : null}
             </section>
 
-            {groups.map((group) => (
-              <section key={group.node.id} className="mk-mcat__group">
-                <div className="mk-mcat__groupHead">
-                  <strong>{group.node.name}</strong>
+            {groups.length ? (
+              <div className="mk-mcat__groups">
+                {groups.map((group) => {
+                  const groupHref = hrefForCategory(group.node, seoMode);
 
-                  <Link href={hrefForCategory(group.node, seoMode)}>
-                    عرض الكل
-                  </Link>
-                </div>
+                  return (
+                    <section key={group.node.id} className="mk-mcat__groupCard">
+                      <div className="mk-mcat__groupHead">
+                        <strong>{group.node.name}</strong>
 
-                <div className="mk-mcat__miniGrid">
-                  {group.children.slice(0, 9).map((child) => (
-                    <Link
-                      key={child.id}
-                      href={hrefForCategory(child, seoMode)}
-                      className="mk-mcat__miniCard"
-                    >
-                      <CategoryVisual node={child} size="sm" />
-                      <span>{child.name}</span>
-                    </Link>
-                  ))}
-                </div>
-              </section>
-            ))}
-          </main>
-        </div>
+                        <Link href={groupHref}>عرض الكل</Link>
+                      </div>
+
+                      <div className="mk-mcat__chips">
+                        {group.items.slice(0, 9).map((item) => {
+                          const href = hrefForCategory(item, seoMode);
+                          const imageUrl = getImageUrl(item);
+
+                          return (
+                            <Link
+                              key={item.id}
+                              href={href}
+                              className={[
+                                "mk-mcat__chip",
+                                imageUrl ? "has-image" : "is-text-only",
+                              ]
+                                .filter(Boolean)
+                                .join(" ")}
+                            >
+                              <CategoryImage
+                                node={item}
+                                className="mk-mcat__chipMedia"
+                              />
+
+                              <span>{item.name}</span>
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  );
+                })}
+              </div>
+            ) : null}
+          </section>
+        </main>
       )}
     </div>
   );
