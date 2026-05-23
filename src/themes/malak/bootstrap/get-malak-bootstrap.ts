@@ -15,6 +15,7 @@ import { createDefaultMalakBootstrap } from "./defaults";
 
 import type {
   MalakBootstrap,
+  MalakBootstrapPwa,
   MalakBootstrapCategory,
   MalakBootstrapCurrencies,
   MalakBootstrapCurrency,
@@ -26,7 +27,7 @@ import type {
   MalakBootstrapMegaMenuBanner,
   MalakBootstrapMegaMenuCategorySettings,
   MalakBootstrapMegaMenuValue,
-    MalakBootstrapRatingSettings,
+  MalakBootstrapRatingSettings,
   MalakBootstrapSocial,
   MalakBootstrapTax,
   MalakBootstrapTaxRate,
@@ -62,6 +63,7 @@ type StoreSettingsMap = {
   support: Record<string, any>;
   social: Record<string, any>;
   app: Record<string, any>;
+  pwa: Record<string, any>;
   ratingSettings: Record<string, any>;
 };
 
@@ -150,7 +152,97 @@ function safeObject(value: any): Record<string, any> {
 
   return {};
 }
+function normalizePwaSettings(
+  value: Record<string, any>,
+  args: {
+    storeName: string;
+    logoUrl?: string | null;
+    faviconUrl?: string | null;
+    primaryColor: string;
+    backgroundColor: string;
+  },
+): MalakBootstrapPwa {
+  const source = safeObject(value);
+  const hasConfig = Object.keys(source).length > 0;
 
+  const iconSource = safeObject(source.icon);
+  const splashSource = safeObject(source.splash);
+  const onboardingSource = safeObject(source.onboarding);
+  const installSource = safeObject(source.install_prompt);
+
+  const appName = s(source.app_name) || args.storeName;
+  const shortName = (s(source.short_name) || appName).slice(0, 18);
+
+  const fallbackIcon = s(args.faviconUrl) || s(args.logoUrl);
+
+  const slides = Array.isArray(onboardingSource.slides)
+    ? onboardingSource.slides
+        .map((slide: any, index: number) => {
+          const row = safeObject(slide);
+
+          return {
+            id: s(row.id) || `slide-${index + 1}`,
+            enabled: bool(row.enabled, true),
+            image: s(row.image),
+            title: s(row.title),
+            description: s(row.description),
+            sort_order: Number.isFinite(Number(row.sort_order))
+              ? Number(row.sort_order)
+              : index + 1,
+          };
+        })
+        .filter((slide) => slide.enabled || slide.image || slide.title)
+    : [];
+
+  return {
+    enabled: bool(source.enabled, hasConfig),
+
+    app_name: appName,
+    short_name: shortName,
+
+    theme_color: s(source.theme_color) || args.primaryColor || "#0D3B45",
+    background_color:
+      s(source.background_color) || args.backgroundColor || "#FFFFFF",
+
+    language: s(source.language) || "ar",
+
+    icon: {
+      source: s(iconSource.source) || fallbackIcon,
+      apple_180: s(iconSource.apple_180) || s(iconSource.source) || fallbackIcon,
+      pwa_192: s(iconSource.pwa_192) || s(iconSource.source) || fallbackIcon,
+      pwa_512: s(iconSource.pwa_512) || s(iconSource.source) || fallbackIcon,
+      maskable_512:
+        s(iconSource.maskable_512) || s(iconSource.source) || fallbackIcon,
+    },
+
+    splash: {
+      enabled: bool(splashSource.enabled, hasConfig),
+      image: s(splashSource.image),
+      background_color:
+        s(splashSource.background_color) ||
+        s(source.theme_color) ||
+        args.primaryColor ||
+        "#0D3B45",
+      duration: splashSource.duration === "normal" ? "normal" : "short",
+    },
+
+    onboarding: {
+      enabled: bool(onboardingSource.enabled, hasConfig),
+      version: Math.max(1, Number(onboardingSource.version || 1) || 1),
+      slides,
+    },
+
+    install_prompt: {
+      enabled: bool(installSource.enabled, hasConfig),
+      android_enabled: bool(installSource.android_enabled, true),
+      ios_enabled: bool(installSource.ios_enabled, true),
+      title: s(installSource.title) || "ثبّت المتجر كتطبيق",
+      description:
+        s(installSource.description) ||
+        "احصل على تجربة أسرع وأسهل من شاشة جوالك.",
+    },
+  };
+}
 function pickSettingValue(source: Record<string, any>, keys: string[]) {
   for (const key of keys) {
     if (Object.prototype.hasOwnProperty.call(source, key)) {
@@ -1338,6 +1430,7 @@ async function loadStoreSettingsMapRaw(
       support: {},
       social: {},
       app: {},
+       pwa: {},
       ratingSettings: {},
     };
   }
@@ -1356,6 +1449,7 @@ async function loadStoreSettingsMapRaw(
     support: safeObject(bySlug.get("store.support")),
     social: safeObject(bySlug.get("store.social")),
     app: safeObject(bySlug.get("store.app")),
+    pwa: safeObject(bySlug.get("app/pwa")),
         ratingSettings: safeObject(
       bySlug.get("rating_settings") ??
         bySlug.get("store.rating_settings") ??
@@ -3279,7 +3373,13 @@ export async function getMalakBootstrap(input: {
       false,
     ),
   };
-
+  const pwa = normalizePwaSettings(storeSettings.pwa, {
+    storeName: input.store.name,
+    logoUrl: finalLogoUrl,
+    faviconUrl: finalFaviconUrl,
+    primaryColor: mainPrimaryColor,
+    backgroundColor: appearance.store_bg || "#ffffff",
+  });
   return {
     ...base,
 
@@ -3298,7 +3398,7 @@ export async function getMalakBootstrap(input: {
     currencies,
 
     tax: storeTax,
-
+pwa,
     appearance,
 
     header: {

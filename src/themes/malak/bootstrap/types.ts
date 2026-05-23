@@ -358,7 +358,52 @@ export type MalakBootstrapMarketingSearch = {
 export type MalakBootstrapMarketing = {
   search: MalakBootstrapMarketingSearch;
 };
+export type MalakBootstrapPwaOnboardingSlide = {
+  id: string;
+  enabled: boolean;
+  image: string;
+  title: string;
+  description: string;
+  sort_order: number;
+};
 
+export type MalakBootstrapPwa = {
+  enabled: boolean;
+  app_name: string;
+  short_name: string;
+  theme_color: string;
+  background_color: string;
+  language: string;
+
+  icon: {
+    source: string;
+    apple_180: string;
+    pwa_192: string;
+    pwa_512: string;
+    maskable_512: string;
+  };
+
+  splash: {
+    enabled: boolean;
+    image: string;
+    background_color: string;
+    duration: "short" | "normal";
+  };
+
+  onboarding: {
+    enabled: boolean;
+    version: number;
+    slides: MalakBootstrapPwaOnboardingSlide[];
+  };
+
+  install_prompt: {
+    enabled: boolean;
+    android_enabled: boolean;
+    ios_enabled: boolean;
+    title: string;
+    description: string;
+  };
+};
 export type MalakBootstrap = {
   version: number;
 
@@ -376,7 +421,7 @@ export type MalakBootstrap = {
   currencies?: MalakBootstrapCurrencies;
 
   tax?: MalakBootstrapTax;
-
+pwa?: MalakBootstrapPwa;
   appearance?: Record<string, any>;
 
   header: {

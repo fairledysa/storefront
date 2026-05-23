@@ -1,5 +1,4 @@
 // FILE: apps/storefront/src/app/(store)/layout.tsx
-
 import Script from "next/script";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
@@ -7,17 +6,85 @@ import type { Metadata } from "next";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
 import { loadCustomCode } from "@/theme-engine/injectors/custom-code";
 import { THEME_KIND, type ThemeCode } from "@/theme-engine/types";
+import { supabaseAdmin } from "@/data/store/supabase.server";
+
+function s(value: unknown) {
+  return String(value ?? "").trim();
+}
+
+function safeObject(value: any): Record<string, any> {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value;
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed;
+      }
+    } catch {}
+  }
+
+  return {};
+}
+
+async function loadPwaSettings(storeId: string) {
+  const sb: any = supabaseAdmin();
+
+  const { data } = await sb
+    .from("store_settings")
+    .select("value,updated_at,created_at")
+    .eq("store_id", storeId)
+    .eq("slug", "app/pwa")
+    .order("updated_at", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return safeObject(data?.value);
+}
 
 export async function generateMetadata(): Promise<Metadata> {
   const ctx = await resolveStoreContext();
-  const store = ctx.store;
+  const store = ctx.store as any;
 
   if (!store) return {};
 
+  const pwa = await loadPwaSettings(store.id);
+  const icon = safeObject(pwa.icon);
+
+  const appName = s(pwa.app_name) || s(store.name);
+  const shortName = (s(pwa.short_name) || appName).slice(0, 18);
+
+  const iconUrl =
+    s(icon.apple_180) ||
+    s(icon.source) ||
+    s(store.favicon_url) ||
+    s(store.logo_url) ||
+    "/favicon.ico";
+
   return {
-    title: store.name,
+    title: appName,
     description: store.description || undefined,
-    icons: { icon: store.favicon_url || "/favicon.ico" },
+    applicationName: appName,
+    manifest: "/manifest.webmanifest",
+    icons: {
+      icon: iconUrl,
+      apple: iconUrl,
+    },
+    appleWebApp: {
+      capable: true,
+      title: shortName,
+      statusBarStyle: "default",
+    },
+    formatDetection: {
+      telephone: false,
+    },
+    other: {
+      "mobile-web-app-capable": "yes",
+      "apple-mobile-web-app-capable": "yes",
+      "apple-mobile-web-app-title": shortName,
+      "theme-color": s(pwa.theme_color) || "#0D3B45",
+    },
   };
 }
 

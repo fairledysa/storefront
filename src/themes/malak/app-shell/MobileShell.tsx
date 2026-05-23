@@ -11,6 +11,7 @@ import Footer from "./Footer";
 import ScreenContainer from "./ScreenContainer";
 import AuthModal from "./_components/AuthModal";
 import SearchOverlay from "./SearchOverlay";
+import InstallAppPrompt from "./_components/InstallAppPrompt";
 
 import type { ThemeAdapterOutput } from "../types";
 import type { MalakBootstrap } from "../bootstrap/types";
@@ -89,7 +90,6 @@ export default function MobileShell({
 
   const [authOpen, setAuthOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-
   const [localPath, setLocalPath] = useState(() => cleanPath(pathname || "/"));
 
   useEffect(() => {
@@ -147,16 +147,6 @@ export default function MobileShell({
 
   const isHome = effectiveKey === "home";
 
-  const showSearch = bootstrap?.header?.show_search !== false;
-
-  const searchPlaceholder = String(
-    bootstrap?.marketing?.search?.placeholder ?? "",
-  ).trim();
-
-  const searchGroups = Array.isArray(bootstrap?.marketing?.search?.groups)
-    ? bootstrap.marketing.search.groups
-    : undefined;
-
   const dataWithBootstrap = useMemo(() => {
     const source = safeObject(data);
     const currentBootstrap = safeObject(source.bootstrap);
@@ -201,6 +191,12 @@ export default function MobileShell({
         incomingBootstrap.store ??
         source.store ??
         null,
+
+      pwa:
+        currentBootstrap.pwa ??
+        incomingBootstrap.pwa ??
+        source.pwa ??
+        null,
     };
 
     return {
@@ -233,8 +229,26 @@ export default function MobileShell({
         mergedBootstrap.marketing ??
         bootstrap?.marketing ??
         null,
+
+      pwa:
+        source.pwa ??
+        mergedBootstrap.pwa ??
+        bootstrap?.pwa ??
+        null,
     };
   }, [data, bootstrap, forceScreenContainer, effectiveKey]);
+
+  const shellBootstrap = dataWithBootstrap.bootstrap as MalakBootstrap | undefined;
+
+  const showSearch = shellBootstrap?.header?.show_search !== false;
+
+  const searchPlaceholder = String(
+    shellBootstrap?.marketing?.search?.placeholder ?? "",
+  ).trim();
+
+  const searchGroups = Array.isArray(shellBootstrap?.marketing?.search?.groups)
+    ? shellBootstrap.marketing.search.groups
+    : undefined;
 
   async function fetchMe() {
     try {
@@ -292,7 +306,7 @@ export default function MobileShell({
       >
         <TopBar
           theme={theme}
-          bootstrap={bootstrap}
+          bootstrap={shellBootstrap}
           isHome={isHome}
           onSearchOpen={
             showSearch
@@ -312,22 +326,24 @@ export default function MobileShell({
             <ScreenContainer data={dataWithBootstrap} />
           )}
 
-          <Footer bootstrap={bootstrap} />
+          <Footer bootstrap={shellBootstrap} />
         </div>
 
         <BottomNav
           seoMode={seoMode}
-          bootstrap={bootstrap}
+          bootstrap={shellBootstrap}
           initialCartCount={initialCartCount}
         />
+
+        <InstallAppPrompt bootstrap={shellBootstrap} />
 
         <SearchOverlay
           open={searchOpen && showSearch}
           onOpenChange={setSearchOpen}
           placeholder={searchPlaceholder}
           groups={searchGroups}
-          currencies={bootstrap?.currencies ?? null}
-          tax={bootstrap?.tax ?? null}
+          currencies={shellBootstrap?.currencies ?? null}
+          tax={shellBootstrap?.tax ?? null}
         />
       </div>
 
