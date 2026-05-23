@@ -3382,13 +3382,7 @@
   margin-top: 0 !important;
   box-shadow: none !important;
 }
-
-/* شريط الإضافة بعرض مضبوط */
-.mk-mobile-shell[data-mk-route="product"] .mk-mproduct-mobileCart {
-  inset-inline: 0 !important;
-  padding-inline: 8px !important;
-}
-
+ 
 .mk-mobile-shell[data-mk-route="product"] .mk-mcart {
   width: min(100%, 560px) !important;
   margin-inline: auto !important;
@@ -3933,60 +3927,3 @@
 
 
 
-/* FILE: apps/storefront/src/themes/malak/styles/screens-mobile/product.css */
-/* ADD AT VERY END */
-
-/* Fix product mobile attachments note textarea tilt */
-.mk-mobile-shell[data-mk-route="product"] .mk-mcart-extras .mk-mcart-note {
-  width: 100% !important;
-  min-height: 74px !important;
-  display: block !important;
-  box-sizing: border-box !important;
-
-  transform: none !important;
-  rotate: 0deg !important;
-  scale: 1 !important;
-  skew: 0deg !important;
-
-  border-radius: 18px !important;
-  border: 1px solid var(--mk-product-border, rgba(15, 23, 42, 0.12)) !important;
-  background: #fff !important;
-  color: var(--mk-product-text, #111827) !important;
-
-  padding: 14px 16px !important;
-  resize: none !important;
-  outline: none !important;
-
-  direction: rtl !important;
-  text-align: right !important;
-  line-height: 1.8 !important;
-  font-size: 13px !important;
-  font-weight: 850 !important;
-
-  appearance: none !important;
-  -webkit-appearance: none !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 10px 24px rgba(15, 23, 42, 0.035) !important;
-}
-
-.mk-mobile-shell[data-mk-route="product"] .mk-mcart-extras .mk-mcart-note::placeholder {
-  color: rgba(100, 116, 139, 0.78) !important;
-  opacity: 1 !important;
-}
-
-.mk-mobile-shell[data-mk-route="product"] .mk-mcart-extras .mk-mcart-note:focus {
-  border-color: color-mix(
-    in srgb,
-    var(--mk-product-primary, var(--mk-primary, #111827)) 26%,
-    rgba(15, 23, 42, 0.12)
-  ) !important;
-  box-shadow:
-    0 0 0 4px
-      color-mix(
-        in srgb,
-        var(--mk-product-primary, var(--mk-primary, #111827)) 8%,
-        transparent
-      ),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
-}
