@@ -1,43 +1,72 @@
 // FILE: apps/storefront/src/themes/malak/screens-mobile/cart/CartMobileScreen.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavStack } from "../../app-navigation/stack";
 import { useMobileCart } from "./useMobileCart";
 import MobileCartHeader from "./_components/MobileCartHeader";
 import MobileCartItemsList from "./_components/MobileCartItemsList";
 import MobileCartSummarySheet from "./_components/MobileCartSummarySheet";
-import MobileEditOptionsSheet from "./_components/MobileEditOptionsSheet";
+
+type ToastViewKind = "success" | "error" | "info";
+
+function cleanText(value: unknown) {
+  return String(value ?? "").trim();
+}
+
+function resolveToastKind(message: string, kind: unknown): ToastViewKind {
+  if (kind === "error") return "error";
+
+  const text = message.trim();
+
+  if (
+    text.includes("تم") ||
+    text.includes("نجاح") ||
+    text.includes("حفظ") ||
+    text.includes("تحديث") ||
+    text.includes("مبروك") ||
+    text.includes("حصلت")
+  ) {
+    return "success";
+  }
+
+  return "info";
+}
+
+function getToastTitle(kind: ToastViewKind) {
+  if (kind === "error") return "تنبيه";
+  if (kind === "success") return "تم";
+  return "معلومة";
+}
+
+function getToastIcon(kind: ToastViewKind) {
+  if (kind === "error") return "!";
+  if (kind === "success") return "✓";
+  return "i";
+}
 
 export default function CartMobileScreen() {
-  const router = useRouter();
-
-  const setCurrent = useNavStack((s) => s.setCurrent);
+  const pop = useNavStack((s) => s.pop);
+  const push = useNavStack((s) => s.push);
 
   const {
     loading,
     busy,
-    refreshing,
+    error,
     items,
     summary,
     coupon,
     totalQty,
     toast,
     flash,
-    load,
+    reload,
     inc,
     remove,
     applyCoupon,
     removeCoupon,
   } = useMobileCart();
 
-  const [summaryOpen, setSummaryOpen] = useState(false);
-  const [editingItemId, setEditingItemId] = useState<string | null>(null);
-
-  useEffect(() => {
-    setCurrent("cart");
-  }, [setCurrent]);
+  const [dismissedToastKey, setDismissedToastKey] = useState("");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -45,162 +74,175 @@ export default function CartMobileScreen() {
     const params = new URLSearchParams(window.location.search);
     const shouldOpenAuth = params.get("auth") === "1";
 
-    if (shouldOpenAuth) {
-      window.dispatchEvent(new CustomEvent("auth:open"));
+    if (!shouldOpenAuth) return;
 
-      params.delete("auth");
+    window.dispatchEvent(new CustomEvent("auth:open"));
+    params.delete("auth");
 
-      const newUrl =
-        window.location.pathname +
-        (params.toString() ? `?${params.toString()}` : "");
+    const nextUrl =
+      window.location.pathname +
+      (params.toString() ? `?${params.toString()}` : "");
 
-      window.history.replaceState({}, "", newUrl);
-    }
+    window.history.replaceState({}, "", nextUrl);
   }, []);
 
-  const editingItem = useMemo(() => {
-    return items.find((x) => String(x.id) === String(editingItemId)) ?? null;
-  }, [items, editingItemId]);
+  const toastView = useMemo(() => {
+    const message = cleanText(toast?.message);
 
-  const total = Number(summary?.total ?? 0);
-  const subtotal = Number(summary?.subtotal ?? 0);
-  const currency = summary?.currency || "SAR";
-  const hasItems = items.length > 0;
-
-  function moneyCompact(v: number) {
-    return `${new Intl.NumberFormat("ar-SA", {
-      maximumFractionDigits: 0,
-    }).format(Number(v || 0))} ${currency}`;
-  }
-
-  function handleBack() {
-    if (typeof window !== "undefined" && window.history.length > 1) {
-      router.back();
-      return;
+    if (!message) {
+      return {
+        message: "",
+        key: "",
+        kind: "info" as ToastViewKind,
+        title: "",
+        icon: "",
+      };
     }
 
-    router.push("/");
-  }
+    const kind = resolveToastKind(message, toast?.kind);
+    const key = `${cleanText(toast?.kind || "info")}:${message}`;
 
-  function handleContinueShopping() {
-    router.push("/");
-  }
+    return {
+      message,
+      key,
+      kind,
+      title: getToastTitle(kind),
+      icon: getToastIcon(kind),
+    };
+  }, [toast?.kind, toast?.message]);
+
+  useEffect(() => {
+    if (toastView.key || !dismissedToastKey) return;
+
+    const timer = window.setTimeout(() => {
+      setDismissedToastKey("");
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [toastView.key, dismissedToastKey]);
+
+  const showToast = Boolean(
+    toastView.message && dismissedToastKey !== toastView.key,
+  );
+
+  const isEmpty = !loading && items.length === 0;
+
+  const handleBack = useCallback(() => {
+    pop();
+  }, [pop]);
+
+  const handleContinueShopping = useCallback(() => {
+    push("home");
+  }, [push]);
+
+  const handleReloadSilent = useCallback(() => {
+    reload({ silent: true });
+  }, [reload]);
+
+  const handleReload = useCallback(() => {
+    reload();
+  }, [reload]);
+
+  const handleCheckout = useCallback(() => {
+    window.location.href = "/checkout";
+  }, []);
+
+  const handleDismissToast = useCallback(() => {
+    setDismissedToastKey(toastView.key);
+  }, [toastView.key]);
 
   return (
-    <div dir="rtl" className="mk-mobile-cart">
+    <div dir="rtl" className="mk-mcart">
       <MobileCartHeader
-        title="سلة التسوق"
-        subtitle={
-          loading
-            ? "نجهز سلتك..."
-            : totalQty > 0
-              ? `${totalQty} قطعة داخل السلة`
-              : "سلتك فارغة"
-        }
-        refreshing={refreshing}
+        loading={loading}
+        totalQty={totalQty}
+        isEmpty={isEmpty}
         onBack={handleBack}
         onContinueShopping={handleContinueShopping}
       />
 
-      {toast?.message ? (
-        <div className="mk-mobile-cart-toast">
+      {showToast ? (
+        <div className="mk-mcart-toastDock">
           <div
+            role={toastView.kind === "error" ? "alert" : "status"}
+            aria-live={toastView.kind === "error" ? "assertive" : "polite"}
             className={[
-              "mk-mobile-cart-toast__inner",
-              toast.kind === "error"
-                ? "mk-mobile-cart-toast__inner--error"
-                : "",
-            ].join(" ")}
+              "mk-mcart-toast",
+              `mk-mcart-toast--${toastView.kind}`,
+            ]
+              .filter(Boolean)
+              .join(" ")}
           >
-            {toast.message}
-          </div>
-        </div>
-      ) : null}
+            <div className="mk-mcart-toast__icon" aria-hidden="true">
+              {toastView.icon}
+            </div>
 
-      <MobileCartItemsList
-        items={items}
-        loading={loading}
-        busy={busy}
-        onInc={inc}
-        onRemove={remove}
-        onEdit={setEditingItemId}
-        onContinueShopping={handleContinueShopping}
-      />
-
-      {hasItems ? (
-        <div className="mk-mobile-cart-checkout">
-          <div className="mk-mobile-cart-checkout__card">
-            {busy || refreshing ? (
-              <div className="mk-mobile-cart-checkout__loadingBar" />
-            ) : null}
-
-            <div className="mk-mobile-cart-checkout__top">
-              <button
-                type="button"
-                onClick={() => setSummaryOpen(true)}
-                className="mk-mobile-cart-checkout__totalBtn"
-              >
-                <div className="mk-mobile-cart-checkout__label">الإجمالي</div>
-
-                <div className="mk-mobile-cart-checkout__prices">
-                  <div className="mk-mobile-cart-checkout__total">
-                    {moneyCompact(total)}
-                  </div>
-
-                  {subtotal > total ? (
-                    <div className="mk-mobile-cart-checkout__subtotal">
-                      {moneyCompact(subtotal)}
-                    </div>
-                  ) : null}
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSummaryOpen(true)}
-                className="mk-mobile-cart-checkout__details"
-              >
-                التفاصيل
-              </button>
+            <div className="mk-mcart-toast__body">
+              <div className="mk-mcart-toast__title">{toastView.title}</div>
+              <div className="mk-mcart-toast__message">
+                {toastView.message}
+              </div>
             </div>
 
             <button
               type="button"
-              onClick={() => {
-                window.location.href = "/checkout";
-              }}
-              disabled={loading || busy || items.length === 0}
-              className="mk-mobile-cart-checkout__submit"
+              className="mk-mcart-toast__close"
+              onClick={handleDismissToast}
+              aria-label="إغلاق التنبيه"
             >
-              {busy ? "جاري التحديث..." : "متابعة الدفع"}
+              ×
             </button>
           </div>
         </div>
       ) : null}
 
-      <MobileCartSummarySheet
-        open={summaryOpen}
-        onClose={() => setSummaryOpen(false)}
-        onCheckout={() => {
-          window.location.href = "/checkout";
-        }}
-        summary={summary}
-        itemsCount={items.length}
-        totalQty={totalQty}
-        coupon={coupon}
-        loading={loading}
-        busy={busy}
-        onApplyCoupon={applyCoupon}
-        onRemoveCoupon={removeCoupon}
-      />
+      {error ? (
+        <div className="mk-mcart-error">
+          <div>
+            <strong>تعذر تحميل السلة</strong>
+            <span>{error}</span>
+          </div>
 
-      <MobileEditOptionsSheet
-        open={Boolean(editingItem)}
-        item={editingItem}
-        onClose={() => setEditingItemId(null)}
-        onChanged={() => load({ silent: true })}
-        flash={flash}
-      />
+          <button type="button" onClick={handleReload}>
+            إعادة المحاولة
+          </button>
+        </div>
+      ) : null}
+
+      <main
+        className={[
+          "mk-mcart-content",
+          !isEmpty ? "mk-mcart-content--withSheet" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
+        <MobileCartItemsList
+          items={items}
+          summary={summary}
+          loading={loading}
+          busy={busy}
+          onInc={inc}
+          onRemove={remove}
+          onReload={handleReloadSilent}
+          flash={flash}
+          onContinueShopping={handleContinueShopping}
+        />
+      </main>
+
+      {!isEmpty ? (
+        <MobileCartSummarySheet
+          summary={summary}
+          itemsCount={items.length}
+          totalQty={totalQty}
+          coupon={coupon}
+          loading={loading}
+          busy={busy}
+          onApplyCoupon={applyCoupon}
+          onRemoveCoupon={removeCoupon}
+          onCheckout={handleCheckout}
+        />
+      ) : null}
     </div>
   );
 }

@@ -1,8 +1,8 @@
+// FILE: apps/storefront/src/themes/malak/screens-mobile/search/SearchMobileScreen.tsx
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMemo } from "react";
 
 import { buildProductHref } from "@/lib/seo/build-store-href";
 import type { SeoUrlMode } from "@/data/store/settings";
@@ -235,15 +235,17 @@ function normalizeCategories(data: any) {
     .slice(0, 8);
 }
 
-export default function SearchMobileScreen({ data, mode, seoMode }: Props) {
-  const router = useRouter();
+function openSmartSearch() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent("mk:search:open"));
+}
 
+export default function SearchMobileScreen({ data, mode, seoMode }: Props) {
   const activeMode = normalizeMode(mode ?? seoMode);
+
   const query = s(data?.query);
   const sort = normalizeSort(data?.sort);
   const rawProducts = Array.isArray(data?.products) ? data.products : [];
-
-  const [searchText, setSearchText] = useState(query);
 
   const currencies = resolveCurrenciesFromData(data);
   const tax = resolveTaxFromData(data);
@@ -286,27 +288,11 @@ export default function SearchMobileScreen({ data, mode, seoMode }: Props) {
 
   const total = products.length;
 
-  function submitSearch(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    const q = s(searchText);
-
-    if (q.length < 2) {
-      router.push("/search", { scroll: false });
-      return;
-    }
-
-    const params = new URLSearchParams();
-    params.set("q", q);
-
-    router.push(`/search?${params.toString()}`, { scroll: false });
-  }
-
   return (
     <main dir="rtl" className="mk-msearch-page">
       <section className="mk-msearch-hero" aria-label="البحث">
         <div className="mk-msearch-hero__top">
-          <div>
+          <div className="mk-msearch-hero__content">
             <span className="mk-msearch-hero__eyebrow">البحث</span>
 
             <h1 className="mk-msearch-hero__title">
@@ -325,25 +311,33 @@ export default function SearchMobileScreen({ data, mode, seoMode }: Props) {
           ) : null}
         </div>
 
-        <form className="mk-msearch-form" onSubmit={submitSearch}>
-          <button
-            type="submit"
-            className="mk-msearch-form__btn"
-            aria-label="بحث"
-          >
+        <button
+          type="button"
+          className={[
+            "mk-msearch-smart",
+            hasQuery ? "has-query" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          onClick={openSmartSearch}
+          aria-label="فتح البحث الذكي"
+        >
+          <span className="mk-msearch-smart__icon">
             <Icon icon="Search01" size={20 as any} />
-          </button>
+          </span>
 
-          <input
-            value={searchText}
-            onChange={(event) => setSearchText(event.target.value)}
-            className="mk-msearch-form__input"
-            type="search"
-            inputMode="search"
-            placeholder="ابحث عن منتج أو قسم"
-            autoComplete="off"
-          />
-        </form>
+          <span className="mk-msearch-smart__text">
+            {hasQuery ? query : "ابحث عن منتج أو قسم"}
+          </span>
+
+          {hasQuery ? (
+            <span className="mk-msearch-smart__clear" aria-hidden="true">
+              ×
+            </span>
+          ) : (
+            <span className="mk-msearch-smart__hint">فتح</span>
+          )}
+        </button>
 
         {hasQuery ? (
           <nav className="mk-msearch-sort" aria-label="ترتيب النتائج">
@@ -410,7 +404,15 @@ export default function SearchMobileScreen({ data, mode, seoMode }: Props) {
 
           <h2>ابدأ البحث من هنا</h2>
 
-          <p>اكتب اسم المنتج، أو افتح أحد الأقسام السريعة بالأسفل.</p>
+          <p>اضغط على مربع البحث لفتح البحث الذكي مثل بحث الهيدر تمامًا.</p>
+
+          <button
+            type="button"
+            className="mk-msearch-empty__button"
+            onClick={openSmartSearch}
+          >
+            افتح البحث
+          </button>
 
           {quickCategories.length ? (
             <div className="mk-msearch-quick">
@@ -429,20 +431,17 @@ export default function SearchMobileScreen({ data, mode, seoMode }: Props) {
       ) : total === 0 ? (
         <section className="mk-msearch-empty">
           <div className="mk-msearch-empty__icon">
-            <Icon icon="SearchRemove" size={26 as any} />
+            <Icon icon="Search01" size={26 as any} />
           </div>
 
           <h2>ما لقينا نتائج</h2>
 
-          <p>جرّب كلمة أبسط أو تأكد من كتابة اسم المنتج بشكل صحيح.</p>
+          <p>جرّب كلمة أبسط أو افتح البحث الذكي لاختيار نتيجة مباشرة.</p>
 
           <button
             type="button"
             className="mk-msearch-empty__button"
-            onClick={() => {
-              setSearchText("");
-              router.push("/search", { scroll: false });
-            }}
+            onClick={openSmartSearch}
           >
             بحث جديد
           </button>

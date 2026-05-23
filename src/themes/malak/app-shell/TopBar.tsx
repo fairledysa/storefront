@@ -2,11 +2,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Icon from "@/components/icon/Icon";
-import CurrencySwitcher from "./_components/CurrencySwitcher";
 import type { ThemeAdapterOutput } from "../types";
 import type { MalakBootstrap } from "../bootstrap/types";
+import CurrencySwitcher from "./_components/CurrencySwitcher";
 
 type Props = {
   theme: ThemeAdapterOutput;
@@ -38,6 +38,7 @@ export default function TopBar({
 
   const header = bootstrap?.header;
   const store = bootstrap?.store;
+  const currencies = bootstrap?.currencies ?? null;
 
   const showSearch = header?.show_search !== false;
 
@@ -55,17 +56,14 @@ export default function TopBar({
   const hasBrand = Boolean(logoUrl || storeName);
   const shouldShowSearch = showSearch && Boolean(onSearchOpen);
 
-  const hasCurrencySwitcher = useMemo(() => {
-    const currencies = bootstrap?.currencies;
+  const shouldShowSlogan = Boolean(sloganText && !scrolled);
 
-    if (!currencies?.has_multiple) return false;
-
-    const enabledItems = Array.isArray(currencies.items)
-      ? currencies.items.filter((item) => item?.enabled !== false)
-      : [];
-
-    return enabledItems.length > 1;
-  }, [bootstrap?.currencies]);
+  const showCurrencySwitcher = Boolean(
+    store?.id &&
+      currencies?.has_multiple &&
+      Array.isArray(currencies?.items) &&
+      currencies.items.length > 1,
+  );
 
   useEffect(() => {
     if (!isHome) return;
@@ -93,7 +91,7 @@ export default function TopBar({
 
   if (!isHome) return null;
 
-  if (!hasBrand && !sloganText && !shouldShowSearch && !hasCurrencySwitcher) {
+  if (!hasBrand && !shouldShowSlogan && !shouldShowSearch && !showCurrencySwitcher) {
     return null;
   }
 
@@ -125,11 +123,11 @@ export default function TopBar({
               )}
             </Link>
           ) : (
-            <span className="mk-home-topbar__sideSpace" aria-hidden="true" />
+            <span />
           )}
 
           <div className="mk-home-topbar__center">
-            {sloganText ? (
+            {shouldShowSlogan ? (
               <div className="mk-home-topbar__delivery">
                 <span className="mk-home-topbar__deliveryText">
                   {sloganText}
@@ -138,19 +136,19 @@ export default function TopBar({
             ) : null}
           </div>
 
-          {hasCurrencySwitcher ? (
-            <div className="mk-home-topbar__currency">
-              <CurrencySwitcher
-                storeId={store?.id}
-                currencies={bootstrap?.currencies ?? null}
-              />
-            </div>
-          ) : (
-            <span className="mk-home-topbar__sideSpace" aria-hidden="true" />
-          )}
+          <div className="mk-home-topbar__sideSpace">
+            {showCurrencySwitcher ? (
+              <div className="mk-home-topbar__currency">
+                <CurrencySwitcher
+                  storeId={store?.id}
+                  currencies={currencies}
+                />
+              </div>
+            ) : null}
+          </div>
         </div>
 
-        {sloganText ? (
+        {shouldShowSlogan ? (
           <div className="mk-home-topbar__ship">
             <span className="mk-home-topbar__shipDot" />
             <span className="mk-home-topbar__shipText">{sloganText}</span>

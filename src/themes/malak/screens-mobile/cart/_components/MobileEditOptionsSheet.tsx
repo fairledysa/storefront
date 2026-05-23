@@ -1,13 +1,7 @@
 // FILE: apps/storefront/src/themes/malak/screens-mobile/cart/_components/MobileEditOptionsSheet.tsx
 "use client";
 
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-} from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   CartItemEnriched,
   ProductOption,
@@ -44,11 +38,39 @@ type ExistingAttachment = {
   url: string | null;
 };
 
+type NewFilePreview = {
+  file: File;
+  url: string;
+};
+
+type ImagePreview = {
+  url: string;
+  name: string;
+};
+
 const MAX_IMAGES = 4;
 const MAX_IMAGE_BYTES = 7 * 1024 * 1024;
+const CLOSE_ANIMATION_MS = 260;
 
-function optionLabel(v: any) {
-  return String(v?.display_value ?? v?.name ?? "").trim();
+function s(value: any) {
+  return String(value ?? "").trim();
+}
+
+function optionLabel(value: any) {
+  return s(value?.display_value) || s(value?.displayValue) || s(value?.name);
+}
+
+function optionColor(value: any) {
+  return s(value?.color) || s(value?.hex) || s(value?.hex_color);
+}
+
+function optionImage(value: any) {
+  return (
+    s(value?.image_url) ||
+    s(value?.imageUrl) ||
+    s(value?.image) ||
+    s(value?.url)
+  );
 }
 
 function readSpecialSelectedOption(
@@ -59,8 +81,8 @@ function readSpecialSelectedOption(
     ? item?.selected_options
     : [];
 
-  const hit = raw.find((x) => String(x?.name ?? "").trim() === key);
-  const value = String(hit?.value ?? "").trim();
+  const hit = raw.find((x) => s(x?.name) === key);
+  const value = s(hit?.value);
 
   return value || null;
 }
@@ -70,9 +92,9 @@ function isImageAttachment(
   url: string | null,
   name: string | null,
 ) {
-  const t = String(type ?? "").toLowerCase();
-  const u = String(url ?? "").toLowerCase();
-  const n = String(name ?? "").toLowerCase();
+  const t = s(type).toLowerCase();
+  const u = s(url).toLowerCase();
+  const n = s(name).toLowerCase();
 
   if (
     t === "image/jpeg" ||
@@ -83,8 +105,8 @@ function isImageAttachment(
     return true;
   }
 
-  return [u, n].some((x) =>
-    [".png", ".jpg", ".jpeg", ".webp"].some((ext) => x.includes(ext)),
+  return [u, n].some((value) =>
+    [".png", ".jpg", ".jpeg", ".webp"].some((ext) => value.includes(ext)),
   );
 }
 
@@ -93,7 +115,7 @@ function readExistingAttachments(
 ): ExistingAttachment[] {
   const out: ExistingAttachment[] = [];
 
-  for (let i = 1; i <= 4; i++) {
+  for (let i = 1; i <= MAX_IMAGES; i++) {
     const name = readSpecialSelectedOption(item, `__attachment_${i}_name`);
     const type = readSpecialSelectedOption(item, `__attachment_${i}_type`);
     const sizeRaw = readSpecialSelectedOption(item, `__attachment_${i}_size`);
@@ -116,7 +138,7 @@ function readExistingAttachments(
 }
 
 function isAllowedImageFile(file: File) {
-  const type = String(file.type || "").toLowerCase();
+  const type = s(file.type).toLowerCase();
 
   return (
     type === "image/jpeg" ||
@@ -126,8 +148,30 @@ function isAllowedImageFile(file: File) {
   );
 }
 
+function formatFileSize(size: number | null) {
+  const n = Number(size ?? 0);
+  if (!Number.isFinite(n) || n <= 0) return "";
+
+  if (n < 1024 * 1024) return `${Math.ceil(n / 1024)}KB`;
+
+  return `${(n / 1024 / 1024).toFixed(1)}MB`;
+}
+
+function getOptions(item: CartItemEnriched | null) {
+  return ((item?.options || []) as ProductOption[]) ?? [];
+}
+
+function getVariants(item: CartItemEnriched | null) {
+  return ((item?.variants || []) as ProductVariant[]) ?? [];
+}
+
+function getLinks(item: CartItemEnriched | null) {
+  return ((item?.variant_links || []) as VariantLink[]) ?? [];
+}
+
 async function uploadAttachmentToR2(file: File): Promise<UploadedImage> {
   const fd = new FormData();
+
   fd.append("kind", "product-attachment");
   fd.append("file", file, file.name);
 
@@ -151,122 +195,6 @@ async function uploadAttachmentToR2(file: File): Promise<UploadedImage> {
   };
 }
 
-function useBottomOffsetPx() {
-  const [px, setPx] = useState(0);
-
-  useEffect(() => {
-    const findTabbarEl = () => {
-      const byClass = document.querySelector(".mk-tabbar") as HTMLElement | null;
-      if (byClass) return byClass;
-
-      const byId = document.getElementById("dvxTabbar_70421");
-      if (byId) return byId as HTMLElement;
-
-      const any =
-        (document.querySelector('[id^="dvxTabbar_"]') as HTMLElement | null) ??
-        (document.querySelector('[data-dvx-tabbar="1"]') as HTMLElement | null);
-
-      return any ?? null;
-    };
-
-    const measure = () => {
-      const el = findTabbarEl();
-      if (!el) {
-        setPx(0);
-        return;
-      }
-
-      const h = Math.max(0, Math.round(el.getBoundingClientRect().height || 0));
-      setPx(h ? h + 8 : 0);
-    };
-
-    measure();
-
-    const ro =
-      typeof window !== "undefined" && "ResizeObserver" in window
-        ? new ResizeObserver(() => measure())
-        : null;
-
-    const el = findTabbarEl();
-    if (el && ro) ro.observe(el);
-
-    window.addEventListener("resize", measure);
-    window.addEventListener("orientationchange", measure);
-
-    const t = window.setInterval(measure, 800);
-
-    return () => {
-      window.clearInterval(t);
-      window.removeEventListener("resize", measure);
-      window.removeEventListener("orientationchange", measure);
-      if (el && ro) ro.unobserve(el);
-      if (ro) ro.disconnect();
-    };
-  }, []);
-
-  return px;
-}
-
-function SkeletonText({
-  width,
-  height = 14,
-}: {
-  width: number | string;
-  height?: number;
-}) {
-  return (
-    <div
-      aria-hidden
-      className="mk-cart-skeleton-line"
-      style={{ width, height }}
-    />
-  );
-}
-
-function NewFilePreview({
-  file,
-  onRemove,
-}: {
-  file: File;
-  onRemove: () => void;
-}) {
-  const [preview, setPreview] = useState("");
-
-  useEffect(() => {
-    const url = URL.createObjectURL(file);
-    setPreview(url);
-
-    return () => {
-      URL.revokeObjectURL(url);
-    };
-  }, [file]);
-
-  return (
-    <div className="mk-cart-edit-attachment">
-      <div className="mk-cart-edit-attachment__media">
-        {preview ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={preview} alt={file.name} />
-        ) : null}
-      </div>
-
-      <div className="mk-cart-edit-attachment__body">
-        <div className="mk-cart-edit-attachment__name" title={file.name}>
-          {file.name}
-        </div>
-
-        <button
-          type="button"
-          onClick={onRemove}
-          className="mk-cart-edit-attachment__remove"
-        >
-          إزالة
-        </button>
-      </div>
-    </div>
-  );
-}
-
 export default function MobileEditOptionsSheet({
   open,
   onClose,
@@ -274,57 +202,166 @@ export default function MobileEditOptionsSheet({
   onChanged,
   flash,
 }: Props) {
-  const options = ((item?.options || []) as ProductOption[]) ?? [];
-  const variants = ((item?.variants || []) as ProductVariant[]) ?? [];
-  const links = ((item?.variant_links || []) as VariantLink[]) ?? [];
+  const [shouldRender, setShouldRender] = useState(open);
+  const [closing, setClosing] = useState(false);
+  const [renderItem, setRenderItem] = useState<CartItemEnriched | null>(item);
+
+  const activeItem = item ?? renderItem;
+
+  const options = useMemo(() => getOptions(activeItem), [activeItem?.options]);
+  const variants = useMemo(
+    () => getVariants(activeItem),
+    [activeItem?.variants],
+  );
+  const links = useMemo(
+    () => getLinks(activeItem),
+    [activeItem?.variant_links],
+  );
 
   const [selectedByOption, setSelectedByOption] = useState<
     Record<string, string | null>
   >({});
   const [busy, setBusy] = useState(false);
-
   const [note, setNote] = useState("");
   const [existingAttachments, setExistingAttachments] = useState<
     ExistingAttachment[]
   >([]);
   const [newFiles, setNewFiles] = useState<File[]>([]);
-
-  const [mounted, setMounted] = useState(open);
-  const [visible, setVisible] = useState(false);
+  const [newFilePreviews, setNewFilePreviews] = useState<NewFilePreview[]>([]);
+  const [imagePreview, setImagePreview] = useState<ImagePreview | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const bottomOffsetPx = useBottomOffsetPx();
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const resetKey = `${s(activeItem?.id)}:${s(activeItem?.variant_id)}:${s(
+    (activeItem as any)?.updated_at,
+  )}:${s(activeItem?.qty)}`;
 
   useEffect(() => {
-    if (open) {
-      setMounted(true);
-      const raf = window.requestAnimationFrame(() => setVisible(true));
-      return () => window.cancelAnimationFrame(raf);
+    if (open && item) {
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+
+      setShouldRender(true);
+      setClosing(false);
+      setRenderItem(item);
+      return;
     }
 
-    setVisible(false);
+    if (!open && shouldRender) {
+      setClosing(true);
 
-    const t = window.setTimeout(() => setMounted(false), 260);
-    return () => window.clearTimeout(t);
-  }, [open]);
+      const timer = window.setTimeout(() => {
+        setShouldRender(false);
+        setClosing(false);
+        setRenderItem(null);
+      }, CLOSE_ANIMATION_MS);
+
+      return () => window.clearTimeout(timer);
+    }
+
+    return undefined;
+  }, [open, item, shouldRender]);
 
   useEffect(() => {
-    if (!open || !item) return;
+    if (!shouldRender) return undefined;
+
+    const originalOverflow = document.body.style.overflow;
+    const originalTouchAction = document.body.style.touchAction;
+
+    document.body.style.overflow = "hidden";
+    document.body.style.touchAction = "none";
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      document.body.style.touchAction = originalTouchAction;
+    };
+  }, [shouldRender]);
+
+  useEffect(() => {
+    if (!open || !activeItem) return;
 
     setSelectedByOption(
-      buildDefaultSelection(options, item.selected_option_value_ids || []),
+      buildDefaultSelection(options, activeItem.selected_option_value_ids || []),
     );
-    setNote(readSpecialSelectedOption(item, "ملاحظة") || "");
-    setExistingAttachments(readExistingAttachments(item));
+    setNote(readSpecialSelectedOption(activeItem, "ملاحظة") || "");
+    setExistingAttachments(readExistingAttachments(activeItem));
     setNewFiles([]);
+    setImagePreview(null);
+    setBusy(false);
 
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, [open, activeItem, options, resetKey]);
+
+  useEffect(() => {
+    const previews = newFiles.map((file) => ({
+      file,
+      url: URL.createObjectURL(file),
+    }));
+
+    setNewFilePreviews(previews);
+
+    return () => {
+      previews.forEach((preview) => URL.revokeObjectURL(preview.url));
+    };
+  }, [newFiles]);
+
+  function closeWithMotion() {
+    if (busy || closing) return;
+
+    if (imagePreview) {
+      setImagePreview(null);
+      return;
     }
-  }, [open, item, options]);
+
+    setClosing(true);
+
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+    }
+
+    closeTimerRef.current = setTimeout(() => {
+      setShouldRender(false);
+      setClosing(false);
+      setRenderItem(null);
+      onClose();
+    }, CLOSE_ANIMATION_MS);
+  }
+
+  useEffect(() => {
+    if (!shouldRender) return undefined;
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+
+      if (imagePreview) {
+        setImagePreview(null);
+        return;
+      }
+
+      closeWithMotion();
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [shouldRender, imagePreview, busy, closing]);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current);
+      }
+    };
+  }, []);
 
   const selectedValueIds = useMemo(
-    () => Object.values(selectedByOption).filter(Boolean).map(String),
+    () =>
+      Object.values(selectedByOption)
+        .filter((value): value is string => Boolean(value))
+        .map(String),
     [selectedByOption],
   );
 
@@ -340,44 +377,58 @@ export default function MobileEditOptionsSheet({
     });
   }, [open, options, variants, links, selectedByOption]);
 
-  const canResolveVariant = useMemo(() => {
-    if (!variants.length) return true;
+  const resolvedVariantId = useMemo(() => {
+    if (!variants.length) return null;
 
-    const vid = resolveVariantIdFromSelection({
+    return resolveVariantIdFromSelection({
       variants,
       variant_links: links,
       selected_value_ids: selectedValueIds,
     });
-
-    return Boolean(vid);
   }, [variants, links, selectedValueIds]);
+
+  const canResolveVariant = !variants.length || Boolean(resolvedVariantId);
+  const attachmentsCount = existingAttachments.length + newFiles.length;
+  const productName = s(activeItem?.product?.name) || "المنتج";
+  const productImage = s(activeItem?.product?.image_url);
+  const hasVariantOptions = options.length > 0;
 
   function resetFileInput() {
     if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function openImagePreview(url: string | null, name?: string | null) {
+    const cleanUrl = s(url);
+    if (!cleanUrl) return;
+
+    setImagePreview({
+      url: cleanUrl,
+      name: s(name) || "الصورة المرفقة",
+    });
   }
 
   function handlePickImages(filesList: FileList | null) {
     const picked = Array.from(filesList || []);
     if (!picked.length) return;
 
-    const invalidType = picked.find((f) => !isAllowedImageFile(f));
+    const invalidType = picked.find((file) => !isAllowedImageFile(file));
     if (invalidType) {
       flash("مسموح فقط بصور JPG / PNG / WEBP", "error");
       resetFileInput();
       return;
     }
 
-    const tooLarge = picked.find((f) => Number(f.size || 0) > MAX_IMAGE_BYTES);
+    const tooLarge = picked.find(
+      (file) => Number(file.size || 0) > MAX_IMAGE_BYTES,
+    );
+
     if (tooLarge) {
       flash("حجم كل صورة يجب ألا يتجاوز 7MB", "error");
       resetFileInput();
       return;
     }
 
-    const totalCount =
-      existingAttachments.length + newFiles.length + picked.length;
-
-    if (totalCount > MAX_IMAGES) {
+    if (attachmentsCount + picked.length > MAX_IMAGES) {
       flash("الحد الأقصى 4 صور فقط", "error");
       resetFileInput();
       return;
@@ -412,7 +463,7 @@ export default function MobileEditOptionsSheet({
   }
 
   async function onSave() {
-    if (!item) return;
+    if (!activeItem) return;
 
     try {
       setBusy(true);
@@ -432,6 +483,13 @@ export default function MobileEditOptionsSheet({
           flash("حجم كل صورة يجب ألا يتجاوز 7MB", "error");
           return;
         }
+      }
+
+      const variant_id = variants.length ? resolvedVariantId : null;
+
+      if (variants.length && !variant_id) {
+        flash("الخيارات المختارة غير متوفرة.", "error");
+        return;
       }
 
       const uploadedNew: UploadedImage[] = [];
@@ -468,19 +526,6 @@ export default function MobileEditOptionsSheet({
         });
       }
 
-      const variant_id = variants.length
-        ? resolveVariantIdFromSelection({
-            variants,
-            variant_links: links,
-            selected_value_ids: selectedValueIds,
-          })
-        : null;
-
-      if (variants.length && !variant_id) {
-        flash("الخيارات المختارة غير متوفرة.", "error");
-        return;
-      }
-
       const selected_options: Array<{ name: string; value: string }> = [];
 
       for (const opt of options) {
@@ -495,7 +540,7 @@ export default function MobileEditOptionsSheet({
 
         if (!value) continue;
 
-        const name = String(opt.name ?? "").trim();
+        const name = s(opt.name);
         const label = optionLabel(value);
 
         if (!name || !label) continue;
@@ -533,7 +578,7 @@ export default function MobileEditOptionsSheet({
 
       const res: any = await apiPatchCartItem({
         op: "set_variant",
-        cart_item_id: item.id,
+        cart_item_id: activeItem.id,
         selected_option_value_ids: selectedValueIds,
         variant_id,
         selected_options,
@@ -541,12 +586,11 @@ export default function MobileEditOptionsSheet({
 
       const msg = res?.data?.notice?.message;
 
-      if (msg) flash(msg, "info");
-      else flash("تم تحديث المنتج", "info");
+      flash(msg || "تم تحديث المنتج", "info");
 
       window.dispatchEvent(new CustomEvent("cart:changed"));
       onChanged();
-      onClose();
+      closeWithMotion();
     } catch (e: any) {
       if (
         e?.message === "ONLY_SUPPORTED_IMAGES_ALLOWED" ||
@@ -563,146 +607,209 @@ export default function MobileEditOptionsSheet({
     }
   }
 
-  if (!mounted || !item) return null;
+  if (!shouldRender || !activeItem) return null;
 
   return (
     <div
-      className={["mk-cart-sheet", visible ? "is-visible" : ""].join(" ")}
-      style={
-        {
-          "--mk-cart-sheet-bottom": `${bottomOffsetPx}px`,
-        } as CSSProperties
-      }
+      className={["mk-mcart-edit", closing ? "is-closing" : ""]
+        .filter(Boolean)
+        .join(" ")}
+      role="dialog"
+      aria-modal="true"
     >
       <button
         type="button"
-        onClick={busy ? undefined : onClose}
         aria-label="إغلاق"
-        className="mk-cart-sheet__overlay"
+        onClick={closeWithMotion}
+        className="mk-mcart-edit__overlay"
       />
 
-      <div dir="rtl" className="mk-cart-sheet__panel mk-cart-edit__panel">
-        <div className="mk-cart-sheet__head">
-          <div className="mk-cart-sheet__handleWrap">
-            <div className="mk-cart-sheet__handle" />
-          </div>
+      <section className="mk-mcart-edit__sheet">
+        <div className="mk-mcart-edit__handle" />
 
-          <div className="mk-cart-sheet__titleRow">
-            <div className="mk-cart-sheet__titleBox">
-              <div className="mk-cart-sheet__title">تعديل المنتج</div>
-
-              <div className="mk-cart-sheet__subtitle">
-                {item.product?.name ?? "المنتج"}
-              </div>
+        <header className="mk-mcart-edit__head">
+          <div className="mk-mcart-edit__product">
+            <div className="mk-mcart-edit__thumb">
+              {productImage ? (
+                <img
+                  src={productImage}
+                  alt={productName}
+                  loading="eager"
+                  decoding="async"
+                />
+              ) : (
+                <span>—</span>
+              )}
             </div>
 
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={busy}
-              aria-label="إغلاق"
-              className="mk-cart-sheet__close"
-            >
-              ×
-            </button>
+            <div className="mk-mcart-edit__productText">
+              <div className="mk-mcart-edit__eyebrow">تعديل المنتج</div>
+              <div className="mk-mcart-edit__title" title={productName}>
+                {productName}
+              </div>
+              <div className="mk-mcart-edit__meta">
+                {activeItem.qty ? <span>الكمية {activeItem.qty}</span> : null}
+                <span>
+                  {attachmentsCount}/{MAX_IMAGES} صور
+                </span>
+              </div>
+            </div>
           </div>
-        </div>
 
-        <div className="mk-cart-sheet__body">
-          {options.length ? (
-            <div className="mk-cart-edit-options">
-              {options.map((opt) => {
-                const optId = String(opt.id);
-                const allowed = allowedByOption.get(optId);
+          <button
+            type="button"
+            onClick={closeWithMotion}
+            disabled={busy}
+            aria-label="إغلاق"
+            className="mk-mcart-edit__close"
+          >
+            ×
+          </button>
+        </header>
 
-                return (
-                  <div key={optId} className="mk-cart-edit-section">
-                    <div className="mk-cart-edit-section__title">
-                      {opt.name}
-                    </div>
-
-                    <div className="mk-cart-edit-values">
-                      {(opt.values || []).map((v) => {
-                        const vId = String(v.id);
-                        const active = selectedByOption[optId] === vId;
-                        const disabled = allowed ? !allowed.has(vId) : false;
-
-                        return (
-                          <button
-                            key={vId}
-                            type="button"
-                            disabled={disabled || busy}
-                            onClick={() =>
-                              setSelectedByOption((s) => ({
-                                ...s,
-                                [optId]: vId,
-                              }))
-                            }
-                            className={[
-                              "mk-cart-edit-value",
-                              active ? "is-active" : "",
-                            ].join(" ")}
-                          >
-                            {optionLabel(v)}
-                          </button>
-                        );
-                      })}
-                    </div>
+        <div className="mk-mcart-edit__body">
+          {hasVariantOptions ? (
+            <section className="mk-mcart-edit__group">
+              <div className="mk-mcart-edit__groupHead">
+                <div>
+                  <div className="mk-mcart-edit__groupTitle">خيارات المنتج</div>
+                  <div className="mk-mcart-edit__groupSub">
+                    اختر التركيبة المناسبة قبل الحفظ.
                   </div>
-                );
-              })}
+                </div>
 
-              {variants.length ? (
                 <div
                   className={[
-                    "mk-cart-edit-availability",
-                    canResolveVariant
-                      ? "mk-cart-edit-availability--ok"
-                      : "mk-cart-edit-availability--bad",
-                  ].join(" ")}
+                    "mk-mcart-edit__status",
+                    canResolveVariant ? "is-ok" : "is-bad",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
                 >
-                  {canResolveVariant
-                    ? "التركيبة متوفرة ✅"
-                    : "التركيبة غير متوفرة ❌"}
+                  {canResolveVariant ? "متوفر" : "غير متوفر"}
                 </div>
-              ) : null}
-            </div>
-          ) : (
-            <div className="mk-cart-edit-section">
-              <div className="mk-cart-edit-section__title">خيارات المنتج</div>
+              </div>
 
-              <div className="mk-cart-edit-desc">
-                لا توجد خيارات قابلة للتعديل لهذا المنتج.
+              <div className="mk-mcart-edit__options">
+                {options.map((opt) => {
+                  const optId = String(opt.id);
+                  const allowed = allowedByOption.get(optId);
+
+                  return (
+                    <div key={optId} className="mk-mcart-edit__option">
+                      <div className="mk-mcart-edit__optionName">
+                        {opt.name}
+                      </div>
+
+                      <div className="mk-mcart-edit__values">
+                        {(opt.values || []).map((value) => {
+                          const valueId = String(value.id);
+                          const active = selectedByOption[optId] === valueId;
+                          const disabled = allowed
+                            ? !allowed.has(valueId)
+                            : false;
+
+                          const label = optionLabel(value);
+                          const color = optionColor(value);
+                          const image = optionImage(value);
+
+                          return (
+                            <button
+                              key={valueId}
+                              type="button"
+                              disabled={disabled || busy}
+                              onClick={() =>
+                                setSelectedByOption((current) => ({
+                                  ...current,
+                                  [optId]: valueId,
+                                }))
+                              }
+                              className={[
+                                "mk-mcart-edit__value",
+                                active ? "is-active" : "",
+                                disabled ? "is-unavailable" : "",
+                              ]
+                                .filter(Boolean)
+                                .join(" ")}
+                              title={disabled ? `${label} - غير متوفر` : label}
+                            >
+                              {image ? (
+                                <span className="mk-mcart-edit__valueImage">
+                                  <img
+                                    src={image}
+                                    alt=""
+                                    loading="lazy"
+                                    decoding="async"
+                                  />
+                                </span>
+                              ) : null}
+
+                              {color ? (
+                                <span
+                                  className="mk-mcart-edit__valueColor"
+                                  style={{ background: color }}
+                                />
+                              ) : null}
+
+                              <span>{label}</span>
+
+                              {active ? <strong>✓</strong> : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
+
+          <section className="mk-mcart-edit__group">
+            <div className="mk-mcart-edit__groupHead">
+              <div>
+                <div className="mk-mcart-edit__groupTitle">ملاحظة الطلب</div>
+                <div className="mk-mcart-edit__groupSub">
+                  اكتب أي تفاصيل يحتاجها المتجر لهذا المنتج.
+                </div>
+              </div>
+
+              <div className="mk-mcart-edit__miniBadge">
+                {note.trim() ? "مكتوبة" : "اختياري"}
               </div>
             </div>
-          )}
-
-          <div className="mk-cart-edit-section">
-            <div className="mk-cart-edit-section__title">الملاحظة</div>
 
             <textarea
               value={note}
-              onChange={(e) => setNote(e.target.value)}
-              rows={3}
-              placeholder="اكتب ملاحظتك هنا"
-              className="mk-cart-edit-note"
+              onChange={(event) => setNote(event.target.value)}
+              rows={4}
+              placeholder="مثال: أرجو تغليف المنتج كهدية"
+              className="mk-mcart-edit__textarea"
             />
-          </div>
+          </section>
 
-          <div className="mk-cart-edit-section">
-            <div className="mk-cart-edit-section__title">الصور المرفقة</div>
+          <section className="mk-mcart-edit__group">
+            <div className="mk-mcart-edit__groupHead">
+              <div>
+                <div className="mk-mcart-edit__groupTitle">الصور المرفقة</div>
+                <div className="mk-mcart-edit__groupSub">
+                  أرفق صور توضيحية عند الحاجة.
+                </div>
+              </div>
 
-            <div className="mk-cart-edit-uploadRow">
+              <div className="mk-mcart-edit__miniBadge">
+                {attachmentsCount}/{MAX_IMAGES}
+              </div>
+            </div>
+
+            <div className="mk-mcart-edit__upload">
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={
-                  busy ||
-                  existingAttachments.length + newFiles.length >= MAX_IMAGES
-                }
-                className="mk-cart-edit-uploadBtn"
+                disabled={busy || attachmentsCount >= MAX_IMAGES}
+                className="mk-mcart-edit__uploadBtn"
               >
-                رفع صور
+                + رفع صور
               </button>
 
               <input
@@ -710,99 +817,149 @@ export default function MobileEditOptionsSheet({
                 type="file"
                 accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
                 multiple
-                className="mk-cart-edit-fileInput"
-                onChange={(e) => handlePickImages(e.target.files)}
+                hidden
+                onChange={(event) => handlePickImages(event.target.files)}
               />
 
-              <div className="mk-cart-edit-uploadHint">
-                حتى 4 صور — JPG / PNG / WEBP — كل صورة 7MB
-              </div>
+              <span>JPG / PNG / WEBP — حتى 4 صور</span>
             </div>
 
-            {busy && (existingAttachments.length || newFiles.length) ? (
-              <div className="mk-cart-edit-uploadRow">
-                <SkeletonText width="100%" height={8} />
-              </div>
-            ) : null}
-
             {existingAttachments.length || newFiles.length ? (
-              <div className="mk-cart-edit-attachments">
-                {existingAttachments.map((att) => (
-                  <div
-                    key={`existing-${att.index}`}
-                    className="mk-cart-edit-attachment"
-                  >
-                    <div className="mk-cart-edit-attachment__media">
-                      {isImageAttachment(att.type, att.url, att.name) &&
-                      att.url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={att.url}
-                          alt={att.name || "attachment"}
-                          loading="lazy"
-                          decoding="async"
-                        />
-                      ) : (
-                        <div className="mk-cart-edit-attachment__empty">📎</div>
-                      )}
-                    </div>
+              <div className="mk-mcart-edit__files">
+                {existingAttachments.map((att) => {
+                  const isImage = isImageAttachment(att.type, att.url, att.name);
 
-                    <div className="mk-cart-edit-attachment__body">
-                      <div
-                        className="mk-cart-edit-attachment__name"
-                        title={att.name || ""}
+                  return (
+                    <div
+                      key={`existing-${att.index}`}
+                      className="mk-mcart-edit__file"
+                    >
+                      <button
+                        type="button"
+                        disabled={!isImage || !att.url}
+                        onClick={() => openImagePreview(att.url, att.name)}
+                        className="mk-mcart-edit__fileMedia"
+                        aria-label="معاينة الصورة"
                       >
-                        {att.name || `صورة ${att.index}`}
+                        {isImage && att.url ? (
+                          <img
+                            src={att.url}
+                            alt={att.name || "attachment"}
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        ) : (
+                          <span>📎</span>
+                        )}
+                      </button>
+
+                      <div className="mk-mcart-edit__fileFoot">
+                        <span>{formatFileSize(att.size) || "صورة"}</span>
+
+                        <button
+                          type="button"
+                          onClick={() => removeExistingAttachment(att.index)}
+                          disabled={busy}
+                        >
+                          إزالة
+                        </button>
                       </div>
+                    </div>
+                  );
+                })}
+
+                {newFilePreviews.map((preview, index) => (
+                  <div
+                    key={`new-${preview.file.name}-${preview.file.size}-${preview.file.lastModified}-${index}`}
+                    className="mk-mcart-edit__file"
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openImagePreview(preview.url, preview.file.name)
+                      }
+                      className="mk-mcart-edit__fileMedia"
+                      aria-label="معاينة الصورة"
+                    >
+                      <img
+                        src={preview.url}
+                        alt={preview.file.name}
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    </button>
+
+                    <div className="mk-mcart-edit__fileFoot">
+                      <span>جديد · {formatFileSize(preview.file.size)}</span>
 
                       <button
                         type="button"
-                        onClick={() => removeExistingAttachment(att.index)}
+                        onClick={() => removeNewFileAt(index)}
                         disabled={busy}
-                        className="mk-cart-edit-attachment__remove"
                       >
                         إزالة
                       </button>
                     </div>
                   </div>
                 ))}
-
-                {newFiles.map((file, idx) => (
-                  <NewFilePreview
-                    key={`new-${file.name}-${file.size}-${file.lastModified}-${idx}`}
-                    file={file}
-                    onRemove={() => removeNewFileAt(idx)}
-                  />
-                ))}
               </div>
             ) : (
-              <div className="mk-cart-edit-desc">
-                لا توجد صور مرفقة حالياً
+              <div className="mk-mcart-edit__empty">
+                لا توجد صور مرفقة حاليًا.
               </div>
             )}
-          </div>
+          </section>
+        </div>
 
-          <div className="mk-cart-edit-actions">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={busy}
-              className="mk-cart-edit-cancel"
-            >
-              إلغاء
-            </button>
+        <footer className="mk-mcart-edit__actions">
+          <button
+            type="button"
+            onClick={closeWithMotion}
+            disabled={busy}
+            className="mk-mcart-edit__cancel"
+          >
+            إلغاء
+          </button>
 
-            <button
-              type="button"
-              onClick={onSave}
-              disabled={busy || (variants.length ? !canResolveVariant : false)}
-              className="mk-cart-edit-save"
-            >
-              {busy ? "جاري الحفظ..." : "حفظ التغييرات"}
-            </button>
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={busy || (variants.length ? !canResolveVariant : false)}
+            className="mk-mcart-edit__save"
+          >
+            {busy ? "جاري الحفظ..." : "حفظ التغييرات"}
+          </button>
+        </footer>
+      </section>
+
+      {imagePreview ? (
+        <div className="mk-mcart-editPreview" role="dialog" aria-modal="true">
+          <button
+            type="button"
+            className="mk-mcart-editPreview__overlay"
+            onClick={() => setImagePreview(null)}
+            aria-label="إغلاق"
+          />
+
+          <div className="mk-mcart-editPreview__panel">
+            <div className="mk-mcart-editPreview__head">
+              <div title={imagePreview.name}>{imagePreview.name}</div>
+
+              <button
+                type="button"
+                onClick={() => setImagePreview(null)}
+                aria-label="إغلاق"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="mk-mcart-editPreview__body">
+              <img src={imagePreview.url} alt={imagePreview.name} />
+            </div>
           </div>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }

@@ -32,9 +32,20 @@ function isActivePath(pathname: string | null, href: string) {
   return path === target || path.startsWith(`${target}/`);
 }
 
-export default function BottomNav({
-  initialCartCount = 0,
-}: Props) {
+function isSearchAction(href: string, label: string) {
+  const cleanHref = String(href || "").trim();
+  const cleanLabel = String(label || "").trim();
+
+  return cleanHref === "/search" || cleanLabel === "البحث";
+}
+
+function openSmartSearch() {
+  if (typeof window === "undefined") return;
+
+  window.dispatchEvent(new CustomEvent("mk:search:open"));
+}
+
+export default function BottomNav({ initialCartCount = 0 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
 
@@ -63,13 +74,19 @@ export default function BottomNav({
       <div className="mk-tabbar__inner">
         {items.map((item) => {
           const href = item.href;
-          const active = isActivePath(pathname, href);
+          const searchAction = isSearchAction(href, item.label);
+          const active = searchAction ? false : isActivePath(pathname, href);
 
           return (
             <button
               key={`${item.label}-${href}`}
               type="button"
               onClick={() => {
+                if (searchAction) {
+                  openSmartSearch();
+                  return;
+                }
+
                 if (active) return;
 
                 if (item.type === "screen") {

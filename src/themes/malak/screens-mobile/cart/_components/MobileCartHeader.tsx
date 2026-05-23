@@ -2,68 +2,60 @@
 "use client";
 
 type Props = {
-  title?: string;
-  subtitle?: string;
-  refreshing?: boolean;
+  loading: boolean;
+  totalQty: number;
+  isEmpty: boolean;
   onBack: () => void;
   onContinueShopping: () => void;
 };
 
 export default function MobileCartHeader({
-  title = "سلة التسوق",
-  subtitle = "",
-  refreshing = false,
+  loading,
+  totalQty,
+  isEmpty,
   onBack,
   onContinueShopping,
 }: Props) {
   return (
-    <div className="mk-mobile-cart-header">
-      <div className="mk-mobile-cart-header__row">
-        {refreshing ? (
-          <div className="mk-mobile-cart-header__loading" aria-hidden />
-        ) : null}
-
+    <header className="mk-mcart-header">
+      <div className="mk-mcart-header__top">
         <button
           type="button"
-          onClick={onContinueShopping}
-          aria-label="متابعة التسوق"
-          className="mk-mobile-cart-header__iconBtn mk-mobile-cart-header__shopBtn"
-          title="متابعة التسوق"
+          onClick={onBack}
+          className="mk-mcart-header__back"
+          aria-label="رجوع"
         >
-          🛍️
+          →
         </button>
 
-        <div className="mk-mobile-cart-header__titleBox">
-          <div className="mk-mobile-cart-header__title">{title}</div>
+        <div className="mk-mcart-header__titleWrap">
+          <div className="mk-mcart-header__eyebrow">سلة التسوق</div>
 
-          {subtitle ? (
-            <div className="mk-mobile-cart-header__subtitle">{subtitle}</div>
-          ) : null}
+          <div className="mk-mcart-header__titleRow">
+            <h1 className="mk-mcart-header__title">حقيبتك</h1>
+
+            {totalQty > 0 ? (
+              <span className="mk-mcart-header__badge">{totalQty}</span>
+            ) : null}
+          </div>
         </div>
 
         <button
           type="button"
-          onClick={onBack}
-          aria-label="رجوع"
-          className="mk-mobile-cart-header__iconBtn mk-mobile-cart-header__backBtn"
+          onClick={onContinueShopping}
+          className="mk-mcart-header__shop"
         >
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M9 18L15 12L9 6"
-              stroke="currentColor"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+          تسوق
         </button>
       </div>
-    </div>
+
+      <div className="mk-mcart-header__desc">
+        {loading
+          ? "نجهز محتويات السلة..."
+          : isEmpty
+            ? "سلتك فارغة، ابدأ بإضافة منتجاتك المفضلة."
+            : `${totalQty} قطعة جاهزة للمراجعة قبل إتمام الطلب.`}
+      </div>
+    </header>
   );
 }

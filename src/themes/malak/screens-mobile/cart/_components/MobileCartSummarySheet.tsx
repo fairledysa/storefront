@@ -1,20 +1,15 @@
 // FILE: apps/storefront/src/themes/malak/screens-mobile/cart/_components/MobileCartSummarySheet.tsx
 "use client";
 
-import {
-  useEffect,
-  useMemo,
-  useState,
-  type CSSProperties,
-} from "react";
+import { memo, useCallback, useMemo, useState, type KeyboardEvent } from "react";
+import CircleArrowDown01 from "@/components/icon/huge/CircleArrowDown01";
+import CircleArrowUp01 from "@/components/icon/huge/CircleArrowUp01";
 import type {
   CartCoupon,
   CartSummaryMoney,
 } from "../../../screens/cart/_components/types";
 
 type Props = {
-  open: boolean;
-  onClose: () => void;
   onCheckout: () => void;
   summary: CartSummaryMoney | null;
   itemsCount: number;
@@ -26,136 +21,120 @@ type Props = {
   onRemoveCoupon: () => void;
 };
 
-function fmt(amount: number, currency: string) {
+function clampDecimals(value: any) {
+  const n = Number(value ?? 2);
+  if (!Number.isFinite(n)) return 2;
+  return Math.max(0, Math.min(4, Math.floor(n)));
+}
+
+function readNumber(value: any) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function readFiniteNumber(...values: any[]) {
+  for (const value of values) {
+    const n = readNumber(value);
+    if (n != null) return n;
+  }
+
+  return null;
+}
+
+function readPositiveNumber(...values: any[]) {
+  for (const value of values) {
+    const n = readNumber(value);
+    if (n != null && n > 0) return n;
+  }
+
+  return null;
+}
+
+function readBool(value: any, fallback = false) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1;
+
+  if (typeof value === "string") {
+    const text = value.trim().toLowerCase();
+
+    if (["true", "1", "yes", "on", "enabled", "active"].includes(text)) {
+      return true;
+    }
+
+    if (["false", "0", "no", "off", "disabled", "inactive"].includes(text)) {
+      return false;
+    }
+  }
+
+  return fallback;
+}
+
+function readBoolMaybe(value: any) {
+  if (value === null || value === undefined || value === "") return null;
+
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1;
+
+  if (typeof value === "string") {
+    const text = value.trim().toLowerCase();
+
+    if (["true", "1", "yes", "on", "enabled", "active"].includes(text)) {
+      return true;
+    }
+
+    if (["false", "0", "no", "off", "disabled", "inactive"].includes(text)) {
+      return false;
+    }
+  }
+
+  return null;
+}
+
+function readText(...values: any[]) {
+  for (const value of values) {
+    const text = String(value ?? "").trim();
+    if (text) return text;
+  }
+
+  return "";
+}
+
+function fmt(amount: number, currencySymbol: string, decimalDigits: number) {
   const n = Number(amount ?? 0);
   const val = Number.isFinite(n) ? n : 0;
+  const symbol = String(currencySymbol || "").trim();
 
-  return `${new Intl.NumberFormat("ar-SA", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(val)} ${currency}`;
+  const formatted = new Intl.NumberFormat("ar-SA", {
+    minimumFractionDigits: decimalDigits,
+    maximumFractionDigits: decimalDigits,
+  }).format(val);
+
+  return symbol ? `${formatted} ${symbol}` : formatted;
 }
 
-function fmtCompact(amount: number, currency: string) {
+function fmtCompact(
+  amount: number,
+  currencySymbol: string,
+  decimalDigits: number,
+) {
   const n = Number(amount ?? 0);
   const val = Number.isFinite(n) ? n : 0;
+  const symbol = String(currencySymbol || "").trim();
 
-  return `${new Intl.NumberFormat("ar-SA", {
-    maximumFractionDigits: 0,
-  }).format(val)} ${currency}`;
-}
-
-function useBottomOffsetPx() {
-  const [px, setPx] = useState(0);
-
-  useEffect(() => {
-    const findTabbarEl = () => {
-      const byClass = document.querySelector(".mk-tabbar") as HTMLElement | null;
-      if (byClass) return byClass;
-
-      const byId = document.getElementById("dvxTabbar_70421");
-      if (byId) return byId as HTMLElement;
-
-      const any =
-        (document.querySelector('[id^="dvxTabbar_"]') as HTMLElement | null) ??
-        (document.querySelector('[data-dvx-tabbar="1"]') as HTMLElement | null);
-
-      return any ?? null;
-    };
-
-    const measure = () => {
-      const el = findTabbarEl();
-      if (!el) {
-        setPx(0);
-        return;
-      }
-
-      const h = Math.max(0, Math.round(el.getBoundingClientRect().height || 0));
-      setPx(h ? h + 8 : 0);
-    };
-
-    measure();
-
-    const ro =
-      typeof window !== "undefined" && "ResizeObserver" in window
-        ? new ResizeObserver(() => measure())
-        : null;
-
-    const el = findTabbarEl();
-    if (el && ro) ro.observe(el);
-
-    window.addEventListener("resize", measure);
-    window.addEventListener("orientationchange", measure);
-
-    const t = window.setInterval(measure, 800);
-
-    return () => {
-      window.clearInterval(t);
-      window.removeEventListener("resize", measure);
-      window.removeEventListener("orientationchange", measure);
-      if (el && ro) ro.unobserve(el);
-      if (ro) ro.disconnect();
-    };
-  }, []);
-
-  return px;
-}
-
-function SkeletonText({
-  width,
-  height = 14,
-}: {
-  width: number | string;
-  height?: number;
-}) {
-  return (
-    <div
-      aria-hidden
-      className="mk-cart-skeleton-line"
-      style={{ width, height }}
-    />
+  const maximumFractionDigits = Math.max(
+    0,
+    Math.min(2, Math.floor(Number(decimalDigits ?? 2))),
   );
+
+  const formatted = new Intl.NumberFormat("ar-SA", {
+    maximumFractionDigits,
+    minimumFractionDigits: 0,
+  }).format(val);
+
+  return symbol ? `${formatted} ${symbol}` : formatted;
 }
 
-function SummaryRow({
-  label,
-  value,
-  strong = false,
-  valueColor,
-  loading = false,
-}: {
-  label: string;
-  value: string | null;
-  strong?: boolean;
-  valueColor?: string;
-  loading?: boolean;
-}) {
-  return (
-    <div
-      className={[
-        "mk-cart-summary-row",
-        strong ? "mk-cart-summary-row--strong" : "",
-      ].join(" ")}
-    >
-      <div className="mk-cart-summary-row__label">{label}</div>
-
-      {loading || value == null ? (
-        <SkeletonText width={76} />
-      ) : (
-        <div
-          className="mk-cart-summary-row__value"
-          style={valueColor ? { color: valueColor } : undefined}
-        >
-          {value}
-        </div>
-      )}
-    </div>
-  );
-}
-
-export default function MobileCartSummarySheet({
-  open,
-  onClose,
+function MobileCartSummarySheet({
   onCheckout,
   summary,
   itemsCount,
@@ -166,236 +145,460 @@ export default function MobileCartSummarySheet({
   onApplyCoupon,
   onRemoveCoupon,
 }: Props) {
-  const currency = summary?.currency || "SAR";
+  const [expanded, setExpanded] = useState(false);
   const [code, setCode] = useState("");
 
-  const [mounted, setMounted] = useState(open);
-  const [visible, setVisible] = useState(false);
+  const summaryAny: any = summary ?? null;
+  const isLoading = loading || !summary;
 
-  const bottomOffsetPx = useBottomOffsetPx();
+  const currency = String(summaryAny?.currency ?? "").trim();
+  const currencySymbol = String(
+    summaryAny?.currency_symbol ?? summaryAny?.currencySymbol ?? currency,
+  ).trim();
 
-  useEffect(() => {
-    if (open) {
-      setMounted(true);
-      const raf = window.requestAnimationFrame(() => setVisible(true));
-      return () => window.cancelAnimationFrame(raf);
-    }
-
-    setVisible(false);
-
-    const t = window.setTimeout(() => setMounted(false), 260);
-    return () => window.clearTimeout(t);
-  }, [open]);
-
-  const canCheckout = useMemo(
-    () => !loading && !busy && itemsCount > 0,
-    [loading, busy, itemsCount],
+  const currencyDecimals = clampDecimals(
+    summaryAny?.currency_decimals ?? summaryAny?.currencyDecimals,
   );
 
-  const subtotal = Number(summary?.subtotal ?? summary?.total ?? 0);
-  const discount = Number(summary?.discount ?? 0);
-  const shipping = Number(summary?.shipping ?? 0);
-  const total = Number(summary?.total ?? 0);
+  const totals = useMemo(() => {
+    if (isLoading) {
+      return {
+        subtotal: 0,
+        discount: 0,
+        tax: 0,
+        shipping: 0,
+        total: 0,
+      };
+    }
 
-  const FREE_SHIPPING_THRESHOLD = 300;
-
-  const shippingProgress = useMemo(() => {
-    const safeSubtotal = Math.max(0, subtotal);
-    const remaining = Math.max(0, FREE_SHIPPING_THRESHOLD - safeSubtotal);
-    const percentRaw =
-      FREE_SHIPPING_THRESHOLD > 0
-        ? (safeSubtotal / FREE_SHIPPING_THRESHOLD) * 100
-        : 100;
-
-    const percent = Math.max(0, Math.min(100, Math.round(percentRaw)));
-    const reached = safeSubtotal >= FREE_SHIPPING_THRESHOLD;
+    const subtotal = Number(summary?.subtotal ?? 0);
+    const discount = Number(summary?.discount ?? 0);
+    const tax = Number(summary?.tax ?? 0);
+    const shipping = Number(summary?.shipping ?? 0);
+    const total = Number(summary?.total ?? 0);
 
     return {
+      subtotal: Number.isFinite(subtotal) ? subtotal : 0,
+      discount: Number.isFinite(discount) ? discount : 0,
+      tax: Number.isFinite(tax) ? tax : 0,
+      shipping: Number.isFinite(shipping) ? shipping : 0,
+      total: Number.isFinite(total) ? total : 0,
+    };
+  }, [
+    isLoading,
+    summary?.subtotal,
+    summary?.discount,
+    summary?.tax,
+    summary?.shipping,
+    summary?.total,
+  ]);
+
+  const hasTax = !isLoading && totals.tax > 0;
+
+  const canCheckout = useMemo(
+    () => !isLoading && !busy && itemsCount > 0,
+    [busy, isLoading, itemsCount],
+  );
+
+  const freeShippingMeta = useMemo(() => {
+    if (isLoading) {
+      return {
+        available: false,
+        applied: false,
+        ruleName: "",
+        threshold: null as number | null,
+        remaining: null as number | null,
+        discount: 0,
+      };
+    }
+
+    const sourceAny = summaryAny;
+
+    const shippingDiscount = Math.max(
+      0,
+      readFiniteNumber(
+        sourceAny?.shipping_discount,
+        sourceAny?.shippingDiscount,
+        sourceAny?.free_shipping_discount,
+        sourceAny?.freeShippingDiscount,
+      ) ?? 0,
+    );
+
+    const ruleName = readText(
+      sourceAny?.free_shipping_rule_name,
+      sourceAny?.freeShippingRuleName,
+      sourceAny?.free_shipping_name,
+      sourceAny?.freeShippingName,
+    );
+
+    const explicitApplied = readBool(
+      sourceAny?.free_shipping ??
+        sourceAny?.freeShipping ??
+        sourceAny?.free_shipping_applied ??
+        sourceAny?.freeShippingApplied,
+      false,
+    );
+
+    const explicitAvailable = readBoolMaybe(
+      sourceAny?.free_shipping_available ??
+        sourceAny?.freeShippingAvailable ??
+        sourceAny?.has_free_shipping_rule ??
+        sourceAny?.hasFreeShippingRule,
+    );
+
+    const applied = Boolean(explicitApplied || shippingDiscount > 0);
+
+    let threshold = readPositiveNumber(
+      sourceAny?.free_shipping_threshold,
+      sourceAny?.freeShippingThreshold,
+      sourceAny?.free_shipping_minimum,
+      sourceAny?.freeShippingMinimum,
+      sourceAny?.free_shipping_minimum_subtotal,
+      sourceAny?.freeShippingMinimumSubtotal,
+      sourceAny?.free_shipping_rule_minimum,
+      sourceAny?.freeShippingRuleMinimum,
+      sourceAny?.free_shipping_rule_minimum_subtotal,
+      sourceAny?.freeShippingRuleMinimumSubtotal,
+      sourceAny?.minimum_free_shipping_amount,
+      sourceAny?.minimumFreeShippingAmount,
+      sourceAny?.free_shipping_target,
+      sourceAny?.freeShippingTarget,
+      sourceAny?.minimumSubtotal,
+      sourceAny?.minimum_subtotal,
+    );
+
+    const explicitRemaining = readFiniteNumber(
+      sourceAny?.free_shipping_remaining,
+      sourceAny?.freeShippingRemaining,
+      sourceAny?.free_shipping_remaining_amount,
+      sourceAny?.freeShippingRemainingAmount,
+      sourceAny?.remaining_for_free_shipping,
+      sourceAny?.remainingForFreeShipping,
+    );
+
+    if (!threshold && explicitRemaining != null && explicitRemaining > 0) {
+      threshold = Math.max(0, totals.subtotal) + explicitRemaining;
+    }
+
+    if (!threshold && applied) {
+      threshold = Math.max(1, totals.subtotal);
+    }
+
+    const available =
+      explicitAvailable === true ||
+      Boolean(threshold && threshold > 0) ||
+      applied;
+
+    return {
+      available,
+      applied,
+      ruleName,
+      threshold,
+      remaining: explicitRemaining,
+      discount: shippingDiscount,
+    };
+  }, [isLoading, summaryAny, totals.subtotal]);
+
+  const shippingProgress = useMemo(() => {
+    if (isLoading) {
+      return {
+        available: true,
+        remaining: 0,
+        percent: 30,
+        reached: false,
+        applied: false,
+      };
+    }
+
+    const subtotal = Math.max(0, totals.subtotal);
+    const threshold = freeShippingMeta.threshold;
+
+    if (!freeShippingMeta.available || !threshold || threshold <= 0) {
+      return {
+        available: false,
+        remaining: 0,
+        percent: 0,
+        reached: false,
+        applied: false,
+      };
+    }
+
+    const remaining = freeShippingMeta.applied
+      ? 0
+      : Math.max(0, freeShippingMeta.remaining ?? threshold - subtotal);
+
+    const reached =
+      freeShippingMeta.applied || remaining <= 0 || subtotal >= threshold;
+
+    const percentRaw = threshold > 0 ? (subtotal / threshold) * 100 : 0;
+    const percent = reached
+      ? 100
+      : Math.max(0, Math.min(100, Math.round(percentRaw)));
+
+    return {
+      available: true,
       remaining,
       percent,
       reached,
+      applied: freeShippingMeta.applied,
     };
-  }, [subtotal]);
+  }, [isLoading, totals.subtotal, freeShippingMeta]);
 
-  if (!mounted) return null;
+  const formatted = useMemo(
+    () => ({
+      subtotal: fmt(totals.subtotal, currencySymbol, currencyDecimals),
+      tax: fmt(totals.tax, currencySymbol, currencyDecimals),
+      discount:
+        totals.discount > 0
+          ? `- ${fmt(totals.discount, currencySymbol, currencyDecimals)}`
+          : fmt(0, currencySymbol, currencyDecimals),
+      shipping: fmt(totals.shipping, currencySymbol, currencyDecimals),
+      total: fmt(totals.total, currencySymbol, currencyDecimals),
+      remaining: fmtCompact(
+        shippingProgress.remaining,
+        currencySymbol,
+        currencyDecimals,
+      ),
+    }),
+    [
+      currencySymbol,
+      currencyDecimals,
+      totals.subtotal,
+      totals.tax,
+      totals.discount,
+      totals.shipping,
+      totals.total,
+      shippingProgress.remaining,
+    ],
+  );
+
+  const handleApplyCoupon = useCallback(() => {
+    const clean = code.trim();
+    if (!clean || busy || isLoading) return;
+
+    onApplyCoupon(clean);
+    setCode("");
+  }, [busy, code, isLoading, onApplyCoupon]);
+
+  const handleCouponKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key !== "Enter") return;
+      handleApplyCoupon();
+    },
+    [handleApplyCoupon],
+  );
 
   return (
-    <div
-      className={["mk-cart-sheet", visible ? "is-visible" : ""].join(" ")}
-      style={
-        {
-          "--mk-cart-sheet-bottom": `${bottomOffsetPx}px`,
-        } as CSSProperties
-      }
-    >
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label="إغلاق"
-        className="mk-cart-sheet__overlay"
-      />
+    <>
+      {expanded ? (
+        <button
+          type="button"
+          className="mk-mcart-sheetBackdrop"
+          onClick={() => setExpanded(false)}
+          aria-label="إغلاق تفاصيل الطلب"
+        />
+      ) : null}
 
-      <div dir="rtl" className="mk-cart-sheet__panel">
-        <div className="mk-cart-sheet__head">
-          <div className="mk-cart-sheet__handleWrap">
-            <div className="mk-cart-sheet__handle" />
-          </div>
+      <aside
+        className={[
+          "mk-mcart-sheet",
+          expanded ? "is-expanded" : "",
+          isLoading ? "is-loading" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        aria-busy={isLoading ? "true" : "false"}
+      >
+        <button
+          type="button"
+          className="mk-mcart-sheet__peek"
+          onClick={() => setExpanded((value) => !value)}
+          aria-expanded={expanded}
+        >
+          <span className="mk-mcart-sheet__handle" />
 
-          <div className="mk-cart-sheet__titleRow">
-            <div className="mk-cart-sheet__titleBox">
-              <div className="mk-cart-sheet__title">ملخص الطلب</div>
+          <span className="mk-mcart-sheet__peekText">
+            {expanded ? "إخفاء تفاصيل الطلب" : "عرض تفاصيل الطلب"}
+          </span>
 
-              <div className="mk-cart-sheet__subtitle">
-                {totalQty ? `${totalQty} قطعة داخل السلة` : "لا توجد منتجات"}
-              </div>
-            </div>
+          <span className="mk-mcart-sheet__peekIcon" aria-hidden="true">
+            {expanded ? <CircleArrowDown01 /> : <CircleArrowUp01 />}
+          </span>
+        </button>
 
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="إغلاق"
-              className="mk-cart-sheet__close"
-            >
-              ×
-            </button>
-          </div>
-        </div>
-
-        <div className="mk-cart-sheet__body">
-          <div className="mk-cart-summary-card">
-            <div className="mk-cart-free-row">
-              <div className="mk-cart-free-percent">
-                %{shippingProgress.percent}
-              </div>
-
-              <div className="mk-cart-free-text">
-                {shippingProgress.reached ? (
-                  <>مبروك 🎉 حصلت على الشحن المجاني</>
-                ) : (
-                  <>
-                    يتبقى{" "}
-                    <strong>
-                      {fmtCompact(shippingProgress.remaining, currency)}
-                    </strong>{" "}
-                    للشحن المجاني
-                  </>
-                )}
-              </div>
-            </div>
-
-            <div className="mk-cart-free-track">
-              <div
-                className="mk-cart-free-bar"
-                style={
-                  {
-                    "--mk-cart-free-percent": `${shippingProgress.percent}%`,
-                  } as CSSProperties
-                }
-              />
-            </div>
-
-            <div className="mk-cart-free-note">
-              أضف منتجات أكثر للوصول إلى الشحن المجاني
-            </div>
-          </div>
-
-          <div className="mk-cart-summary-card">
-            <div className="mk-cart-summary-rows">
-              <SummaryRow
-                label="مجموع المنتجات"
-                value={loading ? null : fmt(subtotal, currency)}
-                loading={loading}
-              />
-
-              <SummaryRow
-                label="الشحن"
-                value={loading ? null : fmt(shipping, currency)}
-                loading={loading}
-              />
-
-              {!loading && discount > 0 ? (
-                <SummaryRow
-                  label="الخصم"
-                  value={`- ${fmt(discount, currency)}`}
-                  valueColor="#059669"
-                />
-              ) : loading ? (
-                <SummaryRow label="الخصم" value={null} loading />
-              ) : null}
-
-              <div className="mk-cart-summary-divider" />
-
-              <SummaryRow
-                label="الإجمالي"
-                value={loading ? null : fmt(total, currency)}
-                strong
-                loading={loading}
-              />
-            </div>
-          </div>
-
-          <div className="mk-cart-summary-card">
-            <div className="mk-cart-coupon-title">كوبون خصم</div>
-
-            {coupon?.code ? (
-              <div className="mk-cart-coupon-applied">
-                <div className="mk-cart-coupon-applied__text">
-                  الكوبون المطبق:{" "}
-                  <span className="mk-cart-coupon-applied__code">
-                    {coupon.code}
-                  </span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={onRemoveCoupon}
-                  disabled={busy || loading}
-                  className="mk-cart-coupon-remove"
-                >
-                  إزالة
-                </button>
-              </div>
-            ) : (
-              <div className="mk-cart-coupon-form">
-                <input
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  placeholder="أدخل رمز الكوبون"
-                  className="mk-cart-coupon-input"
-                />
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    const c = code.trim();
-                    if (!c) return;
-
-                    onApplyCoupon(c);
-                    setCode("");
-                  }}
-                  disabled={busy || loading || !code.trim()}
-                  className="mk-cart-coupon-apply"
-                >
-                  تطبيق
-                </button>
-              </div>
-            )}
+        <div className="mk-mcart-sheet__hero">
+          <div className="mk-mcart-sheet__heroMeta">
+            <span>{totalQty ? `${totalQty} قطعة` : "الإجمالي"}</span>
+            <strong>{isLoading ? "—" : formatted.total}</strong>
           </div>
 
           <button
             type="button"
             onClick={onCheckout}
             disabled={!canCheckout}
-            className="mk-cart-sheet__checkout"
+            className="mk-mcart-checkout"
           >
-            {busy ? "جاري التحديث..." : "متابعة الدفع"}
+            <span>
+              {busy
+                ? "جاري التحديث..."
+                : isLoading
+                  ? "انتظر قليلًا"
+                  : "إتمام الطلب"}
+            </span>
           </button>
-
-          <div className="mk-cart-sheet__hint">
-            راجع الطلب قبل إكمال عملية الدفع
-          </div>
         </div>
-      </div>
-    </div>
+
+        {expanded ? (
+          <div className="mk-mcart-sheet__body">
+            {isLoading || shippingProgress.available ? (
+              <div
+                className={[
+                  "mk-mcart-free",
+                  !isLoading && shippingProgress.reached ? "is-reached" : "",
+                  isLoading ? "is-loading" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+              >
+                <div className="mk-mcart-free__top">
+                  <span>%{shippingProgress.percent}</span>
+
+                  <strong>
+                    {isLoading
+                      ? "جاري تجهيز بيانات الشحن..."
+                      : shippingProgress.applied
+                        ? `مبروك، الشحن مجاني${
+                            freeShippingMeta.ruleName
+                              ? ` — ${freeShippingMeta.ruleName}`
+                              : ""
+                          }`
+                        : shippingProgress.reached
+                          ? "وصلت لشرط الشحن المجاني"
+                          : `يتبقى ${formatted.remaining} للشحن المجاني`}
+                  </strong>
+                </div>
+
+                <div className="mk-mcart-free__bar">
+                  <span style={{ width: `${shippingProgress.percent}%` }} />
+                </div>
+              </div>
+            ) : null}
+
+            <div className="mk-mcart-totalBox">
+              <Row
+                label={hasTax ? "مجموع المنتجات بدون ضريبة" : "مجموع المنتجات"}
+                value={formatted.subtotal}
+                loading={isLoading}
+              />
+
+              {hasTax ? (
+                <Row
+                  label="ضريبة القيمة المضافة"
+                  value={formatted.tax}
+                  loading={isLoading}
+                />
+              ) : null}
+
+              <Row
+                label="الخصم"
+                value={formatted.discount}
+                loading={isLoading}
+                negative={!isLoading && totals.discount > 0}
+              />
+
+              <Row
+                label="الشحن"
+                value={formatted.shipping}
+                loading={isLoading}
+              />
+
+              <div className="mk-mcart-totalBox__divider" />
+
+              <Row
+                label="الإجمالي"
+                value={formatted.total}
+                strong
+                loading={isLoading}
+              />
+            </div>
+
+            <div className="mk-mcart-coupon">
+              <div className="mk-mcart-coupon__title">كوبون الخصم</div>
+
+              {coupon?.code && !isLoading ? (
+                <div className="mk-mcart-coupon__applied">
+                  <div>
+                    مطبق: <strong>{coupon.code}</strong>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={onRemoveCoupon}
+                    disabled={busy || isLoading}
+                  >
+                    إزالة
+                  </button>
+                </div>
+              ) : (
+                <div className="mk-mcart-coupon__form">
+                  <input
+                    value={code}
+                    onChange={(event) => setCode(event.target.value)}
+                    onKeyDown={handleCouponKeyDown}
+                    placeholder="أدخل كود الخصم"
+                    disabled={busy || isLoading}
+                  />
+
+                  <button
+                    type="button"
+                    onClick={handleApplyCoupon}
+                    disabled={busy || isLoading || !code.trim()}
+                  >
+                    تطبيق
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="mk-mcart-sheet__note">
+              {hasTax
+                ? "الأسعار شاملة للضريبة حسب إعدادات المتجر."
+                : "سيتم تأكيد الشحن والدفع في الخطوة التالية."}
+            </div>
+          </div>
+        ) : null}
+      </aside>
+    </>
   );
 }
+
+const Row = memo(function Row({
+  label,
+  value,
+  strong = false,
+  negative = false,
+  loading = false,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+  negative?: boolean;
+  loading?: boolean;
+}) {
+  return (
+    <div
+      className={[
+        "mk-mcart-row",
+        strong ? "mk-mcart-row--strong" : "",
+        negative ? "mk-mcart-row--negative" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <span>{label}</span>
+      <strong>{loading ? <em /> : value}</strong>
+    </div>
+  );
+});
+
+export default memo(MobileCartSummarySheet);

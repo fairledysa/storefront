@@ -164,3 +164,260 @@
   font-weight: 700;
   cursor: pointer;
 }
+
+
+
+
+
+
+
+
+
+
+/* =========================================================
+   Tag Page Mobile
+   FILE: apps/storefront/src/themes/malak/styles/screens-mobile/category.css
+   ========================================================= */
+
+@media (max-width: 760px) {
+  .mk-tag-page {
+    min-height: 100svh;
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--mk-color-primary) 4%, var(--mk-bg-page, #fff)) 0%,
+        var(--mk-bg-page, #fff) 190px
+      );
+    padding-bottom: calc(var(--mk-tabbar-total-h, 72px) + 54px);
+  }
+
+  .mk-tag-head {
+    padding: 18px 10px 0;
+  }
+
+  .mk-tag-head__inner {
+    width: 100%;
+    border: 1px solid color-mix(in srgb, var(--mk-color-primary) 10%, transparent);
+    border-radius: 26px;
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--mk-bg-product, #fff) 98%, transparent),
+        color-mix(in srgb, var(--mk-bg-product, #fff) 92%, var(--mk-bg-page, #fff))
+      );
+    padding: 16px 16px 15px;
+    box-shadow:
+      0 16px 42px rgba(15, 23, 42, 0.055),
+      0 1px 0 rgba(255, 255, 255, 0.82) inset;
+  }
+
+  .mk-tag-head__topline {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 7px;
+    margin-bottom: 11px;
+  }
+
+  .mk-tag-head__eyebrow,
+  .mk-tag-head__count {
+    min-height: 28px;
+    border-color: color-mix(in srgb, var(--mk-color-primary) 12%, transparent);
+    background: var(--mk-bg-product, #ffffff);
+    box-shadow: none;
+  }
+
+  .mk-tag-head__eyebrow {
+    padding: 0 10px;
+    color: var(--mk-text-muted);
+    font-size: 10.5px;
+  }
+
+  .mk-tag-head__count {
+    padding: 0 9px;
+    color: var(--mk-text-muted);
+    font-size: 10.5px;
+  }
+
+  .mk-tag-head__count strong {
+    color: var(--mk-color-primary);
+    font-size: 12px;
+  }
+
+  .mk-tag-head__title {
+    margin: 0;
+    color: var(--mk-text-main, #111827);
+    font-size: 28px;
+    font-weight: 950;
+    line-height: 1.15;
+    letter-spacing: -0.04em;
+  }
+
+  .mk-tag-head__desc {
+    max-width: none;
+    margin-top: 8px;
+    color: var(--mk-text-muted);
+    font-size: 12.5px;
+    font-weight: 750;
+    line-height: 1.8;
+  }
+
+  .mk-tag-products {
+    padding: 12px 10px calc(var(--mk-tabbar-total-h, 72px) + 96px);
+  }
+
+  .mk-tag-page .mk-dcat {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+  }
+
+  .mk-tag-page .mk-dcat__container {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+  }
+
+  .mk-tag-page
+    .mk-dcat__container
+    > *:not(.mk-dcat__grid):not(.mk-dcat__empty) {
+    display: none !important;
+  }
+
+  .mk-tag-page .mk-dcat__title {
+    display: none !important;
+  }
+
+  .mk-tag-page .mk-dcat__grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+    align-items: start !important;
+    justify-content: stretch !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-top: 0 !important;
+    direction: rtl !important;
+  }
+
+  .mk-tag-page .mk-dcat__grid > * {
+    min-width: 0 !important;
+  }
+
+  .mk-tag-page .mk-dcat__empty {
+    margin-top: 0 !important;
+    border-radius: 24px !important;
+    border: 1px solid color-mix(in srgb, var(--mk-color-primary) 10%, transparent) !important;
+    background: var(--mk-bg-product, #fff) !important;
+    color: var(--mk-text-muted) !important;
+    padding: 30px 18px !important;
+    font-size: 13px !important;
+    font-weight: 900 !important;
+    box-shadow: 0 16px 36px rgba(15, 23, 42, 0.045) !important;
+  }
+
+  .mk-tag-page .mkpc-card {
+    width: 100% !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    border-radius: 22px !important;
+    box-shadow:
+      0 16px 36px rgba(15, 23, 42, 0.055),
+      0 1px 0 rgba(255, 255, 255, 0.74) inset !important;
+  }
+
+  .mk-tag-page .mkpc-media {
+    aspect-ratio: 4 / 5.15 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    border-radius: 20px 20px 0 0 !important;
+    background: color-mix(
+      in srgb,
+      var(--mk-bg-product, #ffffff) 88%,
+      var(--mk-text-main, #111827) 5%
+    ) !important;
+  }
+
+  .mk-tag-page .mkpc-media-img,
+  .mk-tag-page .mkpc-media-img--hover {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+  }
+
+  .mk-tag-page .mkpc-body {
+    min-height: 122px !important;
+    padding: 10px 10px 11px !important;
+    gap: 6px !important;
+  }
+
+  .mk-tag-page .mkpc-title,
+  .mk-tag-page .mkpc-name {
+    min-height: 35px !important;
+    display: -webkit-box !important;
+    overflow: hidden !important;
+    color: var(--mk-text-main, #111827) !important;
+    font-size: 12.5px !important;
+    font-weight: 950 !important;
+    line-height: 1.45 !important;
+    -webkit-line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
+  }
+
+  .mk-tag-page .mkpc-subtitle,
+  .mk-tag-page .mkpc-desc {
+    min-height: 15px !important;
+    color: var(--mk-text-muted) !important;
+    font-size: 10.5px !important;
+    line-height: 1.45 !important;
+  }
+
+  .mk-tag-page .mkpc-price,
+  .mk-tag-page .mkpc-price-current {
+    color: var(--mk-text-main, #111827) !important;
+    font-size: 15px !important;
+    font-weight: 950 !important;
+    line-height: 1.2 !important;
+  }
+
+  .mk-tag-page .mkpc-tax,
+  .mk-tag-page .mkpc-price-tax {
+    color: var(--mk-text-muted) !important;
+    font-size: 10.5px !important;
+    font-weight: 850 !important;
+    line-height: 1.35 !important;
+  }
+
+  .mk-tag-page .mkpc-options-overlay {
+    display: grid !important;
+    transform: scale(0.88) !important;
+    transform-origin: bottom center !important;
+  }
+
+  body:has(.mk-tag-page) .mk-floating-actions {
+    bottom: calc(var(--mk-tabbar-total-h, 72px) + 78px) !important;
+  }
+}
+
+@media (max-width: 390px) {
+  .mk-tag-head {
+    padding-inline: 8px;
+  }
+
+  .mk-tag-products {
+    padding-inline: 8px;
+  }
+
+  .mk-tag-page .mk-dcat__grid {
+    gap: 8px !important;
+  }
+
+  .mk-tag-page .mkpc-body {
+    padding: 9px !important;
+  }
+
+  .mk-tag-page .mkpc-title,
+  .mk-tag-page .mkpc-name {
+    font-size: 12px !important;
+  }
+}

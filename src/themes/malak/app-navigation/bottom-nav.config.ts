@@ -54,8 +54,8 @@ export const BOTTOM_NAV_ITEMS: BottomNavItem[] = [
   },
   {
     type: "link",
-    href: "/brands",
-    label: "الماركات",
-    icon: "Atom01",
+    href: "/search",
+    label: "البحث",
+    icon: "SearchSquare",
   },
 ];

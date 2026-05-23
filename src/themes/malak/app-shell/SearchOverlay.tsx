@@ -842,7 +842,7 @@ function renderHighlighted(text: string, query: string): ReactNode {
   );
 }
 
-function shouldRenderCircleGroup(group: NormalizedGroup) {
+function shouldRenderVisualGroup(group: NormalizedGroup) {
   if (group.style === "circles" || group.style === "logos") return true;
 
   return group.items.some((item) => item.imageUrl || item.type === "brand");
@@ -893,32 +893,37 @@ function SearchItem({
   onNavigate,
 }: {
   item: NormalizedItem;
-  mode: "chip" | "circle" | "card";
+  mode: "chip" | "visual" | "card";
   onNavigate: () => void;
 }) {
-  if (mode === "circle") {
+  if (mode === "visual") {
     return (
       <SmartSearchLink
         href={item.href}
         onNavigate={onNavigate}
-        className="mk-search-ov__brand"
+        className="mk-search-ov__visual"
         title={item.title}
       >
-        {item.imageUrl ? (
-          <img
-            src={item.imageUrl}
-            alt={item.title}
-            className="mk-search-ov__brandImg"
-            loading="lazy"
-            decoding="async"
-          />
-        ) : item.icon ? (
-          <span className="mk-search-ov__brandIcon" aria-hidden="true">
-            <Icon icon={item.icon as any} size={20} />
-          </span>
-        ) : (
-          <span className="mk-search-ov__brandText">{item.title}</span>
-        )}
+        <span className="mk-search-ov__visualMedia">
+          {item.imageUrl ? (
+            <img
+              src={item.imageUrl}
+              alt={item.title}
+              className="mk-search-ov__visualImg"
+              loading="lazy"
+              decoding="async"
+            />
+          ) : item.icon ? (
+            <Icon icon={item.icon as any} size={18} />
+          ) : (
+            <Icon icon="Search01" size={17} />
+          )}
+        </span>
+
+        <span className="mk-search-ov__visualText">
+          <b>{item.title}</b>
+          {item.subtitle ? <small>{item.subtitle}</small> : null}
+        </span>
       </SmartSearchLink>
     );
   }
@@ -943,7 +948,11 @@ function SearchItem({
           <span className="mk-search-ov__cardIcon" aria-hidden="true">
             <Icon icon={item.icon as any} size={18} />
           </span>
-        ) : null}
+        ) : (
+          <span className="mk-search-ov__cardIcon" aria-hidden="true">
+            <Icon icon="Search01" size={17} />
+          </span>
+        )}
 
         <span className="mk-search-ov__cardText">
           <span>{item.title}</span>
@@ -1046,7 +1055,7 @@ export default function SearchOverlay({
   const query = s(q);
   const shouldShowProductSearch = query.length >= 2;
 
-  const finalPlaceholder = s(placeholder) || "بحث...";
+  const finalPlaceholder = s(placeholder) || "ما الذي تبحث عنه؟";
 
   const finalGroups = useMemo(() => {
     return normalizeGroupsFromAdmin(groups);
@@ -1078,6 +1087,19 @@ export default function SearchOverlay({
     if (!shouldShowProductSearch) return [];
     return normalizeSuggestions(apiSuggestions, query, productResults);
   }, [apiSuggestions, query, productResults, shouldShowProductSearch]);
+
+  const quickPreviewItems = useMemo(() => {
+    const out: NormalizedItem[] = [];
+
+    for (const group of finalGroups) {
+      for (const item of group.items) {
+        out.push(item);
+        if (out.length >= 4) return out;
+      }
+    }
+
+    return out;
+  }, [finalGroups]);
 
   function close() {
     onOpenChange(false);
@@ -1113,12 +1135,14 @@ export default function SearchOverlay({
   useEffect(() => {
     if (!open) return;
 
+    setQ("");
+
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
     const timer = window.setTimeout(() => {
       inputRef.current?.focus();
-    }, 50);
+    }, 80);
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") close();
@@ -1195,18 +1219,49 @@ export default function SearchOverlay({
   if (!open) return null;
 
   return (
-    <div className="mk-search-ov" dir="rtl" role="dialog" aria-modal="true">
-      <div className="mk-search-ov__top">
-        <button
-          type="button"
-          className="mk-search-ov__back"
-          onClick={close}
-          aria-label="رجوع"
-        >
-          <Icon icon={"ArrowRight01" as any} size={18} />
-        </button>
+    <div
+      className={[
+        "mk-search-ov",
+        shouldShowProductSearch ? "is-live" : "is-browse",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      dir="rtl"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="mk-search-ov__shell">
+        <div className="mk-search-ov__grabber" aria-hidden="true" />
+
+        <div className="mk-search-ov__top">
+          <button
+            type="button"
+            className="mk-search-ov__back"
+            onClick={close}
+            aria-label="رجوع"
+          >
+            <Icon icon={"ArrowRight01" as any} size={18} />
+          </button>
+
+          <div className="mk-search-ov__heading">
+            <strong>البحث</strong>
+            <span>ابحث بسرعة داخل المتجر</span>
+          </div>
+
+          <button type="button" className="mk-search-ov__close" onClick={close}>
+            إغلاق
+          </button>
+        </div>
 
         <form className="mk-search-ov__bar" onSubmit={handleSubmit}>
+          <button
+            type="submit"
+            className="mk-search-ov__iconBtn"
+            aria-label="بحث"
+          >
+            <Icon icon={"Search01" as any} size={18} />
+          </button>
+
           <input
             ref={inputRef}
             value={q}
@@ -1218,125 +1273,183 @@ export default function SearchOverlay({
             aria-label="البحث في المتجر"
           />
 
-          <input type="hidden" name="sort" value="newest" />
+          {query ? (
+            <button
+              type="button"
+              className="mk-search-ov__clear"
+              aria-label="مسح البحث"
+              onClick={() => {
+                setQ("");
+                inputRef.current?.focus();
+              }}
+            >
+              ×
+            </button>
+          ) : null}
 
-          <button
-            type="submit"
-            className="mk-search-ov__iconBtn"
-            aria-label="بحث"
-          >
-            <Icon icon={"Search01" as any} size={18} />
-          </button>
+          <input type="hidden" name="sort" value="newest" />
         </form>
 
-        <button type="button" className="mk-search-ov__close" onClick={close}>
-          إلغاء
-        </button>
-      </div>
-
-      <div className="mk-search-ov__content">
-        {shouldShowProductSearch ? (
-          <div className="mk-search-ov__live">
-            <section className="mk-search-ov__section">
-              <h3 className="mk-search-ov__title">اقتراحات</h3>
-
-              {productLoading && !liveSuggestions.length ? (
-                <div className="mk-search-ov__state">جاري البحث...</div>
-              ) : liveSuggestions.length > 0 ? (
-                <div className="mk-search-ov__suggestions">
-                  {liveSuggestions.map((item, index) => (
-                    <button
-                      key={`${item}-${index}`}
-                      type="button"
-                      className="mk-search-ov__suggestion"
-                      onClick={() => goToSearch(item)}
-                    >
-                      <span
-                        className="mk-search-ov__suggestionIcon"
-                        aria-hidden="true"
-                      >
-                        <Icon icon="Search01" size={15} />
-                      </span>
-
-                      <span className="mk-search-ov__suggestionText">
-                        {renderHighlighted(item, query)}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              ) : productReady ? (
-                <div className="mk-search-ov__state">لا توجد اقتراحات</div>
-              ) : null}
-            </section>
-
-            <section className="mk-search-ov__section">
-              <h3 className="mk-search-ov__title">منتجات</h3>
-
-              {productLoading && !productResults.length ? (
-                <div className="mk-search-ov__state">
-                  جاري تحميل المنتجات...
-                </div>
-              ) : productResults.length > 0 ? (
-                <div className="mk-search-ov__products">
-                  {productResults.map((item) => (
-                    <ProductResultItem
-                      key={item.id}
-                      item={item}
-                      onNavigate={close}
-                    />
-                  ))}
-                </div>
-              ) : productReady ? (
-                <div className="mk-search-ov__state">
-                  لا توجد منتجات مطابقة
-                </div>
-              ) : null}
-            </section>
+        {!shouldShowProductSearch && quickPreviewItems.length ? (
+          <div className="mk-search-ov__quickPreview">
+            {quickPreviewItems.map((item) => (
+              <SmartSearchLink
+                key={item.id}
+                href={item.href}
+                onNavigate={close}
+                className="mk-search-ov__quickPreviewItem"
+                title={item.title}
+              >
+                {item.imageUrl ? (
+                  <img src={item.imageUrl} alt={item.title} />
+                ) : (
+                  <Icon icon="Search01" size={15} />
+                )}
+                <span>{item.title}</span>
+              </SmartSearchLink>
+            ))}
           </div>
-        ) : finalGroups.length > 0 ? (
-          <div className="mk-search-ov__groups">
-            {finalGroups.map((group) => {
-              const mode = shouldRenderCircleGroup(group)
-                ? "circle"
-                : shouldRenderCardsGroup(group)
-                  ? "card"
-                  : "chip";
+        ) : null}
 
-              return (
-                <section key={group.id} className="mk-search-ov__group">
-                  <h3 className="mk-search-ov__title">{group.title}</h3>
+        <div className="mk-search-ov__content">
+          {shouldShowProductSearch ? (
+            <div className="mk-search-ov__live">
+              <section className="mk-search-ov__section mk-search-ov__section--suggestions">
+                <div className="mk-search-ov__sectionHead">
+                  <h3 className="mk-search-ov__title">اقتراحات سريعة</h3>
 
-                  {group.description ? (
-                    <p className="mk-search-ov__desc">{group.description}</p>
+                  {query ? (
+                    <button
+                      type="button"
+                      className="mk-search-ov__viewAll"
+                      onClick={() => goToSearch(query)}
+                    >
+                      عرض النتائج
+                    </button>
                   ) : null}
+                </div>
 
-                  <div
-                    className={
-                      mode === "circle"
-                        ? "mk-search-ov__brands"
-                        : mode === "card"
-                          ? "mk-search-ov__cards"
-                          : "mk-search-ov__chips"
-                    }
-                  >
-                    {group.items.map((item) => (
-                      <SearchItem
+                {productLoading && !liveSuggestions.length ? (
+                  <div className="mk-search-ov__state">جاري البحث...</div>
+                ) : liveSuggestions.length > 0 ? (
+                  <div className="mk-search-ov__suggestions">
+                    {liveSuggestions.map((item, index) => (
+                      <button
+                        key={`${item}-${index}`}
+                        type="button"
+                        className="mk-search-ov__suggestion"
+                        onClick={() => goToSearch(item)}
+                      >
+                        <span
+                          className="mk-search-ov__suggestionIcon"
+                          aria-hidden="true"
+                        >
+                          <Icon icon="Search01" size={15} />
+                        </span>
+
+                        <span className="mk-search-ov__suggestionText">
+                          {renderHighlighted(item, query)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : productReady ? (
+                  <div className="mk-search-ov__state">لا توجد اقتراحات</div>
+                ) : null}
+              </section>
+
+              <section className="mk-search-ov__section">
+                <div className="mk-search-ov__sectionHead">
+                  <h3 className="mk-search-ov__title">منتجات مطابقة</h3>
+
+                  {productResults.length ? (
+                    <span className="mk-search-ov__count">
+                      {productResults.length}
+                    </span>
+                  ) : null}
+                </div>
+
+                {productLoading && !productResults.length ? (
+                  <div className="mk-search-ov__state">
+                    جاري تحميل المنتجات...
+                  </div>
+                ) : productResults.length > 0 ? (
+                  <div className="mk-search-ov__products">
+                    {productResults.map((item) => (
+                      <ProductResultItem
                         key={item.id}
                         item={item}
-                        mode={mode}
                         onNavigate={close}
                       />
                     ))}
                   </div>
-                </section>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="mk-search-ov__empty">
-            اكتب كلمة للبحث داخل المتجر
-          </div>
-        )}
+                ) : productReady ? (
+                  <div className="mk-search-ov__state">
+                    لا توجد منتجات مطابقة
+                  </div>
+                ) : null}
+              </section>
+            </div>
+          ) : finalGroups.length > 0 ? (
+            <div className="mk-search-ov__groups">
+              {finalGroups.map((group) => {
+                const mode = shouldRenderVisualGroup(group)
+                  ? "visual"
+                  : shouldRenderCardsGroup(group)
+                    ? "card"
+                    : "chip";
+
+                return (
+                  <section
+                    key={group.id}
+                    className={[
+                      "mk-search-ov__group",
+                      `mk-search-ov__group--${mode}`,
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                  >
+                    <div className="mk-search-ov__sectionHead">
+                      <div>
+                        <h3 className="mk-search-ov__title">{group.title}</h3>
+
+                        {group.description ? (
+                          <p className="mk-search-ov__desc">
+                            {group.description}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div
+                      className={
+                        mode === "visual"
+                          ? "mk-search-ov__visuals"
+                          : mode === "card"
+                            ? "mk-search-ov__cards"
+                            : "mk-search-ov__chips"
+                      }
+                    >
+                      {group.items.map((item) => (
+                        <SearchItem
+                          key={item.id}
+                          item={item}
+                          mode={mode}
+                          onNavigate={close}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="mk-search-ov__empty">
+              <Icon icon="Search01" size={24} />
+              <span>اكتب كلمة للبحث داخل المتجر</span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

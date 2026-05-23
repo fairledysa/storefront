@@ -297,8 +297,8 @@
   color: var(--mk-text-header, var(--mk-text-main));
 }
 
-.mk-home-topbar.is-scrolled .mk-home-topbar__ship {
-  display: flex;
+ .mk-home-topbar.is-scrolled .mk-home-topbar__ship {
+  display: none !important;
 }
 
 .mk-home-topbar__shipDot {
@@ -413,3 +413,5 @@
     height: 38px;
   }
 }
+
+

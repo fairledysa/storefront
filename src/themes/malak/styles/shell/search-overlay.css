@@ -1,21 +1,27 @@
 /* FILE: apps/storefront/src/themes/malak/styles/shell/search-overlay.css */
 
+/* =========================================================
+   Search Overlay
+   Clean app-like search modal for Malak theme
+   ========================================================= */
+
 .mk-search-ov {
   --mk-search-safe-top: env(safe-area-inset-top, 0px);
   --mk-search-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --mk-search-card: var(--mk-bg-product, #ffffff);
+  --mk-search-muted: var(--mk-text-muted, #64748b);
+  --mk-search-border: color-mix(
+    in srgb,
+    var(--mk-color-primary) 12%,
+    transparent
+  );
 
   position: fixed;
   inset: 0;
-  z-index: var(--mk-z-overlay, 400);
+  z-index: 2147483000;
   display: flex;
-  min-height: 100vh;
-  min-height: 100svh;
-  flex-direction: column;
-  background: color-mix(
-    in srgb,
-    var(--mk-bg-page) 74%,
-    var(--mk-text-main) 26%
-  );
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.28);
   color: var(--mk-text-main);
   direction: rtl;
   overflow: hidden;
@@ -28,426 +34,505 @@
   box-sizing: border-box;
 }
 
+.mk-search-ov__shell {
+  width: min(100%, 760px);
+  height: min(100svh, 860px);
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(
+      circle at 50% -90px,
+      color-mix(in srgb, var(--mk-color-primary) 10%, transparent),
+      transparent 300px
+    ),
+    var(--mk-bg-page);
+  color: var(--mk-text-main);
+  overflow: hidden;
+  box-shadow: 0 28px 90px rgba(15, 23, 42, 0.22);
+}
+
+.mk-search-ov__grabber {
+  display: none;
+}
+
+/* =========================================================
+   Header
+   ========================================================= */
+
 .mk-search-ov__top {
-  position: sticky;
-  top: 0;
-  z-index: 2;
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  padding: calc(10px + var(--mk-search-safe-top)) 12px 10px;
-  background: var(--mk-bg-header);
-  color: var(--mk-text-header);
-  border-bottom: 1px solid var(--mk-border-soft);
-  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
+  padding: calc(12px + var(--mk-search-safe-top)) 14px 10px;
+  background: color-mix(in srgb, var(--mk-search-card) 96%, transparent);
+  border-bottom: 1px solid var(--mk-search-border);
 }
 
 .mk-search-ov__back,
 .mk-search-ov__close,
-.mk-search-ov__icon {
+.mk-search-ov__iconBtn,
+.mk-search-ov__clear,
+.mk-search-ov__viewAll,
+.mk-search-ov__suggestion {
   appearance: none;
   border: 0;
   font: inherit;
-  color: inherit;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 
 .mk-search-ov__back {
-  width: 42px;
-  height: 42px;
-  border-radius: 999px;
-  background: color-mix(
-    in srgb,
-    var(--mk-bg-header) 86%,
-    var(--mk-text-header) 14%
-  );
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  width: 40px;
+  height: 40px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--mk-color-primary) 8%, transparent);
+  color: var(--mk-color-primary);
+}
+
+.mk-search-ov__heading {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  text-align: right;
+}
+
+.mk-search-ov__heading strong {
+  color: var(--mk-text-main);
+  font-size: 14px;
+  font-weight: 950;
+  line-height: 1.2;
+}
+
+.mk-search-ov__heading span {
+  color: var(--mk-search-muted);
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1.2;
 }
 
 .mk-search-ov__close {
-  min-height: 42px;
-  padding: 0 10px;
+  min-height: 34px;
   border-radius: 999px;
-  background: transparent;
-  color: color-mix(in srgb, var(--mk-text-header) 76%, transparent);
-  font-size: 13px;
-  font-weight: 850;
-  white-space: nowrap;
+  background: color-mix(in srgb, var(--mk-color-primary) 7%, transparent);
+  color: var(--mk-color-primary);
+  padding: 0 12px;
+  font-size: 11.5px;
+  font-weight: 950;
 }
 
-.mk-search-ov__back:hover,
-.mk-search-ov__close:hover {
-  background: color-mix(
-    in srgb,
-    var(--mk-bg-header) 82%,
-    var(--mk-text-header) 18%
-  );
-  color: var(--mk-text-header);
-}
+/* =========================================================
+   Search Bar
+   ========================================================= */
 
 .mk-search-ov__bar {
   position: relative;
-  min-width: 0;
-  height: 44px;
+  height: 52px;
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 4px;
+  margin: 10px 14px;
+  border: 1px solid var(--mk-search-border);
+  border-radius: 20px;
+  background: var(--mk-search-card);
+  color: var(--mk-text-main);
+  box-shadow:
+    0 12px 30px rgba(15, 23, 42, 0.055),
+    0 1px 0 rgba(255, 255, 255, 0.78) inset;
   overflow: hidden;
-  border: 1px solid var(--mk-border-soft);
-  border-radius: 999px;
-  background: var(--mk-bg-search);
-  color: var(--mk-text-search);
+}
+
+.mk-search-ov__iconBtn {
+  width: 42px;
+  height: 44px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 16px;
+  background: transparent;
+  color: var(--mk-color-primary);
 }
 
 .mk-search-ov__input {
+  min-width: 0;
   width: 100%;
-  height: 100%;
+  height: 52px;
   border: 0;
   outline: 0;
   background: transparent;
-  color: var(--mk-text-search);
-  padding: 0 46px 0 16px;
+  color: var(--mk-text-main);
+  padding: 0 2px;
   font: inherit;
   font-size: 14px;
-  font-weight: 750;
-  line-height: 44px;
+  font-weight: 900;
+  line-height: 52px;
   text-align: right;
 }
 
 .mk-search-ov__input::placeholder {
-  color: color-mix(in srgb, var(--mk-text-search) 46%, transparent);
-  font-weight: 650;
+  color: color-mix(in srgb, var(--mk-search-muted) 78%, transparent);
+  font-weight: 800;
 }
 
-.mk-search-ov__icon {
-  position: absolute;
-  inset-inline-start: auto;
-  inset-inline-end: 8px;
-  top: 50%;
-  width: 34px;
-  height: 34px;
-  transform: translateY(-50%);
+.mk-search-ov__clear {
+  width: 28px;
+  height: 28px;
+  display: inline-grid;
+  place-items: center;
+  justify-self: center;
   border-radius: 999px;
-  background: transparent;
-  color: color-mix(in srgb, var(--mk-text-search) 66%, transparent);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  background: color-mix(in srgb, var(--mk-color-primary) 8%, transparent);
+  color: var(--mk-color-primary);
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1;
 }
 
-.mk-search-ov__icon:hover {
-  background: color-mix(
-    in srgb,
-    var(--mk-bg-search) 82%,
-    var(--mk-text-search) 18%
-  );
-  color: var(--mk-text-search);
+/* =========================================================
+   Quick Preview
+   ========================================================= */
+
+.mk-search-ov__quickPreview {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  margin: -2px 14px 8px;
+  padding: 0 0 2px;
+  scrollbar-width: none;
 }
+
+.mk-search-ov__quickPreview::-webkit-scrollbar {
+  display: none;
+}
+
+.mk-search-ov__quickPreviewItem {
+  min-height: 38px;
+  flex: 0 0 auto;
+  display: inline-grid;
+  grid-template-columns: 28px max-content;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--mk-search-border);
+  border-radius: 999px;
+  background: var(--mk-search-card);
+  color: var(--mk-text-main);
+  padding: 4px 11px 4px 5px;
+  text-decoration: none;
+  font-size: 11.5px;
+  font-weight: 900;
+}
+
+.mk-search-ov__quickPreviewItem img {
+  width: 28px;
+  height: 28px;
+  display: block;
+  border-radius: 999px;
+  object-fit: cover;
+}
+
+/* =========================================================
+   Content
+   ========================================================= */
 
 .mk-search-ov__content {
-  width: min(100% - 28px, 760px);
-  max-height: calc(100svh - 84px - var(--mk-search-safe-top));
-  margin: 14px auto 0;
-  padding: 16px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  border: 1px solid var(--mk-border-soft);
-  border-radius: 22px;
-  background: var(--mk-bg-dropdown);
-  color: var(--mk-text-dropdown);
-  box-shadow: 0 22px 70px rgba(15, 23, 42, 0.18);
+  padding: 2px 14px calc(18px + var(--mk-search-safe-bottom));
   scrollbar-width: thin;
 }
 
 .mk-search-ov__groups,
 .mk-search-ov__live {
   display: grid;
-  gap: 18px;
+  gap: 10px;
 }
 
+.mk-search-ov__group,
 .mk-search-ov__section {
   min-width: 0;
+  border: 1px solid var(--mk-search-border);
+  border-radius: 24px;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--mk-search-card) 98%, transparent),
+      color-mix(in srgb, var(--mk-search-card) 90%, var(--mk-bg-page))
+    );
+  padding: 13px;
+  box-shadow:
+    0 14px 36px rgba(15, 23, 42, 0.045),
+    0 1px 0 rgba(255, 255, 255, 0.74) inset;
 }
 
-.mk-search-ov__section + .mk-search-ov__section {
-  padding-top: 18px;
-  border-top: 1px solid var(--mk-border-soft);
+.mk-search-ov__sectionHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
 .mk-search-ov__title {
-  margin: 0 0 12px;
-  color: var(--mk-text-dropdown);
-  font-size: 14px;
+  position: relative;
+  margin: 0;
+  color: var(--mk-text-main);
+  font-size: 13.5px;
   font-weight: 950;
   line-height: 1.35;
   text-align: right;
 }
 
+.mk-search-ov__title::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-inline-end: 7px;
+  border-radius: 999px;
+  background: var(--mk-color-primary);
+  vertical-align: middle;
+}
+
 .mk-search-ov__desc {
-  margin: -5px 0 12px;
-  color: var(--mk-text-dropdown-muted);
-  font-size: 12px;
-  font-weight: 650;
-  line-height: 1.7;
+  margin: 5px 14px 0 0;
+  color: var(--mk-search-muted);
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.6;
   text-align: right;
 }
 
-/* Chips */
+.mk-search-ov__viewAll {
+  min-height: 28px;
+  border-radius: 999px;
+  background: var(--mk-color-primary);
+  color: var(--mk-primary-contrast, #fff);
+  padding: 0 10px;
+  font-size: 10.5px;
+  font-weight: 950;
+}
+
+.mk-search-ov__count {
+  min-width: 26px;
+  height: 26px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mk-color-primary) 9%, transparent);
+  color: var(--mk-color-primary);
+  font-size: 11px;
+  font-weight: 950;
+}
+
+/* =========================================================
+   Chips
+   ========================================================= */
 
 .mk-search-ov__chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 7px;
 }
 
 .mk-search-ov__chip {
-  min-height: 35px;
+  min-height: 34px;
   max-width: 100%;
-  padding: 0 13px;
-  border: 1px solid var(--mk-border-medium);
-  border-radius: 999px;
-  background: color-mix(
-    in srgb,
-    var(--mk-bg-dropdown) 88%,
-    var(--mk-text-dropdown) 12%
-  );
-  color: var(--mk-text-dropdown);
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  border: 1px solid var(--mk-search-border);
+  border-radius: 999px;
+  background: var(--mk-search-card);
+  color: var(--mk-text-main);
+  padding: 0 12px;
   text-decoration: none;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 850;
+  font-size: 11.5px;
+  font-weight: 900;
   line-height: 1.2;
   white-space: nowrap;
 }
 
-.mk-search-ov__chip:hover {
-  border-color: color-mix(
-    in srgb,
-    var(--mk-color-primary) 26%,
-    var(--mk-border-medium)
-  );
-  background: color-mix(
-    in srgb,
-    var(--mk-color-primary) 9%,
-    var(--mk-bg-dropdown)
-  );
-  color: var(--mk-text-dropdown);
-}
+/* =========================================================
+   Visual Groups
+   ========================================================= */
 
-/* Brand / circle groups */
-
-.mk-search-ov__brands {
+.mk-search-ov__visuals {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
-.mk-search-ov__brand {
-  aspect-ratio: 1;
+.mk-search-ov__visual {
   min-width: 0;
-  overflow: hidden;
-  border: 1px solid var(--mk-border-medium);
-  border-radius: 999px;
-  background: color-mix(
-    in srgb,
-    var(--mk-bg-dropdown) 88%,
-    var(--mk-text-dropdown) 12%
-  );
-  color: var(--mk-text-dropdown);
-  display: inline-flex;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
   align-items: center;
-  justify-content: center;
-  padding: 9px;
-  text-align: center;
+  gap: 9px;
+  border: 1px solid var(--mk-search-border);
+  border-radius: 20px;
+  background: var(--mk-search-card);
+  color: var(--mk-text-main);
+  padding: 8px;
   text-decoration: none;
 }
 
-.mk-search-ov__brand:hover {
-  border-color: color-mix(
-    in srgb,
-    var(--mk-color-primary) 26%,
-    var(--mk-border-medium)
-  );
-  background: color-mix(
-    in srgb,
-    var(--mk-color-primary) 9%,
-    var(--mk-bg-dropdown)
-  );
+.mk-search-ov__visualMedia {
+  width: 42px;
+  height: 42px;
+  display: inline-grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--mk-color-primary) 7%, transparent);
+  color: var(--mk-color-primary);
 }
 
-.mk-search-ov__brandImg {
+.mk-search-ov__visualImg {
   width: 100%;
   height: 100%;
   display: block;
-  object-fit: contain;
+  object-fit: cover;
 }
 
-.mk-search-ov__brandIcon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: currentColor;
+.mk-search-ov__visualText {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
 }
 
-.mk-search-ov__brandText {
-  display: block;
-  max-width: 100%;
+.mk-search-ov__visualText b {
   overflow: hidden;
-  color: inherit;
-  font-size: 10px;
+  color: var(--mk-text-main);
+  font-size: 11.5px;
   font-weight: 950;
   line-height: 1.35;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-/* Cards */
+.mk-search-ov__visualText small {
+  overflow: hidden;
+  color: var(--mk-search-muted);
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1.3;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* =========================================================
+   Cards
+   ========================================================= */
 
 .mk-search-ov__cards {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: 1fr;
+  gap: 8px;
 }
 
 .mk-search-ov__card {
   min-width: 0;
-  min-height: 64px;
-  border: 1px solid var(--mk-border-soft);
-  border-radius: 16px;
-  background: color-mix(
-    in srgb,
-    var(--mk-bg-dropdown) 92%,
-    var(--mk-text-dropdown) 8%
-  );
-  color: var(--mk-text-dropdown);
-  display: flex;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
-  padding: 10px;
+  gap: 9px;
+  border: 1px solid var(--mk-search-border);
+  border-radius: 18px;
+  background: var(--mk-search-card);
+  color: var(--mk-text-main);
+  padding: 8px;
   text-decoration: none;
-}
-
-.mk-search-ov__card:hover {
-  border-color: color-mix(
-    in srgb,
-    var(--mk-color-primary) 25%,
-    var(--mk-border-medium)
-  );
-  background: color-mix(
-    in srgb,
-    var(--mk-color-primary) 8%,
-    var(--mk-bg-dropdown)
-  );
 }
 
 .mk-search-ov__cardImg,
 .mk-search-ov__cardIcon {
   width: 42px;
   height: 42px;
-  flex: 0 0 42px;
-  border-radius: 14px;
-  border: 1px solid var(--mk-border-soft);
-  background: color-mix(
-    in srgb,
-    var(--mk-bg-dropdown) 86%,
-    var(--mk-text-dropdown) 14%
-  );
+  display: inline-grid;
+  place-items: center;
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--mk-color-primary) 7%, transparent);
+  color: var(--mk-color-primary);
 }
 
 .mk-search-ov__cardImg {
   object-fit: cover;
 }
 
-.mk-search-ov__cardIcon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.mk-search-ov__cardBody {
-  display: grid;
+.mk-search-ov__cardText {
   min-width: 0;
-  gap: 3px;
-  text-align: right;
+  display: grid;
+  gap: 2px;
 }
 
-.mk-search-ov__cardTitle {
+.mk-search-ov__cardText span {
   overflow: hidden;
-  color: var(--mk-text-dropdown);
-  font-size: 12.5px;
-  font-weight: 900;
-  line-height: 1.4;
-  text-overflow: ellipsis;
+  color: var(--mk-text-main);
+  font-size: 12px;
+  font-weight: 950;
+  line-height: 1.35;
   white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-.mk-search-ov__cardSub {
+.mk-search-ov__cardText small {
   overflow: hidden;
-  color: var(--mk-text-dropdown-muted);
-  font-size: 11px;
-  font-weight: 650;
-  line-height: 1.4;
-  text-overflow: ellipsis;
+  color: var(--mk-search-muted);
+  font-size: 10.5px;
+  font-weight: 750;
+  line-height: 1.3;
   white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-/* Live suggestions */
+/* =========================================================
+   Suggestions
+   ========================================================= */
 
 .mk-search-ov__suggestions {
   display: grid;
-  gap: 0;
-  overflow: hidden;
-  border: 1px solid var(--mk-border-soft);
-  border-radius: 16px;
-  background: var(--mk-bg-dropdown);
+  gap: 7px;
 }
 
 .mk-search-ov__suggestion {
-  appearance: none;
   width: 100%;
   min-height: 42px;
-  border: 0;
-  border-bottom: 1px solid var(--mk-border-soft);
-  background: transparent;
-  color: var(--mk-text-dropdown);
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr);
+  grid-template-columns: 30px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
-  padding: 0 12px;
-  font: inherit;
+  border: 1px solid var(--mk-search-border);
+  border-radius: 16px;
+  background: var(--mk-search-card);
+  color: var(--mk-text-main);
+  padding: 0 9px;
   text-align: right;
-  cursor: pointer;
-}
-
-.mk-search-ov__suggestion:last-child {
-  border-bottom: 0;
-}
-
-.mk-search-ov__suggestion:hover {
-  background: color-mix(
-    in srgb,
-    var(--mk-color-primary) 7%,
-    var(--mk-bg-dropdown)
-  );
 }
 
 .mk-search-ov__suggestionIcon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: color-mix(in srgb, var(--mk-text-dropdown) 62%, transparent);
+  width: 30px;
+  height: 30px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mk-color-primary) 8%, transparent);
+  color: var(--mk-color-primary);
 }
 
 .mk-search-ov__suggestionText {
   min-width: 0;
   overflow: hidden;
-  color: var(--mk-text-dropdown);
-  font-size: 13px;
-  font-weight: 700;
+  color: var(--mk-text-main);
+  font-size: 12.5px;
+  font-weight: 850;
   line-height: 1.45;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -458,56 +543,39 @@
   font-weight: 950;
 }
 
-/* Product results */
+/* =========================================================
+   Product Results
+   ========================================================= */
 
 .mk-search-ov__products {
   display: grid;
-  gap: 0;
-  overflow: hidden;
-  border: 1px solid var(--mk-border-soft);
-  border-radius: 16px;
-  background: var(--mk-bg-dropdown);
+  gap: 8px;
 }
 
 .mk-search-ov__product {
   min-width: 0;
-  min-height: 74px;
-  border-bottom: 1px solid var(--mk-border-soft);
-  background: transparent;
-  color: var(--mk-text-dropdown);
+  min-height: 72px;
   display: grid;
-  grid-template-columns: 56px minmax(0, 1fr) auto;
+  grid-template-columns: 54px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 11px;
-  padding: 9px 12px;
+  gap: 10px;
+  border: 1px solid var(--mk-search-border);
+  border-radius: 20px;
+  background: var(--mk-search-card);
+  color: var(--mk-text-main);
+  padding: 8px;
   text-decoration: none;
-}
-
-.mk-search-ov__product:last-child {
-  border-bottom: 0;
-}
-
-.mk-search-ov__product:hover {
-  background: color-mix(
-    in srgb,
-    var(--mk-color-primary) 7%,
-    var(--mk-bg-dropdown)
-  );
 }
 
 .mk-search-ov__productImageBox {
   width: 54px;
   height: 54px;
-  overflow: hidden;
-  border-radius: 14px;
-  background: color-mix(
-    in srgb,
-    var(--mk-bg-dropdown) 84%,
-    var(--mk-text-dropdown) 16%
-  );
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
+  border-radius: 17px;
+  background: color-mix(in srgb, var(--mk-color-primary) 7%, transparent);
 }
 
 .mk-search-ov__productImage {
@@ -518,10 +586,8 @@
 }
 
 .mk-search-ov__productImageFallback {
-  color: color-mix(in srgb, var(--mk-text-dropdown) 42%, transparent);
+  color: var(--mk-color-primary);
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .mk-search-ov__productBody {
@@ -533,8 +599,8 @@
 
 .mk-search-ov__productTitle {
   overflow: hidden;
-  color: var(--mk-text-dropdown);
-  font-size: 13px;
+  color: var(--mk-text-main);
+  font-size: 12.5px;
   font-weight: 950;
   line-height: 1.45;
   text-overflow: ellipsis;
@@ -543,9 +609,9 @@
 
 .mk-search-ov__productDesc {
   overflow: hidden;
-  color: var(--mk-text-dropdown-muted);
-  font-size: 11.5px;
-  font-weight: 650;
+  color: var(--mk-search-muted);
+  font-size: 11px;
+  font-weight: 750;
   line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -553,16 +619,16 @@
 
 .mk-search-ov__productPriceBox {
   display: grid;
-  min-width: 82px;
+  min-width: 70px;
   gap: 3px;
   justify-items: end;
   text-align: left;
 }
 
 .mk-search-ov__productCompare {
-  color: color-mix(in srgb, var(--mk-text-dropdown) 42%, transparent);
-  font-size: 11px;
-  font-weight: 700;
+  color: color-mix(in srgb, var(--mk-search-muted) 68%, transparent);
+  font-size: 10.5px;
+  font-weight: 800;
   line-height: 1.2;
   text-decoration: line-through;
   white-space: nowrap;
@@ -570,30 +636,30 @@
 
 .mk-search-ov__productPrice {
   color: var(--mk-color-primary);
-  font-size: 13.5px;
+  font-size: 12.5px;
   font-weight: 950;
   line-height: 1.2;
   white-space: nowrap;
 }
 
+/* =========================================================
+   Empty / State
+   ========================================================= */
+
 .mk-search-ov__state,
 .mk-search-ov__empty {
-  min-height: 52px;
-  border: 1px solid var(--mk-border-soft);
-  border-radius: 16px;
-  background: color-mix(
-    in srgb,
-    var(--mk-bg-dropdown) 90%,
-    var(--mk-text-dropdown) 10%
-  );
-  color: var(--mk-text-dropdown-muted);
+  min-height: 56px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 12px;
+  gap: 9px;
+  border: 1px solid var(--mk-search-border);
+  border-radius: 18px;
+  background: var(--mk-search-card);
+  color: var(--mk-search-muted);
+  padding: 13px;
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 800;
   text-align: center;
 }
 
@@ -602,77 +668,185 @@
   flex-direction: column;
 }
 
-/* Mobile app-like layout */
+/* =========================================================
+   Desktop
+   ========================================================= */
+
+@media (min-width: 761px) {
+  .mk-search-ov {
+    align-items: flex-start;
+    padding: 34px 18px;
+  }
+
+  .mk-search-ov__shell {
+    border-radius: 30px;
+  }
+}
+
+/* =========================================================
+   Mobile - App Like Full Screen
+   ========================================================= */
 
 @media (max-width: 760px) {
+  body:has(.mk-search-ov) {
+    overflow: hidden !important;
+  }
+
   .mk-search-ov {
-    background: var(--mk-bg-page);
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 2147483000 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100svh !important;
+    display: flex !important;
+    align-items: stretch !important;
+    justify-content: center !important;
+    background: var(--mk-bg-page) !important;
+    overflow: hidden !important;
+  }
+
+  .mk-search-ov__shell {
+    position: relative;
+    isolation: isolate;
+    width: min(100%, 520px) !important;
+    height: 100vh !important;
+    height: 100svh !important;
+    max-height: none !important;
+    border-radius: 0 !important;
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--mk-color-primary) 5%, var(--mk-bg-page)) 0%,
+        var(--mk-bg-page) 165px
+      ) !important;
+    box-shadow: none !important;
+  }
+
+  .mk-search-ov__grabber {
+    display: none !important;
   }
 
   .mk-search-ov__top {
-    grid-template-columns: 42px minmax(0, 1fr) auto;
+    position: relative;
+    z-index: 3;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
     gap: 8px;
-    padding-inline: 10px;
+    padding: calc(12px + var(--mk-search-safe-top)) 12px 6px;
+    background: color-mix(in srgb, var(--mk-bg-page) 94%, transparent);
+    border-bottom: 0;
+    box-shadow: none;
   }
 
   .mk-search-ov__back {
-    width: 40px;
-    height: 40px;
+    width: 38px;
+    height: 38px;
+    border-radius: 15px;
+    background: color-mix(in srgb, var(--mk-color-primary) 9%, transparent);
+    color: var(--mk-color-primary);
+  }
+
+  .mk-search-ov__heading strong {
+    font-size: 14.5px;
+    font-weight: 950;
+  }
+
+  .mk-search-ov__heading span {
+    font-size: 10.5px;
+    color: var(--mk-text-muted);
   }
 
   .mk-search-ov__close {
-    min-height: 40px;
-    padding-inline: 8px;
-    font-size: 12px;
+    min-height: 32px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--mk-color-primary) 9%, transparent);
+    color: var(--mk-color-primary);
+    padding: 0 10px;
+    font-size: 11px;
+    font-weight: 950;
   }
 
   .mk-search-ov__bar {
-    height: 42px;
+    height: 50px;
+    margin: 7px 12px 11px;
+    border-radius: 20px;
+    background: var(--mk-bg-product, #fff);
+    border: 1px solid
+      color-mix(in srgb, var(--mk-color-primary) 18%, transparent);
+    box-shadow:
+      0 14px 34px rgba(15, 23, 42, 0.06),
+      0 1px 0 rgba(255, 255, 255, 0.86) inset;
   }
 
   .mk-search-ov__input {
-    height: 42px;
-    line-height: 42px;
-    padding-inline-start: 44px;
-    padding-inline-end: 44px;
-    font-size: 13px;
+    height: 50px;
+    line-height: 50px;
+    font-size: 14px;
+    font-weight: 900;
+  }
+
+  .mk-search-ov__quickPreview {
+    display: none;
   }
 
   .mk-search-ov__content {
-    width: 100%;
-    max-height: none;
     flex: 1;
-    margin: 0;
-    padding: 14px 12px calc(18px + var(--mk-search-safe-bottom));
-    border: 0;
-    border-radius: 0;
-    background: var(--mk-bg-page);
-    color: var(--mk-text-main);
-    box-shadow: none;
+    min-height: 0;
+    overflow-y: auto;
+    background: transparent;
+    padding: 0 12px calc(26px + var(--mk-search-safe-bottom));
   }
 
   .mk-search-ov__groups,
   .mk-search-ov__live {
-    gap: 14px;
+    gap: 9px;
   }
 
+  .mk-search-ov__group,
   .mk-search-ov__section {
-    border: 1px solid var(--mk-border-soft);
-    border-radius: 20px;
-    background: var(--mk-bg-dropdown);
-    color: var(--mk-text-dropdown);
-    padding: 14px;
-    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
+    border-radius: 24px;
+    padding: 12px;
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--mk-bg-product, #fff) 98%, transparent),
+        color-mix(in srgb, var(--mk-bg-product, #fff) 94%, var(--mk-bg-page))
+      );
+    border: 1px solid
+      color-mix(in srgb, var(--mk-color-primary) 11%, transparent);
+    box-shadow:
+      0 12px 30px rgba(15, 23, 42, 0.045),
+      0 1px 0 rgba(255, 255, 255, 0.78) inset;
   }
 
-  .mk-search-ov__section + .mk-search-ov__section {
-    padding-top: 14px;
-    border-top: 1px solid var(--mk-border-soft);
+  .mk-search-ov__sectionHead {
+    margin-bottom: 8px;
   }
 
   .mk-search-ov__title {
-    margin-bottom: 10px;
     font-size: 13px;
+  }
+
+  .mk-search-ov__desc {
+    margin-top: 4px;
+    font-size: 10.5px;
+  }
+
+  .mk-search-ov__visuals {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .mk-search-ov__visual {
+    min-height: 50px;
+    border-radius: 18px;
+    padding: 7px;
+  }
+
+  .mk-search-ov__visualMedia {
+    width: 38px;
+    height: 38px;
+    border-radius: 14px;
   }
 
   .mk-search-ov__chips {
@@ -680,77 +854,184 @@
   }
 
   .mk-search-ov__chip {
-    min-height: 33px;
-    padding-inline: 11px;
-    font-size: 11.5px;
+    min-height: 30px;
+    padding: 0 11px;
+    font-size: 10.8px;
   }
 
-  .mk-search-ov__brands {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 9px;
+  .mk-search-ov__suggestion {
+    min-height: 38px;
+    border-radius: 17px;
+    border-color: color-mix(
+      in srgb,
+      var(--mk-color-primary) 12%,
+      transparent
+    );
   }
 
-  .mk-search-ov__brandText {
-    font-size: 9.5px;
+  .mk-search-ov__suggestionIcon {
+    background: color-mix(in srgb, var(--mk-color-primary) 9%, transparent);
   }
 
-  .mk-search-ov__cards {
-    grid-template-columns: 1fr;
+  .mk-search-ov__products {
+    gap: 8px;
   }
 
   .mk-search-ov__product {
-    grid-template-columns: 52px minmax(0, 1fr) auto;
-    min-height: 70px;
-    gap: 10px;
-    padding: 8px 10px;
+    min-height: 72px;
+    grid-template-columns: 58px minmax(0, 1fr);
+    grid-template-areas:
+      "img body"
+      "img price";
+    align-items: center;
+    gap: 3px 10px;
+    border-radius: 20px;
+    padding: 7px;
+    background:
+      linear-gradient(
+        180deg,
+        var(--mk-bg-product, #fff),
+        color-mix(in srgb, var(--mk-color-primary) 3%, var(--mk-bg-product, #fff))
+      );
+    border-color: color-mix(
+      in srgb,
+      var(--mk-color-primary) 14%,
+      transparent
+    );
+    box-shadow:
+      0 10px 26px rgba(15, 23, 42, 0.045),
+      0 1px 0 rgba(255, 255, 255, 0.82) inset;
   }
 
   .mk-search-ov__productImageBox {
-    width: 50px;
-    height: 50px;
-    border-radius: 13px;
+    grid-area: img;
+    width: 58px;
+    height: 58px;
+    border-radius: 18px;
+    background: color-mix(
+      in srgb,
+      var(--mk-color-primary) 6%,
+      var(--mk-bg-page)
+    );
   }
 
-  .mk-search-ov__productPriceBox {
-    min-width: 72px;
+  .mk-search-ov__productImage {
+    object-fit: cover;
+  }
+
+  .mk-search-ov__productBody {
+    grid-area: body;
+    align-self: end;
+    gap: 2px;
+    padding-inline-end: 2px;
   }
 
   .mk-search-ov__productTitle {
     font-size: 12.5px;
+    font-weight: 950;
+    line-height: 1.45;
+    white-space: nowrap;
+  }
+
+  .mk-search-ov__productDesc {
+    max-width: 100%;
+    font-size: 10.5px;
+    line-height: 1.35;
+    opacity: 0.75;
+  }
+
+  .mk-search-ov__productPriceBox {
+    grid-area: price;
+    align-self: start;
+    justify-items: start;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    direction: ltr;
   }
 
   .mk-search-ov__productPrice {
-    font-size: 12.5px;
+    color: var(--mk-color-primary);
+    font-size: 13px;
+    font-weight: 950;
+    letter-spacing: -0.01em;
+  }
+
+  .mk-search-ov__productCompare {
+    font-size: 10.5px;
+    opacity: 0.65;
+  }
+
+  .mk-search-ov.is-browse .mk-search-ov__content {
+    flex: 0 1 auto;
+  }
+
+  .mk-search-ov.is-browse .mk-search-ov__groups {
+    padding-bottom: 22px;
+  }
+
+  .mk-search-ov.is-live .mk-search-ov__section {
+    padding: 11px;
   }
 }
 
+/* =========================================================
+   Small Mobile
+   ========================================================= */
+
 @media (max-width: 420px) {
   .mk-search-ov__top {
-    grid-template-columns: 40px minmax(0, 1fr) auto;
-    padding-inline: 8px;
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+    gap: 8px;
+    padding-inline: 10px;
+  }
+
+  .mk-search-ov__back {
+    width: 38px;
+    height: 38px;
+    border-radius: 15px;
+  }
+
+  .mk-search-ov__bar {
+    margin-inline: 10px;
   }
 
   .mk-search-ov__content {
     padding-inline: 10px;
   }
 
-  .mk-search-ov__section {
-    border-radius: 18px;
-    padding: 12px;
-  }
-
-  .mk-search-ov__brands {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
   .mk-search-ov__product {
-    grid-template-columns: 50px minmax(0, 1fr);
+    grid-template-columns: 56px minmax(0, 1fr);
   }
 
-  .mk-search-ov__productPriceBox {
-    grid-column: 2;
-    justify-items: start;
-    min-width: 0;
-    text-align: right;
+  .mk-search-ov__productImageBox {
+    width: 56px;
+    height: 56px;
   }
+}
+
+/* =========================================================
+   Keep real store floating UI behind overlay
+   لا نخفي Next.js dev overlay
+   ========================================================= */
+
+body:has(.mk-search-ov) .mk-tabbar,
+body:has(.mk-search-ov) .mk-floating-actions,
+body:has(.mk-search-ov) .mk-footer__toTop,
+body:has(.mk-search-ov) .mk-mobile-fab,
+body:has(.mk-search-ov) .mk-app-fab,
+body:has(.mk-search-ov) .mk-navigation-fab,
+body:has(.mk-search-ov) .mk-nav-float,
+body:has(.mk-search-ov) .mk-store-float,
+body:has(.mk-search-ov) .mk-quick-actions,
+body:has(.mk-search-ov) [data-floating],
+body:has(.mk-search-ov) [data-float],
+body:has(.mk-search-ov) [data-mk-floating],
+body:has(.mk-search-ov) [aria-label="الماركات"],
+body:has(.mk-search-ov) [title="الماركات"] {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  z-index: 0 !important;
 }
