@@ -1,11 +1,12 @@
 // FILE: apps/storefront/src/themes/malak/app-shell/BottomNav.tsx
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Icon from "@/components/icon/Icon";
 import { BOTTOM_NAV_ITEMS } from "../app-navigation/bottom-nav.config";
 import { useNavStack } from "../app-navigation/stack";
+import { startMobileNavigation } from "../app-navigation/mobile-navigation";
 import type { SeoUrlMode } from "@/data/store/settings";
 import type { MalakBootstrap } from "../bootstrap/types";
 
@@ -51,7 +52,22 @@ export default function BottomNav({ initialCartCount = 0 }: Props) {
 
   const reset = useNavStack((s) => s.reset);
 
+  const [pendingHref, setPendingHref] = useState("");
+  const pendingRef = useRef(false);
+
   const cartCount = normalizeCount(initialCartCount);
+useEffect(() => {
+  for (const item of BOTTOM_NAV_ITEMS) {
+    const href = String(item.href || "").trim();
+    if (!href || href === "/search") continue;
+
+    try {
+      router.prefetch(href);
+    } catch {
+      // ignore
+    }
+  }
+}, [router]);
 
   const items = useMemo(() => {
     return BOTTOM_NAV_ITEMS.map((item) => {
@@ -69,6 +85,17 @@ export default function BottomNav({ initialCartCount = 0 }: Props) {
     });
   }, [cartCount]);
 
+useEffect(() => {
+  const timer = window.setTimeout(() => {
+    pendingRef.current = false;
+    setPendingHref("");
+  }, 0);
+
+  return () => {
+    window.clearTimeout(timer);
+  };
+}, [pathname]);
+
   return (
     <nav dir="rtl" className="mk-tabbar" aria-label="التنقل السفلي">
       <div className="mk-tabbar__inner">
@@ -76,6 +103,7 @@ export default function BottomNav({ initialCartCount = 0 }: Props) {
           const href = item.href;
           const searchAction = isSearchAction(href, item.label);
           const active = searchAction ? false : isActivePath(pathname, href);
+          const pending = Boolean(pendingHref && pendingHref === href);
 
           return (
             <button
@@ -88,6 +116,21 @@ export default function BottomNav({ initialCartCount = 0 }: Props) {
                 }
 
                 if (active) return;
+                if (pendingRef.current) return;
+
+                pendingRef.current = true;
+                setPendingHref(href);
+
+                try {
+                  router.prefetch(href);
+                } catch {
+                  // ignore
+                }
+
+                startMobileNavigation({
+                  href,
+                  source: "bottom-nav",
+                });
 
                 if (item.type === "screen") {
                   reset(item.key);
@@ -95,11 +138,16 @@ export default function BottomNav({ initialCartCount = 0 }: Props) {
 
                 router.push(href);
               }}
-              className={["mk-tab-item", active ? "active" : ""]
+              className={[
+                "mk-tab-item",
+                active ? "active" : "",
+                pending ? "is-pending" : "",
+              ]
                 .filter(Boolean)
                 .join(" ")}
               aria-current={active ? "page" : undefined}
               aria-label={item.label}
+              aria-disabled={pending ? "true" : undefined}
             >
               <span className="mk-tab-icon" aria-hidden="true">
                 <Icon icon={item.icon as any} size={24} />

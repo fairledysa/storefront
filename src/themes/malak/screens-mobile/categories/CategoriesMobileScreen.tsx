@@ -174,7 +174,7 @@ export default function CategoriesMobileScreen({ seoMode }: Props) {
     });
   }, [roots, query, seoMode]);
 
-  if (loading) {
+if (loading && !roots.length) {
     return (
       <div dir="rtl" className="mk-mcat">
         <div className="mk-mcat__state">
@@ -186,7 +186,7 @@ export default function CategoriesMobileScreen({ seoMode }: Props) {
     );
   }
 
-  if (error) {
+if (error && !roots.length) {
     return (
       <div dir="rtl" className="mk-mcat">
         <div className="mk-mcat__state">

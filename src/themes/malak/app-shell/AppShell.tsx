@@ -19,6 +19,7 @@ import ProductQuickView from "@/themes/malak/components/product-quick-view/Produ
 import ProductFavoritesRuntime from "@/themes/malak/components/product-favorites/ProductFavoritesRuntime";
 import ProductCartRuntime from "@/themes/malak/components/product-cart/ProductCartRuntime";
 import ToastProvider from "./_components/ToastProvider";
+import MobileNavigationTransition from "./_components/MobileNavigationTransition";
 
 import type { ThemeAdapterOutput } from "../types";
 import type { SeoUrlMode } from "@/data/store/settings";
@@ -1575,7 +1576,8 @@ export default function AppShell({
       }
       style={shellStyle}
     >
-      <NavigationTransition enabled={!isMobile} />
+     <MobileNavigationTransition enabled={isMobile} />
+<NavigationTransition enabled={!isMobile} />
 
       {isMobile ? (
          <MobileShell

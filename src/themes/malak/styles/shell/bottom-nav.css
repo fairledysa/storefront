@@ -136,3 +136,42 @@
     transform: none;
   }
 }
+
+
+
+
+/* =========================================================
+   BottomNav Navigation Feedback
+   ========================================================= */
+
+.mk-tab-item.is-pending {
+  color: var(--mk-color-primary);
+  background: var(--mk-primary-soft);
+}
+
+.mk-tab-item.is-pending .mk-tab-icon {
+  animation: mkTabPendingPulse 720ms ease-in-out infinite;
+}
+
+body.mk-mobile-route-is-loading .mk-tabbar {
+  transform: translateZ(0);
+}
+
+@keyframes mkTabPendingPulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  50% {
+    transform: scale(0.92);
+    opacity: 0.68;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mk-tab-item.is-pending .mk-tab-icon {
+    animation: none;
+  }
+}

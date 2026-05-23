@@ -7,7 +7,7 @@
   font-family: var(--mk-font-family, system-ui);
 }
 
-.mk-app-shell * ,
+.mk-app-shell *,
 .mk-app-shell *::before,
 .mk-app-shell *::after {
   box-sizing: border-box;
@@ -41,4 +41,58 @@
 
 .mk-app-shell[data-theme-mode="light"] {
   color-scheme: light;
+}
+
+/* =========================================================
+   Mobile Route Transition
+   شريط تحميل علوي فقط بدون Skeleton فوق المحتوى
+   ========================================================= */
+
+.mk-mobile-route-progress {
+  position: fixed;
+  inset-inline: 0;
+  top: 0;
+  z-index: 10000;
+  height: 3px;
+  pointer-events: none;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--mk-color-primary) 10%, transparent);
+  opacity: 1;
+  transform: translateZ(0);
+  transition: opacity 180ms ease;
+}
+
+.mk-mobile-route-progress--leaving {
+  opacity: 0;
+}
+
+.mk-mobile-route-progress__bar {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 42%;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--mk-color-primary),
+    transparent
+  );
+  animation: mkMobileRouteProgress 760ms cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes mkMobileRouteProgress {
+  0% {
+    transform: translateX(-130%);
+  }
+
+  100% {
+    transform: translateX(280%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mk-mobile-route-progress__bar {
+    animation: none;
+  }
 }

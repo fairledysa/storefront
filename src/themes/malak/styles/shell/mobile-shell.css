@@ -24,11 +24,27 @@
 
 .mk-screen-container {
   min-height: calc(100svh - var(--mk-tabbar-total-h));
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
 }
 
 .mk-mobile-shell[data-mk-route="product"] .mk-mobile-content,
 .mk-mobile-shell[data-mk-route="cart"] .mk-mobile-content {
   padding-bottom: calc(var(--mk-tabbar-total-h) + 22px);
+}
+
+/* =========================================================
+   Mobile App-like Navigation State
+   بدون Skeleton عام حتى لا يشوه الهيرو أو الصفحة
+   ========================================================= */
+
+body.mk-mobile-route-is-loading .mk-mobile-content {
+  will-change: transform, opacity;
+}
+
+body.mk-mobile-route-is-leaving .mk-screen-container {
+  transform: translateY(0);
 }
 
 @supports not (height: 100svh) {
@@ -38,4 +54,8 @@
   }
 }
 
-
+@media (prefers-reduced-motion: reduce) {
+  .mk-screen-container {
+    transition: none;
+  }
+}
