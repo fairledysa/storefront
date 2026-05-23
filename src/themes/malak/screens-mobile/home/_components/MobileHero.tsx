@@ -10,6 +10,7 @@ import {
   type CSSProperties,
   type MouseEvent,
   type PointerEvent,
+  type TouchEvent,
 } from "react";
 import { useRouter } from "next/navigation";
 
@@ -28,8 +29,8 @@ type Props = {
   slides: MobileHeroSlide[];
 };
 
-const SWIPE_MIN_DISTANCE = 36;
-const SWIPE_LOCK_DISTANCE = 10;
+const SWIPE_MIN_DISTANCE = 34;
+const SWIPE_LOCK_DISTANCE = 8;
 const AUTOPLAY_DELAY = 4200;
 const RESUME_AFTER_INTERACTION = 5200;
 const SNAP_AFTER_MS = 460;
@@ -130,8 +131,9 @@ export default function MobileHero({ slides }: Props) {
   const resumeTimerRef = useRef<number | null>(null);
   const snapTimerRef = useRef<number | null>(null);
 
-  const pointerRef = useRef({
+  const gestureRef = useRef({
     active: false,
+    source: "" as "" | "touch" | "pointer",
     pointerId: 0,
     startX: 0,
     startY: 0,
@@ -289,9 +291,10 @@ export default function MobileHero({ slides }: Props) {
     });
   }
 
-  function resetPointer() {
-    pointerRef.current = {
+  function resetGesture() {
+    gestureRef.current = {
       active: false,
+      source: "",
       pointerId: 0,
       startX: 0,
       startY: 0,
@@ -300,15 +303,20 @@ export default function MobileHero({ slides }: Props) {
     };
   }
 
-  function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
+  function beginGesture(args: {
+    source: "touch" | "pointer";
+    x: number;
+    y: number;
+    pointerId?: number;
+  }) {
     if (!hasMany) return;
-    if (event.pointerType === "mouse" && event.button !== 0) return;
 
-    pointerRef.current = {
+    gestureRef.current = {
       active: true,
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
+      source: args.source,
+      pointerId: args.pointerId || 0,
+      startX: args.x,
+      startY: args.y,
       locked: false,
       moved: false,
     };
@@ -317,74 +325,62 @@ export default function MobileHero({ slides }: Props) {
     setDragging(true);
     setTransitionEnabled(false);
     setDragX(0);
-
-    try {
-      event.currentTarget.setPointerCapture(event.pointerId);
-    } catch {
-      // ignore
-    }
   }
 
-  function handlePointerMove(event: PointerEvent<HTMLDivElement>) {
-    const pointer = pointerRef.current;
+  function moveGesture(args: { x: number; y: number }) {
+    const gesture = gestureRef.current;
 
-    if (!hasMany || !pointer.active) return;
-    if (pointer.pointerId && pointer.pointerId !== event.pointerId) return;
+    if (!hasMany || !gesture.active) return false;
 
-    const dx = event.clientX - pointer.startX;
-    const dy = event.clientY - pointer.startY;
+    const dx = args.x - gesture.startX;
+    const dy = args.y - gesture.startY;
 
-    if (!pointer.locked) {
+    if (!gesture.locked) {
       const absX = Math.abs(dx);
       const absY = Math.abs(dy);
 
-      if (absX < SWIPE_LOCK_DISTANCE && absY < SWIPE_LOCK_DISTANCE) return;
+      if (absX < SWIPE_LOCK_DISTANCE && absY < SWIPE_LOCK_DISTANCE) {
+        return false;
+      }
 
-      if (absX > absY * 1.12) {
-        pointer.locked = true;
-        pointer.moved = true;
+      if (absX > absY * 1.05) {
+        gesture.locked = true;
+        gesture.moved = true;
       } else {
-        resetPointer();
+        resetGesture();
         setDragging(false);
         setDragX(0);
-        return;
+        return false;
       }
     }
 
-    if (pointer.locked) {
-      event.preventDefault();
-      event.stopPropagation();
+    if (gesture.locked) {
       setDragX(dx);
+      return true;
     }
+
+    return false;
   }
 
-  function handlePointerUp(event: PointerEvent<HTMLDivElement>) {
-    const pointer = pointerRef.current;
+  function endGesture(args: { x: number; y: number }) {
+    const gesture = gestureRef.current;
 
-    if (!hasMany || !pointer.active) {
-      resetPointer();
+    if (!hasMany || !gesture.active) {
+      resetGesture();
       setDragging(false);
       setDragX(0);
       return;
     }
 
-    if (pointer.pointerId && pointer.pointerId !== event.pointerId) return;
-
-    const dx = event.clientX - pointer.startX;
-    const dy = event.clientY - pointer.startY;
+    const dx = args.x - gesture.startX;
+    const dy = args.y - gesture.startY;
 
     const isHorizontalSwipe =
-      Math.abs(dx) >= SWIPE_MIN_DISTANCE && Math.abs(dx) > Math.abs(dy) * 1.08;
+      Math.abs(dx) >= SWIPE_MIN_DISTANCE && Math.abs(dx) > Math.abs(dy) * 1.02;
 
-    const moved = pointer.moved || pointer.locked || Math.abs(dx) > 10;
+    const moved = gesture.moved || gesture.locked || Math.abs(dx) > 8;
 
-    resetPointer();
-
-    try {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    } catch {
-      // ignore
-    }
+    resetGesture();
 
     setDragging(false);
     setTransitionEnabled(true);
@@ -395,8 +391,6 @@ export default function MobileHero({ slides }: Props) {
       return;
     }
 
-    event.preventDefault();
-    event.stopPropagation();
     blockNextClick();
 
     if (dx > 0) {
@@ -406,17 +400,129 @@ export default function MobileHero({ slides }: Props) {
     }
   }
 
-  function handlePointerCancel(event: PointerEvent<HTMLDivElement>) {
+  function cancelGesture() {
+    resetGesture();
+    setDragging(false);
+    setTransitionEnabled(true);
+    setDragX(0);
+  }
+
+  function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (!hasMany) return;
+
+    if (event.pointerType === "touch") return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+
+    beginGesture({
+      source: "pointer",
+      x: event.clientX,
+      y: event.clientY,
+      pointerId: event.pointerId,
+    });
+
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // ignore
+    }
+  }
+
+  function handlePointerMove(event: PointerEvent<HTMLDivElement>) {
+    const gesture = gestureRef.current;
+
+    if (gesture.source !== "pointer") return;
+    if (gesture.pointerId && gesture.pointerId !== event.pointerId) return;
+
+    const locked = moveGesture({
+      x: event.clientX,
+      y: event.clientY,
+    });
+
+    if (locked) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }
+
+  function handlePointerUp(event: PointerEvent<HTMLDivElement>) {
+    const gesture = gestureRef.current;
+
+    if (gesture.source !== "pointer") return;
+    if (gesture.pointerId && gesture.pointerId !== event.pointerId) return;
+
     try {
       event.currentTarget.releasePointerCapture(event.pointerId);
     } catch {
       // ignore
     }
 
-    resetPointer();
-    setDragging(false);
-    setTransitionEnabled(true);
-    setDragX(0);
+    endGesture({
+      x: event.clientX,
+      y: event.clientY,
+    });
+  }
+
+  function handlePointerCancel(event: PointerEvent<HTMLDivElement>) {
+    if (gestureRef.current.source !== "pointer") return;
+
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // ignore
+    }
+
+    cancelGesture();
+  }
+
+  function handleTouchStart(event: TouchEvent<HTMLDivElement>) {
+    if (!hasMany) return;
+
+    const touch = event.touches[0];
+    if (!touch) return;
+
+    beginGesture({
+      source: "touch",
+      x: touch.clientX,
+      y: touch.clientY,
+    });
+  }
+
+  function handleTouchMove(event: TouchEvent<HTMLDivElement>) {
+    if (gestureRef.current.source !== "touch") return;
+
+    const touch = event.touches[0];
+    if (!touch) return;
+
+    const locked = moveGesture({
+      x: touch.clientX,
+      y: touch.clientY,
+    });
+
+    if (locked) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }
+
+  function handleTouchEnd(event: TouchEvent<HTMLDivElement>) {
+    if (gestureRef.current.source !== "touch") return;
+
+    const touch = event.changedTouches[0];
+
+    if (!touch) {
+      cancelGesture();
+      return;
+    }
+
+    endGesture({
+      x: touch.clientX,
+      y: touch.clientY,
+    });
+  }
+
+  function handleTouchCancel() {
+    if (gestureRef.current.source !== "touch") return;
+    cancelGesture();
   }
 
   function handleTrackTransitionEnd(event?: any) {
@@ -504,8 +610,15 @@ export default function MobileHero({ slides }: Props) {
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
-        onPointerLeave={handlePointerCancel}
-        style={{ touchAction: "pan-y" }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchCancel}
+        style={
+          {
+            touchAction: "pan-y pinch-zoom",
+          } as CSSProperties
+        }
       >
         <div className="mk-mhero__swiper">
           <div className="mk-mhero__viewport" dir="ltr">
@@ -602,6 +715,7 @@ export default function MobileHero({ slides }: Props) {
                     .join(" ")}
                   aria-label={`عرض الشريحة ${index + 1}`}
                   onPointerDown={(event) => event.stopPropagation()}
+                  onTouchStart={(event) => event.stopPropagation()}
                   onClick={() => goTo(index)}
                 />
               ))}
