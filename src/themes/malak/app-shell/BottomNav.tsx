@@ -24,6 +24,25 @@ function normalizeCount(value: unknown) {
   return Math.floor(n);
 }
 
+function cleanPath(value: unknown) {
+  const raw = String(value ?? "/").trim() || "/";
+
+  let path = raw;
+
+  try {
+    if (raw.startsWith("http://") || raw.startsWith("https://")) {
+      path = new URL(raw).pathname || "/";
+    }
+  } catch {
+    path = raw;
+  }
+
+  path = path.split("?")[0]?.split("#")[0] || "/";
+  path = path.replace(/\/+$/, "") || "/";
+
+  return path;
+}
+
 function readQty(value: any, fallback = 1) {
   const direct =
     value?.qty ??
@@ -60,8 +79,8 @@ function readCount(value: any) {
 }
 
 function isActivePath(pathname: string | null, href: string) {
-  const path = String(pathname || "/").trim() || "/";
-  const target = String(href || "/").trim() || "/";
+  const path = cleanPath(pathname);
+  const target = cleanPath(href);
 
   if (target === "/") return path === "/";
 
@@ -75,10 +94,52 @@ function isSearchAction(href: string, label: string) {
   return cleanHref === "/search" || cleanLabel === "البحث";
 }
 
+function isInstantMobileHref(href: string) {
+  const path = cleanPath(href);
+
+  return (
+    path === "/categories" ||
+    path === "/cart" ||
+    path === "/account" ||
+    path.startsWith("/account/")
+  );
+}
+
+function getWindowPath() {
+  if (typeof window === "undefined") return "/";
+  return cleanPath(window.location.pathname);
+}
+
 function openSmartSearch() {
   if (typeof window === "undefined") return;
 
   window.dispatchEvent(new CustomEvent("mk:search:open"));
+}
+
+function pushInstantMobileHref(href: string) {
+  if (typeof window === "undefined") return;
+
+  const nextHref = String(href || "/").trim() || "/";
+  const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
+  if (currentUrl !== nextHref) {
+    window.history.pushState(
+      {
+        mkMobileInstant: true,
+        href: nextHref,
+      },
+      "",
+      nextHref,
+    );
+  }
+
+  window.dispatchEvent(
+    new CustomEvent("mk:mobile:pathchange", {
+      detail: {
+        href: nextHref,
+      },
+    }),
+  );
 }
 
 export default function BottomNav({ initialCartCount = 0 }: Props) {
@@ -87,6 +148,7 @@ export default function BottomNav({ initialCartCount = 0 }: Props) {
 
   const reset = useNavStack((s) => s.reset);
 
+  const [activePath, setActivePath] = useState(() => cleanPath(pathname || "/"));
   const [pendingHref, setPendingHref] = useState("");
   const [cartCount, setCartCount] = useState(() =>
     normalizeCount(initialCartCount),
@@ -94,7 +156,39 @@ export default function BottomNav({ initialCartCount = 0 }: Props) {
 
   const pendingRef = useRef(false);
   const bumpTimerRef = useRef<number | null>(null);
+  const pendingTimerRef = useRef<number | null>(null);
+
   const [cartBumped, setCartBumped] = useState(false);
+
+  useEffect(() => {
+    if (!pathname) return;
+    setActivePath(cleanPath(pathname));
+  }, [pathname]);
+
+  useEffect(() => {
+    function handleMobilePathChange(event: Event) {
+      const detail = (event as CustomEvent<{ href?: string }>).detail;
+      setActivePath(cleanPath(detail?.href || getWindowPath()));
+    }
+
+    function handlePopState() {
+      setActivePath(getWindowPath());
+    }
+
+    window.addEventListener(
+      "mk:mobile:pathchange",
+      handleMobilePathChange as EventListener,
+    );
+    window.addEventListener("popstate", handlePopState);
+
+    return () => {
+      window.removeEventListener(
+        "mk:mobile:pathchange",
+        handleMobilePathChange as EventListener,
+      );
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, []);
 
   useEffect(() => {
     for (const item of BOTTOM_NAV_ITEMS) {
@@ -206,13 +300,33 @@ export default function BottomNav({ initialCartCount = 0 }: Props) {
     };
   }, [pathname]);
 
+  useEffect(() => {
+    return () => {
+      if (pendingTimerRef.current) {
+        window.clearTimeout(pendingTimerRef.current);
+      }
+    };
+  }, []);
+
+  function releasePendingSoon() {
+    if (pendingTimerRef.current) {
+      window.clearTimeout(pendingTimerRef.current);
+    }
+
+    pendingTimerRef.current = window.setTimeout(() => {
+      pendingRef.current = false;
+      setPendingHref("");
+      pendingTimerRef.current = null;
+    }, 90);
+  }
+
   return (
     <nav dir="rtl" className="mk-tabbar" aria-label="التنقل السفلي">
       <div className="mk-tabbar__inner">
         {items.map((item) => {
           const href = item.href;
           const searchAction = isSearchAction(href, item.label);
-          const active = searchAction ? false : isActivePath(pathname, href);
+          const active = searchAction ? false : isActivePath(activePath, href);
           const pending = Boolean(pendingHref && pendingHref === href);
 
           return (
@@ -231,6 +345,17 @@ export default function BottomNav({ initialCartCount = 0 }: Props) {
                 pendingRef.current = true;
                 setPendingHref(href);
 
+                if (item.type === "screen") {
+                  reset(item.key);
+                }
+
+                if (isInstantMobileHref(href)) {
+                  setActivePath(cleanPath(href));
+                  pushInstantMobileHref(href);
+                  releasePendingSoon();
+                  return;
+                }
+
                 try {
                   router.prefetch(href);
                 } catch {
@@ -241,10 +366,6 @@ export default function BottomNav({ initialCartCount = 0 }: Props) {
                   href,
                   source: "bottom-nav",
                 });
-
-                if (item.type === "screen") {
-                  reset(item.key);
-                }
 
                 router.push(href);
               }}

@@ -1,7 +1,7 @@
 // FILE: apps/storefront/src/themes/malak/screens-mobile/category/_components/MobileProductsGrid.tsx
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { buildProductHref } from "@/lib/seo/build-store-href";
 import type { SeoUrlMode } from "@/data/store/settings";
 import {
@@ -18,6 +18,8 @@ type Props = {
   currencies?: any;
   tax?: any;
 };
+
+const MOBILE_INITIAL_RENDER_COUNT = 8;
 
 function s(value: any) {
   return String(value ?? "").trim();
@@ -225,6 +227,35 @@ function dispatchAddToCart(product: ProductCardVM) {
   );
 }
 
+function getProductsRenderKey(products: ProductCardVM[]) {
+  const first = products[0]?.id ?? "";
+  const last = products[products.length - 1]?.id ?? "";
+
+  return `${products.length}:${first}:${last}`;
+}
+
+function scheduleIdle(callback: () => void) {
+  if (typeof window === "undefined") return () => {};
+
+  const win = window as any;
+
+  if (typeof win.requestIdleCallback === "function") {
+    const id = win.requestIdleCallback(callback, { timeout: 900 });
+
+    return () => {
+      if (typeof win.cancelIdleCallback === "function") {
+        win.cancelIdleCallback(id);
+      }
+    };
+  }
+
+  const timer = window.setTimeout(callback, 220);
+
+  return () => {
+    window.clearTimeout(timer);
+  };
+}
+
 export default function MobileProductsGrid({
   products,
   mode,
@@ -257,6 +288,48 @@ export default function MobileProductsGrid({
       .filter(Boolean) as ProductCardVM[];
   }, [products, seoMode, resolvedCurrencies, resolvedTax]);
 
+  const productsRenderKey = useMemo(() => {
+    return getProductsRenderKey(normalizedProducts);
+  }, [normalizedProducts]);
+
+  const [renderWindow, setRenderWindow] = useState({
+    key: "",
+    count: MOBILE_INITIAL_RENDER_COUNT,
+  });
+
+  const visibleCount =
+    renderWindow.key === productsRenderKey
+      ? renderWindow.count
+      : Math.min(MOBILE_INITIAL_RENDER_COUNT, normalizedProducts.length);
+
+  const visibleProducts = useMemo(() => {
+    return normalizedProducts.slice(0, visibleCount);
+  }, [normalizedProducts, visibleCount]);
+
+  useEffect(() => {
+    const total = normalizedProducts.length;
+    const firstCount = Math.min(MOBILE_INITIAL_RENDER_COUNT, total);
+
+    const firstTimer = window.setTimeout(() => {
+      setRenderWindow({
+        key: productsRenderKey,
+        count: firstCount,
+      });
+    }, 0);
+
+    const cancelIdle = scheduleIdle(() => {
+      setRenderWindow({
+        key: productsRenderKey,
+        count: total,
+      });
+    });
+
+    return () => {
+      window.clearTimeout(firstTimer);
+      cancelIdle();
+    };
+  }, [normalizedProducts.length, productsRenderKey]);
+
   if (!normalizedProducts.length) {
     return (
       <div className="mk-mobile-category-products-empty">
@@ -267,7 +340,7 @@ export default function MobileProductsGrid({
 
   return (
     <div className="mk-mobile-category-products">
-      {normalizedProducts.map((product, index) => {
+      {visibleProducts.map((product, index) => {
         const productId = s(product.id);
 
         return (

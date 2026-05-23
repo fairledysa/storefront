@@ -38,14 +38,38 @@ function safeObject(value: any) {
 }
 
 function cleanPath(value: unknown) {
-  const path = String(value ?? "/").trim() || "/";
-  return path.replace(/\/+$/, "") || "/";
+  const raw = String(value ?? "/").trim() || "/";
+
+  let path = raw;
+
+  try {
+    if (raw.startsWith("http://") || raw.startsWith("https://")) {
+      path = new URL(raw).pathname || "/";
+    }
+  } catch {
+    path = raw;
+  }
+
+  path = path.split("?")[0]?.split("#")[0] || "/";
+  path = path.replace(/\/+$/, "") || "/";
+
+  return path;
 }
 
 function isMobileInternalRoute(pathname: string | null) {
   const path = cleanPath(pathname);
 
-  return path === "/categories";
+  return (
+    path === "/categories" ||
+    path === "/cart" ||
+    path === "/account" ||
+    path.startsWith("/account/")
+  );
+}
+
+function getWindowPath() {
+  if (typeof window === "undefined") return "/";
+  return cleanPath(window.location.pathname);
 }
 
 export default function MobileShell({
@@ -66,17 +90,60 @@ export default function MobileShell({
   const [authOpen, setAuthOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
 
-  const forcedRoute = String(data?.route ?? "").trim();
+  const [localPath, setLocalPath] = useState(() => cleanPath(pathname || "/"));
+
+  useEffect(() => {
+    if (!pathname) return;
+    setLocalPath(cleanPath(pathname));
+  }, [pathname]);
+
+  useEffect(() => {
+    function handleMobilePathChange(event: Event) {
+      const detail = (event as CustomEvent<{ href?: string }>).detail;
+      const nextPath = cleanPath(detail?.href || getWindowPath());
+
+      setLocalPath(nextPath);
+      setFromPath(nextPath);
+    }
+
+    function handlePopState() {
+      const nextPath = getWindowPath();
+
+      setLocalPath(nextPath);
+      setFromPath(nextPath);
+    }
+
+    window.addEventListener(
+      "mk:mobile:pathchange",
+      handleMobilePathChange as EventListener,
+    );
+    window.addEventListener("popstate", handlePopState);
+
+    return () => {
+      window.removeEventListener(
+        "mk:mobile:pathchange",
+        handleMobilePathChange as EventListener,
+      );
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, [setFromPath]);
+
+  const effectivePath = cleanPath(localPath || pathname || "/");
+  const forceScreenContainer = isMobileInternalRoute(effectivePath);
+
+  const forcedRoute = forceScreenContainer
+    ? ""
+    : String(data?.route ?? "").trim();
 
   const effectiveKey = useMemo(() => {
     if (forcedRoute) return forcedRoute;
 
-    const keyFromPath = pathname
-      ? resolveRouteKeyFromPath(pathname, MOBILE_ROUTES as any)
+    const keyFromPath = effectivePath
+      ? resolveRouteKeyFromPath(effectivePath, MOBILE_ROUTES as any)
       : null;
 
     return keyFromPath || currentKey || "home";
-  }, [forcedRoute, pathname, currentKey]);
+  }, [forcedRoute, effectivePath, currentKey]);
 
   const isHome = effectiveKey === "home";
 
@@ -139,6 +206,8 @@ export default function MobileShell({
     return {
       ...source,
 
+      route: forceScreenContainer ? effectiveKey : source.route,
+
       bootstrap: mergedBootstrap,
 
       currencies:
@@ -165,9 +234,7 @@ export default function MobileShell({
         bootstrap?.marketing ??
         null,
     };
-  }, [data, bootstrap]);
-
-  const forceScreenContainer = isMobileInternalRoute(pathname);
+  }, [data, bootstrap, forceScreenContainer, effectiveKey]);
 
   async function fetchMe() {
     try {
@@ -187,9 +254,9 @@ export default function MobileShell({
   }, [seoMode, setSeoMode]);
 
   useEffect(() => {
-    if (!pathname) return;
-    setFromPath(pathname);
-  }, [pathname, setFromPath]);
+    if (!effectivePath) return;
+    setFromPath(effectivePath);
+  }, [effectivePath, setFromPath]);
 
   useEffect(() => {
     function handleAuthOpen() {

@@ -4,12 +4,6 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
-import { Swiper, SwiperSlide } from "swiper/react";
-import { Pagination, Autoplay } from "swiper/modules";
-
-import "swiper/css";
-import "swiper/css/pagination";
-
 import {
   toProductCardVM,
   type ProductCardVM,
@@ -51,6 +45,10 @@ import {
   isTripleBannerSection,
   isWideBannerSection,
 } from "../../screens/home/_dynamic/section-utils";
+
+import MobileHero, {
+  type MobileHeroSlide,
+} from "./_components/MobileHero";
 
 type Props = {
   data?: any;
@@ -292,6 +290,7 @@ function MobileBannersSection({
               src={item.src}
               alt={item.title || "banner"}
               loading={index === 0 ? "eager" : "lazy"}
+              decoding="async"
               className="mk-mobile-banner-img mk-mobile-banner-img--wide"
             />
           </a>
@@ -326,6 +325,7 @@ function MobileWideBannerSection({
               src={item.src}
               alt={item.title || "wide banner"}
               loading={index === 0 ? "eager" : "lazy"}
+              decoding="async"
               className="mk-mobile-banner-img mk-mobile-banner-img--wide"
             />
           </a>
@@ -370,6 +370,7 @@ function MobileGridBannersSection({
               src={item.src}
               alt={item.title || "banner"}
               loading={index === 0 ? "eager" : "lazy"}
+              decoding="async"
               className={[
                 "mk-mobile-banner-img",
                 limit === 3 && index === 0
@@ -448,6 +449,7 @@ function MobileLinksSection({
                   src={item.src}
                   alt={itemTitle || "link"}
                   loading={index < 6 ? "eager" : "lazy"}
+                  decoding="async"
                 />
               </span>
 
@@ -549,6 +551,7 @@ function MobileStatsSection({ section }: { section: HomeDynamicSection }) {
               src={image}
               alt={title || "stats"}
               loading="lazy"
+              decoding="async"
               className="mk-mobile-stats__image"
             />
           </div>
@@ -662,6 +665,7 @@ function MobileCountdownOfferSection({
           src={content.image}
           alt={content.title || section.title || "offer"}
           loading="lazy"
+          decoding="async"
           className="mk-mobile-offer__img"
         />
 
@@ -727,6 +731,7 @@ function MobileProductCard({ product }: { product: ProductCardVM }) {
             src={imageUrl}
             alt={title || "product"}
             loading="lazy"
+            decoding="async"
             className="mk-mobile-product-card__image"
           />
         ) : null}
@@ -893,7 +898,10 @@ function MobileAdvancedProductsCollectionSection({
   }, [tabsEnabled, tabs]);
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) || tabs[0];
-  const visibleRawProducts = tabsEnabled ? activeTab?.products || [] : rawProducts;
+
+  const visibleRawProducts = tabsEnabled
+    ? activeTab?.products || []
+    : rawProducts;
 
   const products = normalizeProductCards({
     products: visibleRawProducts,
@@ -918,6 +926,7 @@ function MobileAdvancedProductsCollectionSection({
               src={image}
               alt={title || section.title || "collection"}
               loading="lazy"
+              decoding="async"
               className="mk-mobile-banner-img mk-mobile-banner-img--wide"
             />
           </div>
@@ -1031,82 +1040,11 @@ function MobileResponsiveHeroSliderSection({
         image,
       };
     })
-    .filter(Boolean) as Array<{
-    id: string;
-    title: string;
-    description: string;
-    buttonText: string;
-    href: string;
-    image: string;
-  }>;
+    .filter(Boolean) as MobileHeroSlide[];
 
   if (!slides.length) return null;
 
-  return (
-    <section dir="rtl" className="mk-mhero">
-      <div className="mk-mhero__wrap">
-        <Swiper
-          className="mk-mhero__swiper"
-          modules={[Pagination, Autoplay]}
-          loop={slides.length > 1}
-          centeredSlides
-          slidesPerView={1}
-          spaceBetween={10}
-          autoplay={
-            slides.length > 1
-              ? { delay: 3500, disableOnInteraction: false }
-              : false
-          }
-          pagination={slides.length > 1 ? { clickable: true } : false}
-        >
-          {slides.map((slide, index) => {
-            const hasText =
-              Boolean(slide.title) ||
-              Boolean(slide.description) ||
-              Boolean(slide.buttonText);
-
-            return (
-              <SwiperSlide key={slide.id} className="mk-mhero__slide">
-                <div className="mk-mhero__slideInner">
-                  <Link
-                    href={slide.href || "#"}
-                    className="mk-mhero__link"
-                    aria-label={slide.title || `slide-${index + 1}`}
-                  >
-                    <img
-                      className="mk-mhero__img"
-                      src={slide.image}
-                      alt={slide.title || `slide-${index + 1}`}
-                      loading={index === 0 ? "eager" : "lazy"}
-                      decoding="async"
-                    />
-
-                    {hasText ? (
-                      <div className="mk-mhero__content">
-                        {slide.title ? (
-                          <h2 className="mk-mhero__title">{slide.title}</h2>
-                        ) : null}
-
-                        {slide.description ? (
-                          <p className="mk-mhero__desc">{slide.description}</p>
-                        ) : null}
-
-                        {slide.buttonText ? (
-                          <span className="mk-mhero__button">
-                            {slide.buttonText}
-                          </span>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </Link>
-                </div>
-              </SwiperSlide>
-            );
-          })}
-        </Swiper>
-      </div>
-    </section>
-  );
+  return <MobileHero slides={slides} />;
 }
 
 function isImageLinksGridSection(section: HomeDynamicSection) {
@@ -1355,9 +1293,17 @@ function MobileDynamicSectionRenderer({
 }
 
 export default function HomeMobileScreen({ data, seoMode }: Props) {
-  const dynamicSections = buildDynamicSections(data, seoMode);
-  const currencies = resolveCurrenciesFromData(data);
-  const tax = resolveTaxFromData(data);
+  const dynamicSections = useMemo(() => {
+    return buildDynamicSections(data, seoMode);
+  }, [data, seoMode]);
+
+  const currencies = useMemo(() => {
+    return resolveCurrenciesFromData(data);
+  }, [data]);
+
+  const tax = useMemo(() => {
+    return resolveTaxFromData(data);
+  }, [data]);
 
   return (
     <div className="mk-mobile-home">
