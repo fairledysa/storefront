@@ -2,8 +2,17 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+  type PointerEvent,
+} from "react";
 import { useRouter } from "next/navigation";
+
 import { startMobileNavigation } from "../../../app-navigation/mobile-navigation";
 
 export type MobileHeroSlide = {
@@ -21,6 +30,13 @@ type Props = {
 
 function s(value: any) {
   return String(value ?? "").trim();
+}
+
+function cssUrl(value: any) {
+  const url = s(value);
+  if (!url) return "none";
+
+  return `url(${JSON.stringify(url)})`;
 }
 
 function isModifiedClick(event: MouseEvent) {
@@ -101,11 +117,6 @@ export default function MobileHero({ slides }: Props) {
 
   const activeSlide = cleanSlides[activeIndex] || cleanSlides[0];
 
-  const hasText =
-    Boolean(s(activeSlide.title)) ||
-    Boolean(s(activeSlide.description)) ||
-    Boolean(s(activeSlide.buttonText));
-
   function goTo(index: number) {
     if (!hasMany) return;
 
@@ -127,7 +138,7 @@ export default function MobileHero({ slides }: Props) {
     goTo((activeIndex + 1) % total);
   }
 
-  function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
+  function handlePointerDown(event: PointerEvent<HTMLDivElement>) {
     if (!hasMany) return;
 
     pointerRef.current = {
@@ -137,7 +148,7 @@ export default function MobileHero({ slides }: Props) {
     };
   }
 
-  function handlePointerUp(event: React.PointerEvent<HTMLDivElement>) {
+  function handlePointerUp(event: PointerEvent<HTMLDivElement>) {
     if (!pointerRef.current.active) return;
 
     const dx = event.clientX - pointerRef.current.startX;
@@ -195,6 +206,11 @@ export default function MobileHero({ slides }: Props) {
                 className="mk-mhero__link"
                 aria-label={activeSlide.title || `slide-${activeIndex + 1}`}
                 onClick={(event) => handleLinkClick(event, activeSlide.href)}
+                style={
+                  {
+                    "--mk-mhero-bg": cssUrl(activeSlide.image),
+                  } as CSSProperties
+                }
               >
                 <img
                   className="mk-mhero__img"
@@ -203,30 +219,28 @@ export default function MobileHero({ slides }: Props) {
                   loading={activeIndex === 0 ? "eager" : "lazy"}
                   fetchPriority={activeIndex === 0 ? "high" : "low"}
                   decoding="async"
-                  width={900}
-                  height={1100}
+                  width={1242}
+                  height={1427}
                   sizes="100vw"
                 />
 
-                {hasText ? (
-                  <div className="mk-mhero__content">
-                    {activeSlide.title ? (
-                      <h2 className="mk-mhero__title">{activeSlide.title}</h2>
-                    ) : null}
+                <div className="mk-mhero__content" aria-hidden="true">
+                  {activeSlide.title ? (
+                    <h2 className="mk-mhero__title">{activeSlide.title}</h2>
+                  ) : null}
 
-                    {activeSlide.description ? (
-                      <p className="mk-mhero__desc">
-                        {activeSlide.description}
-                      </p>
-                    ) : null}
+                  {activeSlide.description ? (
+                    <p className="mk-mhero__desc">
+                      {activeSlide.description}
+                    </p>
+                  ) : null}
 
-                    {activeSlide.buttonText ? (
-                      <span className="mk-mhero__button">
-                        {activeSlide.buttonText}
-                      </span>
-                    ) : null}
-                  </div>
-                ) : null}
+                  {activeSlide.buttonText ? (
+                    <span className="mk-mhero__button">
+                      {activeSlide.buttonText}
+                    </span>
+                  ) : null}
+                </div>
               </Link>
             </div>
           </div>

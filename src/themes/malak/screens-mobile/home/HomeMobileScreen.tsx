@@ -12,8 +12,12 @@ import {
 import type {
   HomeDynamicItem,
   HomeDynamicSection,
+ 
+  TestimonialItem,
+  TestimonialNameMode,
 } from "../../screens/home/_dynamic/types";
 
+ 
 import DynamicThemeIcon from "../../screens/home/_dynamic/icons";
 
 import {
@@ -31,6 +35,7 @@ import {
   getAdvancedCollectionTabs,
   getCountdownContent,
   getCountdownParts,
+  getFeaturedMosaicOfferContent,
   getProductsTabs,
   getSectionValues,
   isAdvancedProductsCollectionSection,
@@ -38,14 +43,24 @@ import {
   isCircleLinksSection,
   isCountdownOfferSection,
   isDoubleBannerSection,
+  isFeaturedMosaicOfferSection,
   isProductsTabsSection,
   isResponsiveHeroSliderSection,
   isSquareLinksSection,
   isStatsSection,
   isTripleBannerSection,
   isWideBannerSection,
-} from "../../screens/home/_dynamic/section-utils";
+  getStatsHeroSplitContent,
+isStatsHeroSplitSection,
+getFaqContent,
+isFaqSection,
+fetchStoreTestimonialsPage,
+formatTestimonialDate,
+getTestimonialsContent,
+isTestimonialsSection,
+maskCustomerName,
 
+} from "../../screens/home/_dynamic/section-utils";
 import MobileHero, {
   type MobileHeroSlide,
 } from "./_components/MobileHero";
@@ -264,31 +279,90 @@ function MobileSectionTitle({
     </div>
   );
 }
+function getMobileBannersSliderItems(
+  section: HomeDynamicSection,
+  data: any,
+  seoMode: any,
+) {
+  const values = getSectionValues(section);
 
+  const rows = Array.isArray(values?.field_1)
+    ? values.field_1
+    : Array.isArray(values?.banners)
+      ? values.banners
+      : Array.isArray(values?.items)
+        ? values.items
+        : [];
+
+  const fromRows = rows
+    .map((row: any, index: number) => {
+      const mobileImage =
+        getImageFromValue(row?.field_3) ||
+        getImageFromValue(row?.mobile_image) ||
+        getImageFromValue(row?.mobileImage);
+
+      const desktopImage =
+        getImageFromValue(row?.field_1) ||
+        getImageFromValue(row?.image) ||
+        getImageFromValue(row?.desktop_image) ||
+        getImageFromValue(row?.desktopImage);
+
+      const src = mobileImage || desktopImage;
+
+      if (!src) return null;
+
+      const linkValue =
+        row?.field_2 ||
+        row?.link ||
+        row?.href ||
+        row?.url ||
+        "";
+
+      const title =
+        getTextValue(row, ["field_4", "title", "label", "name"]) ||
+        cleanDynamicText(row?.title) ||
+        section.title ||
+        `banner-${index + 1}`;
+
+      return {
+        src,
+        href: linkValue ? resolveLinkHref(linkValue, data, seoMode) : "#",
+        title,
+      };
+    })
+    .filter(Boolean) as HomeDynamicItem[];
+
+  if (fromRows.length) return fromRows;
+
+  return section.items || [];
+}
+ 
 function MobileBannersSection({
   section,
-  items,
+  data,
+  seoMode,
 }: {
   section: HomeDynamicSection;
-  items: HomeDynamicItem[];
+  data: any;
+  seoMode: any;
 }) {
+  const items = getMobileBannersSliderItems(section, data, seoMode);
+
   if (!items.length) return null;
 
   return (
-    <section className="mk-mobile-home-section">
-      <MobileSectionTitle title={section.title} />
-
+    <section className="mk-mobile-home-section mk-mobile-home-section--banners-slider">
       <div className="mk-mobile-banners-scroll">
         {items.map((item, index) => (
           <a
             key={`${item.src}-${item.href}-${index}`}
             href={item.href || "#"}
             className="mk-mobile-banner-card mk-mobile-banner-card--slider"
-            aria-label={item.title || `banner-${index + 1}`}
+            aria-label={item.title || section.title || `banner-${index + 1}`}
           >
             <img
               src={item.src}
-              alt={item.title || "banner"}
+              alt={item.title || section.title || "banner"}
               loading={index === 0 ? "eager" : "lazy"}
               decoding="async"
               className="mk-mobile-banner-img mk-mobile-banner-img--wide"
@@ -300,36 +374,68 @@ function MobileBannersSection({
   );
 }
 
-function MobileWideBannerSection({
+
+ function MobileWideBannerSection({
   section,
-  items,
+  data,
+  seoMode,
 }: {
   section: HomeDynamicSection;
-  items: HomeDynamicItem[];
+  data: any;
+  seoMode: any;
 }) {
-  if (!items.length) return null;
+  const values = getSectionValues(section);
+  const firstItem = Array.isArray(section.items) ? section.items[0] : null;
+
+  const mobileImage =
+    getImageFromValue(values?.mobile_image) ||
+    getImageFromValue(values?.mobileImage);
+
+  const desktopImage =
+    getImageFromValue(values?.field_1) ||
+    getImageFromValue((firstItem as any)?.src) ||
+    "";
+
+  const image = mobileImage || desktopImage;
+
+  const title =
+    getTextValue(values, ["field_2", "title", "heading"]) ||
+    cleanDynamicText((firstItem as any)?.title) ||
+    section.title ||
+    "wide-banner";
+
+  const description =
+    getTextValue(values, ["field_3", "description", "subtitle", "text"]) ||
+    cleanDynamicText((firstItem as any)?.description);
+
+  const linkValue =
+    values?.field_4 ||
+    (firstItem as any)?.link ||
+    (firstItem as any)?.href ||
+    null;
+
+  const href = linkValue
+    ? resolveGridHref(linkValue, data, seoMode)
+    : s((firstItem as any)?.href) || "#";
+
+  if (!image) return null;
 
   return (
-    <section className="mk-mobile-home-section">
-      <MobileSectionTitle title={section.title} />
-
+    <section className="mk-mobile-home-section mk-mobile-home-section--wide-banner">
       <div className="mk-mobile-wide-stack">
-        {items.map((item, index) => (
-          <a
-            key={`${item.src}-${item.href}-${index}`}
-            href={item.href || "#"}
-            className="mk-mobile-banner-card mk-mobile-banner-card--wide"
-            aria-label={item.title || `wide-banner-${index + 1}`}
-          >
-            <img
-              src={item.src}
-              alt={item.title || "wide banner"}
-              loading={index === 0 ? "eager" : "lazy"}
-              decoding="async"
-              className="mk-mobile-banner-img mk-mobile-banner-img--wide"
-            />
-          </a>
-        ))}
+        <a
+          href={href || "#"}
+          className="mk-mobile-banner-card mk-mobile-banner-card--wide"
+          aria-label={title || description || section.title || "wide-banner"}
+        >
+          <img
+            src={image}
+            alt={title || description || section.title || "wide banner"}
+            loading="lazy"
+            decoding="async"
+            className="mk-mobile-banner-img mk-mobile-banner-img--wide"
+          />
+        </a>
       </div>
     </section>
   );
@@ -766,7 +872,7 @@ function MobileProductCard({ product }: { product: ProductCardVM }) {
   );
 }
 
-function MobileProductsTabsSection({
+ function MobileProductsTabsSection({
   section,
   data,
   seoMode,
@@ -807,9 +913,7 @@ function MobileProductsTabsSection({
   });
 
   return (
-    <section className="mk-mobile-products">
-      <MobileSectionTitle title={section.title || activeTab.title} />
-
+    <section className="mk-mobile-products mk-mobile-products--tabs">
       <div className="mk-mobile-products-tabs">
         {tabs.map((tab) => {
           const active = tab.id === activeTab.id;
@@ -846,6 +950,9 @@ function MobileProductsTabsSection({
   );
 }
 
+
+
+
 function MobileAdvancedProductsCollectionSection({
   section,
   data,
@@ -862,6 +969,7 @@ function MobileAdvancedProductsCollectionSection({
   const values = getSectionValues(section);
 
   const title = getTextValue(values, ["field_1", "title", "heading"]);
+
   const description = getTextValue(values, [
     "field_2",
     "description",
@@ -913,63 +1021,77 @@ function MobileAdvancedProductsCollectionSection({
   if (!title && !description && !image && !products.length) return null;
 
   return (
-    <section className="mk-mobile-products">
-      <MobileSectionTitle
-        title={title || section.title}
-        description={description}
-      />
+    <section className="mk-mobile-advanced-products">
+      <div className="mk-mobile-advanced-products__shell">
+        {title || description ? (
+          <div className="mk-mobile-advanced-products__head">
+            {title ? (
+              <h2 className="mk-mobile-advanced-products__title">{title}</h2>
+            ) : null}
 
-      {image ? (
-        <div className="mk-mobile-wide-stack">
-          <div className="mk-mobile-banner-card mk-mobile-banner-card--wide">
+            {description ? (
+              <p className="mk-mobile-advanced-products__desc">
+                {description}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {image ? (
+          <div className="mk-mobile-advanced-products__media">
             <img
               src={image}
-              alt={title || section.title || "collection"}
+              alt={title || description || section.title || "collection"}
               loading="lazy"
               decoding="async"
-              className="mk-mobile-banner-img mk-mobile-banner-img--wide"
+              className="mk-mobile-advanced-products__img"
             />
           </div>
-        </div>
-      ) : null}
+        ) : null}
 
-      {tabsEnabled && tabs.length ? (
-        <div className="mk-mobile-products-tabs">
-          {tabs.map((tab) => {
-            const active = tab.id === activeTab.id;
+        {tabsEnabled && tabs.length ? (
+          <div className="mk-mobile-advanced-products__tabsWrap">
+            <div className="mk-mobile-advanced-products__tabs" dir="rtl">
+              {tabs.map((tab) => {
+                const active = tab.id === activeTab.id;
 
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTabId(tab.id)}
-                className={[
-                  "mk-mobile-products-tabs__btn",
-                  active ? "is-active" : "",
-                ].join(" ")}
-              >
-                {tab.title}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveTabId(tab.id)}
+                    className={[
+                      "mk-mobile-advanced-products__tab",
+                      active ? "is-active" : "",
+                    ].join(" ")}
+                  >
+                    {tab.title}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
 
-      {products.length ? (
-        <div className="mk-mobile-products-grid">
-          {products.map((product, index) => (
-            <MobileProductCard
-              key={`${s((product as any).id) || "product"}-${index}`}
-              product={product}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="mk-mobile-products-empty">لا توجد منتجات لعرضها</div>
-      )}
+        {products.length ? (
+          <div className="mk-mobile-advanced-products__grid">
+            {products.map((product, index) => (
+              <MobileProductCard
+                key={`${s((product as any).id) || "product"}-${index}`}
+                product={product}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="mk-mobile-products-empty">لا توجد منتجات لعرضها</div>
+        )}
+      </div>
     </section>
   );
 }
+
+
+
 
 function MobileResponsiveHeroSliderSection({
   section,
@@ -1166,6 +1288,568 @@ function MobileImageLinksGridSection({
   );
 }
 
+
+
+
+ 
+
+
+
+
+
+function MobileFeaturedMosaicOfferSection({
+  section,
+  data,
+  seoMode,
+}: {
+  section: HomeDynamicSection;
+  data: any;
+  seoMode: any;
+}) {
+  const content = getFeaturedMosaicOfferContent(section, data, seoMode);
+
+  const mainImage = s(content?.mainImage);
+  const mainHref = s(content?.productHref) || "#";
+  const mainTitle = s(content?.title) || section.title || "عرض مميز";
+
+  const sideCards = Array.isArray(content?.sideImages)
+    ? content.sideImages
+        .map((item: any, index: number) => {
+          const image = s(item?.image);
+          if (!image) return null;
+
+          return {
+            id: `${section.id}-side-${index}`,
+            image,
+            href: s(item?.href) || "#",
+            title:
+              s(item?.alt) ||
+              s(content?.title) ||
+              section.title ||
+              `عرض ${index + 1}`,
+          };
+        })
+        .filter(Boolean)
+    : [];
+
+  const allSideCards = sideCards as Array<{
+    id: string;
+    image: string;
+    href: string;
+    title: string;
+  }>;
+
+  const fallbackHero = !mainImage && allSideCards.length ? allSideCards[0] : null;
+
+  const hero = mainImage
+    ? {
+        id: `${section.id}-main`,
+        image: mainImage,
+        href: mainHref,
+        title: mainTitle,
+      }
+    : fallbackHero;
+
+  const railCards = mainImage ? allSideCards : allSideCards.slice(1);
+
+  if (!hero) return null;
+
+  function renderRailCard(card: {
+    id: string;
+    image: string;
+    href: string;
+    title: string;
+  }) {
+    const body = (
+      <img
+        src={card.image}
+        alt={card.title || "عرض"}
+        loading="lazy"
+        decoding="async"
+        className="mk-mobile-offer-stack__railImg"
+      />
+    );
+
+    if (card.href && card.href !== "#") {
+      return (
+        <a
+          key={card.id}
+          href={card.href}
+          className="mk-mobile-offer-stack__railCard"
+          aria-label={card.title || "عرض"}
+        >
+          {body}
+        </a>
+      );
+    }
+
+    return (
+      <div key={card.id} className="mk-mobile-offer-stack__railCard">
+        {body}
+      </div>
+    );
+  }
+
+  const heroBody = (
+    <img
+      src={hero.image}
+      alt={hero.title || "عرض مميز"}
+      loading="lazy"
+      decoding="async"
+      className="mk-mobile-offer-stack__heroImg"
+    />
+  );
+
+  return (
+    <section className="mk-mobile-offer-stack" dir="rtl">
+      <div className="mk-mobile-offer-stack__inner">
+        {hero.href && hero.href !== "#" ? (
+          <a
+            href={hero.href}
+            className="mk-mobile-offer-stack__hero"
+            aria-label={hero.title || "عرض مميز"}
+          >
+            {heroBody}
+          </a>
+        ) : (
+          <div className="mk-mobile-offer-stack__hero">{heroBody}</div>
+        )}
+
+        {railCards.length ? (
+          <div className="mk-mobile-offer-stack__rail">
+            {railCards.slice(0, 8).map((card) => renderRailCard(card))}
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+
+
+
+
+
+
+ function MobileStatsHeroSplitSection({
+  section,
+}: {
+  section: HomeDynamicSection;
+}) {
+  const content = getStatsHeroSplitContent(section);
+
+  if (
+    !content.eyebrow &&
+    !content.title &&
+    !content.highlightedTitle &&
+    !content.description &&
+    !content.stats.length
+  ) {
+    return null;
+  }
+
+  return (
+    <section className="mk-mobile-shs" dir="rtl">
+      <div className="mk-mobile-shs__inner">
+        <div className="mk-mobile-shs__content">
+          {content.eyebrow ? (
+            <span className="mk-mobile-shs__eyebrow">
+              {content.eyebrow}
+            </span>
+          ) : null}
+
+          {content.title || content.highlightedTitle ? (
+            <h2 className="mk-mobile-shs__title">
+              {content.title ? <span>{content.title}</span> : null}
+              {content.highlightedTitle ? (
+                <em>{content.highlightedTitle}</em>
+              ) : null}
+            </h2>
+          ) : null}
+
+          {content.description ? (
+            <p className="mk-mobile-shs__desc">{content.description}</p>
+          ) : null}
+        </div>
+
+        {content.stats.length ? (
+          <div className="mk-mobile-shs__stats">
+            {content.stats.slice(0, 4).map((item: any, index: number) => {
+              const icon = s(item?.icon);
+
+              return (
+                <article
+                  key={`${item.value}-${item.label}-${index}`}
+                  className="mk-mobile-shs__card"
+                >
+                  {icon ? (
+                    <span
+                      className="mk-mobile-shs__icon"
+                      style={{
+                        background: item.iconBg || "var(--mk-color-primary)",
+                        borderColor: item.iconBorder || "transparent",
+                      }}
+                    >
+                      <DynamicThemeIcon name={icon} />
+                    </span>
+                  ) : null}
+
+                  <div className="mk-mobile-shs__number" dir="ltr">
+                    {item.value}
+                  </div>
+
+                  {item.label ? (
+                    <p className="mk-mobile-shs__label">{item.label}</p>
+                  ) : null}
+                </article>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+
+
+
+
+
+
+function MobileFaqSection({
+  section,
+}: {
+  section: HomeDynamicSection;
+}) {
+  const content = getFaqContent(section);
+
+  if (!content.title && !content.description && !content.items.length) {
+    return null;
+  }
+
+  return (
+    <section className="mk-mobile-faq" dir="rtl">
+      <div className="mk-mobile-faq__inner">
+        {content.title || content.description ? (
+          <div className="mk-mobile-faq__head">
+            {content.title ? (
+              <h2 className="mk-mobile-faq__title">{content.title}</h2>
+            ) : null}
+
+            {content.description ? (
+              <p className="mk-mobile-faq__desc">{content.description}</p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {content.items.length ? (
+          <div className="mk-mobile-faq__list">
+            {content.items.map((item: any, index: number) => {
+              const question = s(item?.question);
+              const answer = s(item?.answer);
+
+              if (!question && !answer) return null;
+
+              return (
+                <details
+                  key={`${question || "faq"}-${index}`}
+                  className="mk-mobile-faq__item"
+                  open={index === 0}
+                >
+                  <summary className="mk-mobile-faq__question">
+                    <span>{question || `سؤال ${index + 1}`}</span>
+                    <i aria-hidden="true">+</i>
+                  </summary>
+
+                  {answer ? (
+                    <div className="mk-mobile-faq__answer">{answer}</div>
+                  ) : null}
+                </details>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+
+
+
+
+
+function MobileStarsView({ rating }: { rating: number }) {
+  const fullStars = Math.round(Math.min(5, Math.max(0, rating || 0)));
+
+  return (
+    <div
+      className="mk-mobile-testimonials__stars"
+      aria-label={`${fullStars} من 5`}
+    >
+      {Array.from({ length: 5 }).map((_, index) => (
+        <span key={index}>{index < fullStars ? "★" : "☆"}</span>
+      ))}
+    </div>
+  );
+}
+
+function MobileTestimonialCard({
+  item,
+  nameMode,
+  showDate,
+}: {
+  item: TestimonialItem;
+  nameMode: TestimonialNameMode;
+  showDate: boolean;
+}) {
+  const displayName =
+    nameMode === "masked" ? maskCustomerName(item.name) : item.name;
+
+  return (
+    <article className="mk-mobile-testimonial-card">
+      <div className="mk-mobile-testimonial-card__head">
+        <div className="mk-mobile-testimonial-card__avatar">
+          {item.avatar ? (
+            <img
+              src={item.avatar}
+              alt={displayName || "عميل"}
+              loading="lazy"
+              decoding="async"
+            />
+          ) : (
+            <span>{s(displayName).slice(0, 1) || "ع"}</span>
+          )}
+        </div>
+
+        <div className="mk-mobile-testimonial-card__person">
+          <h3>{displayName || "عميل"}</h3>
+
+          {item.role ? <p>{item.role}</p> : null}
+
+          {showDate && item.createdAt ? (
+            <time dateTime={item.createdAt}>
+              {formatTestimonialDate(item.createdAt)}
+            </time>
+          ) : null}
+        </div>
+      </div>
+
+      {item.text ? (
+        <p className="mk-mobile-testimonial-card__text">{item.text}</p>
+      ) : null}
+
+      <MobileStarsView rating={item.rating} />
+    </article>
+  );
+}
+
+function MobileTestimonialsSection({
+  section,
+  data,
+}: {
+  section: HomeDynamicSection;
+  data: any;
+}) {
+  const content = getTestimonialsContent(section, data);
+
+  const [open, setOpen] = useState(false);
+  const [modalItems, setModalItems] = useState<TestimonialItem[]>([]);
+  const [modalOffset, setModalOffset] = useState(0);
+  const [modalHasMore, setModalHasMore] = useState(false);
+  const [modalLoading, setModalLoading] = useState(false);
+  const [modalError, setModalError] = useState("");
+
+  const visibleItems = content.items.slice(0, content.limit);
+
+  async function loadModalItems(reset = false) {
+    if (modalLoading) return;
+
+    const nextOffset = reset ? 0 : modalOffset;
+
+    try {
+      setModalLoading(true);
+      setModalError("");
+
+      const result = await fetchStoreTestimonialsPage({
+        limit: content.loadMoreLimit,
+        offset: nextOffset,
+      });
+
+      setModalItems((current) =>
+        reset ? result.items : [...current, ...result.items],
+      );
+
+      setModalHasMore(result.hasMore);
+      setModalOffset(
+        typeof result.nextOffset === "number"
+          ? result.nextOffset
+          : nextOffset + result.items.length,
+      );
+    } catch (error: any) {
+      setModalError(error?.message || "تعذر تحميل التقييمات");
+    } finally {
+      setModalLoading(false);
+    }
+  }
+
+  async function openModal() {
+    setOpen(true);
+    setModalItems([]);
+    setModalOffset(0);
+    setModalHasMore(false);
+    setModalError("");
+
+    await loadModalItems(true);
+  }
+
+  if (!content.title && !content.description && !visibleItems.length) {
+    return null;
+  }
+
+  return (
+    <section className="mk-mobile-testimonials" dir="rtl">
+      <div className="mk-mobile-testimonials__inner">
+        {content.title || content.description ? (
+          <div className="mk-mobile-testimonials__head">
+            <span className="mk-mobile-testimonials__eyebrow">
+              تقييمات العملاء
+            </span>
+
+            {content.title ? (
+              <h2 className="mk-mobile-testimonials__title">
+                {content.title}
+              </h2>
+            ) : null}
+
+            {content.description ? (
+              <p className="mk-mobile-testimonials__desc">
+                {content.description}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {visibleItems.length ? (
+          <div className="mk-mobile-testimonials__rail">
+            {visibleItems.map((item) => (
+              <div
+                key={item.id}
+                className="mk-mobile-testimonials__slide"
+              >
+                <MobileTestimonialCard
+                  item={item}
+                  nameMode={content.nameMode}
+                  showDate={content.showDate}
+                />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="mk-mobile-testimonials__empty">
+            لا توجد تقييمات لعرضها حالياً
+          </div>
+        )}
+
+        {content.showAllButton ? (
+          <div className="mk-mobile-testimonials__actions">
+            <button
+              type="button"
+              className="mk-mobile-testimonials__button"
+              onClick={openModal}
+            >
+              {content.buttonText || "عرض المزيد"}
+            </button>
+          </div>
+        ) : null}
+      </div>
+
+      {open ? (
+        <div
+          className="mk-mobile-testimonials-modal"
+          role="dialog"
+          aria-modal="true"
+        >
+          <button
+            type="button"
+            className="mk-mobile-testimonials-modal__backdrop"
+            onClick={() => setOpen(false)}
+            aria-label="إغلاق"
+          />
+
+          <div className="mk-mobile-testimonials-modal__sheet">
+            <div className="mk-mobile-testimonials-modal__handle" />
+
+            <div className="mk-mobile-testimonials-modal__head">
+              <div>
+                <span>تقييمات العملاء</span>
+                <h3>{content.title || "كل التقييمات"}</h3>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                aria-label="إغلاق"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="mk-mobile-testimonials-modal__body">
+              {modalItems.map((item) => (
+                <MobileTestimonialCard
+                  key={`modal-${item.id}`}
+                  item={item}
+                  nameMode={content.nameMode}
+                  showDate={content.showDate}
+                />
+              ))}
+
+              {modalLoading && !modalItems.length ? (
+                <div className="mk-mobile-testimonials-modal__status">
+                  جاري تحميل التقييمات...
+                </div>
+              ) : null}
+
+              {modalError ? (
+                <div className="mk-mobile-testimonials-modal__status">
+                  {modalError}
+                </div>
+              ) : null}
+
+              {!modalLoading && !modalError && !modalItems.length ? (
+                <div className="mk-mobile-testimonials-modal__status">
+                  لا توجد تقييمات لعرضها حالياً
+                </div>
+              ) : null}
+
+              {modalHasMore ? (
+                <div className="mk-mobile-testimonials-modal__more">
+                  <button
+                    type="button"
+                    disabled={modalLoading}
+                    onClick={() => loadModalItems(false)}
+                  >
+                    {modalLoading ? "جاري التحميل..." : "عرض المزيد"}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+
+
+
+
+
+
+
 function MobileDynamicSectionRenderer({
   section,
   data,
@@ -1233,19 +1917,40 @@ function MobileDynamicSectionRenderer({
     );
   }
 
-  if (isStatsSection(section)) {
-    return <MobileStatsSection section={section} />;
-  }
+ if (isFeaturedMosaicOfferSection(section)) {
+  return (
+    <MobileFeaturedMosaicOfferSection
+      section={section}
+      data={data}
+      seoMode={seoMode}
+    />
+  );
+}
 
-  if (isCircleLinksSection(section)) {
-    return (
-      <MobileLinksSection
-        section={section}
-        items={section.items}
-        variant="circle"
-      />
-    );
-  }
+if (isStatsHeroSplitSection(section)) {
+  return <MobileStatsHeroSplitSection section={section} />;
+}
+
+if (isStatsSection(section)) {
+  return <MobileStatsSection section={section} />;
+}
+
+if (isFaqSection(section)) {
+  return <MobileFaqSection section={section} />;
+}
+if (isTestimonialsSection(section)) {
+  return <MobileTestimonialsSection section={section} data={data} />;
+}
+
+if (isCircleLinksSection(section)) {
+  return (
+    <MobileLinksSection
+      section={section}
+      items={section.items}
+      variant="circle"
+    />
+  );
+}
 
   if (isSquareLinksSection(section)) {
     return (
@@ -1278,19 +1983,41 @@ function MobileDynamicSectionRenderer({
   }
 
   if (isWideBannerSection(section)) {
-    return <MobileWideBannerSection section={section} items={section.items} />;
+    return (
+      <MobileWideBannerSection
+        section={section}
+        data={data}
+        seoMode={seoMode}
+      />
+    );
   }
 
   if (isBannersSliderSection(section)) {
-    return <MobileBannersSection section={section} items={section.items} />;
+    return (
+      <MobileBannersSection
+        section={section}
+        data={data}
+        seoMode={seoMode}
+      />
+    );
   }
 
   if (section.items.length) {
-    return <MobileBannersSection section={section} items={section.items} />;
+    return (
+      <MobileBannersSection
+        section={section}
+        data={data}
+        seoMode={seoMode}
+      />
+    );
   }
 
   return null;
 }
+
+
+
+ 
 
 export default function HomeMobileScreen({ data, seoMode }: Props) {
   const dynamicSections = useMemo(() => {

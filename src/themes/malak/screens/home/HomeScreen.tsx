@@ -1929,13 +1929,70 @@ function DynamicTestimonialsSection({
   );
 }
 
-function BannersSliderSection({
-  title,
-  items,
+
+
+function getDesktopBannersSliderItems(
+  section: HomeDynamicSection,
+  data: any,
+  seoMode: any,
+) {
+  const values = getSectionValues(section);
+
+  const rows = Array.isArray(values?.field_1)
+    ? values.field_1
+    : Array.isArray(values?.banners)
+      ? values.banners
+      : Array.isArray(values?.items)
+        ? values.items
+        : [];
+
+  const items = rows
+    .map((row: any, index: number) => {
+      const image =
+        getImageFromValue(row?.field_1) ||
+        getImageFromValue(row?.desktop_image) ||
+        getImageFromValue(row?.desktopImage) ||
+        getImageFromValue(row?.image);
+
+      if (!image) return null;
+
+      const linkValue = row?.field_2 || row?.link || row?.href || row?.url || "";
+
+      const title =
+        getTextValue(row, ["field_4", "title", "label", "name"]) ||
+        s(row?.title) ||
+        section.title ||
+        `banner-${index + 1}`;
+
+      const description =
+        getTextValue(row, ["description", "subtitle", "text"]) ||
+        s(row?.description);
+
+      return {
+        src: image,
+        href: linkValue ? resolveGridHref(linkValue, data, seoMode) : "#",
+        title,
+        description,
+      };
+    })
+    .filter(Boolean) as HomeDynamicItem[];
+
+  return items;
+}
+
+
+
+ function BannersSliderSection({
+  section,
+  data,
+  seoMode,
 }: {
-  title?: string;
-  items: HomeDynamicItem[];
+  section: HomeDynamicSection;
+  data: any;
+  seoMode: any;
 }) {
+  const items = getDesktopBannersSliderItems(section, data, seoMode);
+
   if (!items.length) return null;
 
   return (
@@ -1963,7 +2020,7 @@ function BannersSliderSection({
               const alt = imageAlt(
                 item.title,
                 item.description,
-                title,
+                section.title,
                 `بنر ${index + 1}`,
               );
 
@@ -1977,8 +2034,8 @@ function BannersSliderSection({
                     <img
                       src={item.src}
                       alt={alt}
-                      width={1600}
-                      height={610}
+                      width={1920}
+                      height={520}
                       loading={index === 0 ? "eager" : "lazy"}
                       fetchPriority={index === 0 ? "high" : "auto"}
                       decoding="async"
@@ -2375,15 +2432,16 @@ const tax = resolveTaxFromData(data);
           );
         }
 
-        if (isBannersSliderSection(section)) {
-          return (
-            <BannersSliderSection
-              key={key}
-              title={section.title}
-              items={section.items}
-            />
-          );
-        }
+       if (isBannersSliderSection(section)) {
+  return (
+    <BannersSliderSection
+      key={key}
+      section={section}
+      data={data}
+      seoMode={seoMode}
+    />
+  );
+}
 
         return null;
       })}

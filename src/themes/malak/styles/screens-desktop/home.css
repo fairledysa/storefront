@@ -2125,11 +2125,11 @@
 
 @media (min-width: 768px) {
   .mk-banners-slider-wrap {
-    border-radius: 16px;
+    border-radius: 10px;
   }
 
   .mk-wide-banner-link {
-    border-radius: 16px;
+    border-radius: 10px;
   }
 
   .mk-double-banner-link,
@@ -3501,7 +3501,7 @@
   display: block;
   width: 100%;
   overflow: hidden;
-  border-radius: 16px;
+  border-radius: 10px;
   background: #f8fafc;
   text-decoration: none;
 }
@@ -4119,4 +4119,51 @@
     padding-bottom: 8px !important;
     --mk-hero-slider-aspect: 1600 / 402;
   }
+}
+
+
+
+
+ /* =========================================================
+   Banners Slider - Desktop Final Override
+   المقاس المعتمد: 1920 × 520
+   ========================================================= */
+
+.mk-banners-slider-section {
+  width: 100%;
+}
+
+.mk-banners-slider-section .mk-banners-slider-wrap {
+  position: relative !important;
+  overflow: hidden !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  aspect-ratio: 1920 / 520 !important;
+ 
+  background: var(--mk-bg-product) !important;
+}
+
+.mk-banners-slider-section .mk-banners-slider-swiper,
+.mk-banners-slider-section .swiper,
+.mk-banners-slider-section .swiper-wrapper,
+.mk-banners-slider-section .swiper-slide {
+  height: 100% !important;
+}
+
+.mk-banners-slider-section .mk-banners-slider-link {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  line-height: 0 !important;
+  text-decoration: none !important;
+}
+
+.mk-banners-slider-section .mk-banners-slider-img {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  aspect-ratio: 1920 / 520 !important;
+  object-fit: cover !important;
+  object-position: center center !important;
 }

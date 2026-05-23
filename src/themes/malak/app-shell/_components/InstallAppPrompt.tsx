@@ -21,6 +21,29 @@ function s(value: unknown) {
   return String(value ?? "").trim();
 }
 
+function bool(value: unknown, fallback: boolean) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1;
+
+  if (typeof value === "string") {
+    const v = value.trim().toLowerCase();
+
+    if (["true", "1", "yes", "on"].includes(v)) return true;
+    if (["false", "0", "no", "off"].includes(v)) return false;
+  }
+
+  if (value && typeof value === "object") {
+    const obj = value as any;
+
+    if ("enabled" in obj) return bool(obj.enabled, fallback);
+    if ("is_enabled" in obj) return bool(obj.is_enabled, fallback);
+    if ("checked" in obj) return bool(obj.checked, fallback);
+    if ("value" in obj) return bool(obj.value, fallback);
+  }
+
+  return fallback;
+}
+
 function isStandaloneMode() {
   if (typeof window === "undefined") return false;
 
@@ -53,7 +76,7 @@ function detectDevice(): DeviceKind {
 }
 
 function storageKey(storeId: string) {
-  return `mk_install_prompt_dismissed:${storeId || "store"}:force-v1`;
+  return `mk_install_prompt_dismissed:${storeId || "store"}:premium-v1`;
 }
 
 function shouldForcePrompt() {
@@ -67,11 +90,17 @@ function shouldForcePrompt() {
 }
 
 export default function InstallAppPrompt({ bootstrap }: Props) {
-  const pwa = (bootstrap as any)?.pwa || {};
+  const pwa = (bootstrap as any)?.pwa || null;
   const installPrompt = pwa?.install_prompt || {};
 
   const storeId = s(bootstrap?.store?.id) || "store";
   const storeName = s(pwa?.app_name) || s(bootstrap?.store?.name) || "المتجر";
+
+  const isEnabled = Boolean(
+    pwa &&
+      bool(pwa?.enabled, false) &&
+      bool(installPrompt?.enabled, true),
+  );
 
   const iconUrl =
     s(pwa?.icon?.source) ||
@@ -80,12 +109,11 @@ export default function InstallAppPrompt({ bootstrap }: Props) {
     s(bootstrap?.store?.favicon_url) ||
     s(bootstrap?.store?.logo_url);
 
-  const installTitle =
-    s(installPrompt?.title) || `ثبّت ${storeName} كتطبيق`;
+  const installTitle = s(installPrompt?.title) || `ثبّت ${storeName} على جوالك`;
 
   const installDescription =
     s(installPrompt?.description) ||
-    "افتح المتجر من شاشة جوالك مباشرة واستمتع بتجربة أسرع وأسهل.";
+    "وصول أسرع وتجربة تشبه التطبيق من الشاشة الرئيسية.";
 
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
@@ -97,38 +125,45 @@ export default function InstallAppPrompt({ bootstrap }: Props) {
   const canUseNativePrompt = Boolean(deferredPrompt && device !== "ios");
 
   const actionLabel = useMemo(() => {
-    if (device === "ios") return "اعرض الطريقة";
     if (canUseNativePrompt) return "ثبّت الآن";
-    return "طريقة التثبيت";
-  }, [device, canUseNativePrompt]);
+    return "أضف للشاشة";
+  }, [canUseNativePrompt]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+
+    if (!isEnabled) {
+      setMounted(false);
+      setVisible(false);
+      setHelpOpen(false);
+      setDeferredPrompt(null);
+      return;
+    }
 
     const forced = shouldForcePrompt();
 
     setMounted(true);
     setDevice(detectDevice());
 
-    if (forced) {
-      try {
-        window.localStorage.removeItem(storageKey(storeId));
-      } catch {}
-
-      setVisible(true);
-      return;
-    }
-
-    if (isStandaloneMode()) {
+    if (isStandaloneMode() && !forced) {
       setVisible(false);
       return;
     }
 
     try {
-      setVisible(window.localStorage.getItem(storageKey(storeId)) !== "1");
-    } catch {
+      if (!forced && window.localStorage.getItem(storageKey(storeId)) === "1") {
+        setVisible(false);
+        return;
+      }
+
+      if (forced) {
+        window.localStorage.removeItem(storageKey(storeId));
+      }
+    } catch {}
+
+    const timer = window.setTimeout(() => {
       setVisible(true);
-    }
+    }, forced ? 0 : 1400);
 
     function handleBeforeInstallPrompt(event: Event) {
       event.preventDefault();
@@ -149,6 +184,7 @@ export default function InstallAppPrompt({ bootstrap }: Props) {
     window.addEventListener("resize", handleResize);
 
     return () => {
+      window.clearTimeout(timer);
       window.removeEventListener(
         "beforeinstallprompt",
         handleBeforeInstallPrompt,
@@ -157,9 +193,10 @@ export default function InstallAppPrompt({ bootstrap }: Props) {
       window.removeEventListener("resize", handleResize);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storeId]);
+  }, [storeId, isEnabled]);
 
   useEffect(() => {
+    if (!isEnabled) return;
     if (typeof window === "undefined") return;
     if (!("serviceWorker" in navigator)) return;
 
@@ -178,7 +215,7 @@ export default function InstallAppPrompt({ bootstrap }: Props) {
     }
 
     globalThis.setTimeout(registerSw, 900);
-  }, []);
+  }, [isEnabled]);
 
   function dismiss() {
     setVisible(false);
@@ -213,7 +250,7 @@ export default function InstallAppPrompt({ bootstrap }: Props) {
     setDeferredPrompt(null);
   }
 
-  if (!mounted || !visible) {
+  if (!isEnabled || !mounted || !visible) {
     return null;
   }
 
@@ -249,11 +286,7 @@ export default function InstallAppPrompt({ bootstrap }: Props) {
 
         <div className="mk-install-app-prompt__copy">
           <strong>{installTitle}</strong>
-          <p>
-            {device === "ios"
-              ? "على الآيفون: اضغط مشاركة ثم إضافة إلى الشاشة الرئيسية."
-              : installDescription}
-          </p>
+          <p>{installDescription}</p>
         </div>
 
         <button
@@ -293,8 +326,8 @@ export default function InstallAppPrompt({ bootstrap }: Props) {
               </div>
 
               <div>
-                <h3>ثبّت {storeName} على جوالك</h3>
-                <p>بعد التثبيت يفتح المتجر مثل التطبيق من شاشة الجوال.</p>
+                <h3>أضف {storeName} للشاشة الرئيسية</h3>
+                <p>بعد الإضافة يفتح المتجر مثل التطبيق مباشرة.</p>
               </div>
             </div>
 
@@ -303,22 +336,21 @@ export default function InstallAppPrompt({ bootstrap }: Props) {
                 <li>
                   <span>1</span>
                   <p>
-                    اضغط زر المشاركة <b>⬆</b> أسفل المتصفح.
+                    اضغط زر المشاركة <b>⬆</b> في Safari.
                   </p>
                 </li>
 
                 <li>
                   <span>2</span>
                   <p>
-                    اختر <b>Add to Home Screen</b> أو{" "}
-                    <b>إضافة إلى الشاشة الرئيسية</b>.
+                    اختر <b>إضافة إلى الشاشة الرئيسية</b>.
                   </p>
                 </li>
 
                 <li>
                   <span>3</span>
                   <p>
-                    اضغط <b>Add</b> أو <b>إضافة</b>.
+                    اضغط <b>إضافة</b> وسيظهر المتجر بين التطبيقات.
                   </p>
                 </li>
               </ol>
@@ -334,7 +366,7 @@ export default function InstallAppPrompt({ bootstrap }: Props) {
                 <li>
                   <span>2</span>
                   <p>
-                    اختر <b>Install app</b> أو <b>Add to Home screen</b>.
+                    اختر <b>تثبيت التطبيق</b> أو <b>إضافة إلى الشاشة</b>.
                   </p>
                 </li>
 
@@ -351,7 +383,7 @@ export default function InstallAppPrompt({ bootstrap }: Props) {
                 className="mk-install-help__primary"
                 onClick={() => setHelpOpen(false)}
               >
-                فهمت
+                تمام
               </button>
 
               <button
@@ -359,7 +391,7 @@ export default function InstallAppPrompt({ bootstrap }: Props) {
                 className="mk-install-help__ghost"
                 onClick={dismiss}
               >
-                لا تظهرها مرة أخرى
+                لا تظهر مرة أخرى
               </button>
             </div>
           </div>
