@@ -93,7 +93,7 @@ function formatMoney(
   const symbol = s(currencySymbol);
   if (!symbol) return "—";
 
-  const formatter = new Intl.NumberFormat("ar-SA", {
+  const formatter = new Intl.NumberFormat("ar-SA-u-nu-latn", {
     minimumFractionDigits: decimalDigits,
     maximumFractionDigits: decimalDigits,
   });

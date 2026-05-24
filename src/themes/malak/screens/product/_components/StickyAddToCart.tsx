@@ -46,7 +46,7 @@ function clampDecimals(value: any) {
 }
 
 function formatPrice(n: number, decimalDigits = 0) {
-  return new Intl.NumberFormat("ar-SA", {
+  return new Intl.NumberFormat("ar-SA-u-nu-latn", {
     minimumFractionDigits: decimalDigits,
     maximumFractionDigits: decimalDigits,
   }).format(Number(n || 0));

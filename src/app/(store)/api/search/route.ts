@@ -481,7 +481,7 @@ function formatPrice(
   const decimals =
     typeof displayCurrency?.decimals === "number" ? displayCurrency.decimals : 0;
 
-  const clean = new Intl.NumberFormat("ar-SA", {
+  const clean = new Intl.NumberFormat("ar-SA-u-nu-latn", {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   }).format(price);

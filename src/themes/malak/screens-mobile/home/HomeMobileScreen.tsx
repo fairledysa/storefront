@@ -273,7 +273,7 @@ function formatVmMoney(product: ProductCardVM, field: "price" | "compare") {
     s(row.currencyCode) ||
     s(row.currency);
 
-  const formatted = new Intl.NumberFormat("ar-SA", {
+  const formatted = new Intl.NumberFormat("ar-SA-u-nu-latn", {
     minimumFractionDigits: 0,
     maximumFractionDigits: decimals,
   }).format(numeric);

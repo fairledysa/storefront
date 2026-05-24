@@ -79,7 +79,7 @@ function clampDecimals(value: any) {
 }
 
 function formatNumber(n: number, decimals = 0) {
-  return new Intl.NumberFormat("ar-SA", {
+  return new Intl.NumberFormat("ar-SA-u-nu-latn", {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   }).format(Number(n || 0));

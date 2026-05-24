@@ -450,7 +450,7 @@ function convertCurrencyAmount(args: {
 }
 
 function formatCurrencyAmount(amount: number, currency: RuntimeCurrency) {
-  const formatted = new Intl.NumberFormat("ar-SA", {
+  const formatted = new Intl.NumberFormat("ar-SA-u-nu-latn", {
     minimumFractionDigits: 0,
     maximumFractionDigits: currency.decimals,
   }).format(Number(amount || 0));

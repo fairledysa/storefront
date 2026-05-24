@@ -634,7 +634,7 @@ function formatMoneyWithCurrency(args: {
     2,
   );
 
-  const formatted = new Intl.NumberFormat("ar-SA", {
+  const formatted = new Intl.NumberFormat("ar-SA-u-nu-latn", {
     minimumFractionDigits: 0,
     maximumFractionDigits: decimals,
   }).format(converted.amount);
@@ -916,7 +916,7 @@ function formatComparePriceFromProduct(
 
   const priceText =
     Number(vm.price) > 0
-      ? `${s(vm.currencySymbol)} ${new Intl.NumberFormat("ar-SA", {
+      ? `${s(vm.currencySymbol)} ${new Intl.NumberFormat("ar-SA-u-nu-latn", {
           minimumFractionDigits: 0,
           maximumFractionDigits: decimals,
         }).format(Number(vm.price))}`.trim()
@@ -925,7 +925,7 @@ function formatComparePriceFromProduct(
   const comparePriceText =
     typeof vm.compareAtPrice === "number" &&
     vm.compareAtPrice > vm.price
-      ? `${s(vm.currencySymbol)} ${new Intl.NumberFormat("ar-SA", {
+      ? `${s(vm.currencySymbol)} ${new Intl.NumberFormat("ar-SA-u-nu-latn", {
           minimumFractionDigits: 0,
           maximumFractionDigits: decimals,
         }).format(Number(vm.compareAtPrice))}`.trim()

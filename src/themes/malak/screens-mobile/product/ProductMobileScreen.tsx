@@ -1239,7 +1239,7 @@ function formatMoney(
   currencySymbol: string,
   decimalDigits: number,
 ) {
-  const formatted = new Intl.NumberFormat("ar-SA", {
+  const formatted = new Intl.NumberFormat("ar-SA-u-nu-latn", {
     minimumFractionDigits: decimalDigits,
     maximumFractionDigits: decimalDigits,
   }).format(Number(value || 0));

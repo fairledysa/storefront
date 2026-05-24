@@ -26,7 +26,7 @@ type Props = {
   onRemoveCoupon: () => void;
 };
 
-const COMPACT_FORMATTER = new Intl.NumberFormat("ar-SA", {
+const COMPACT_FORMATTER = new Intl.NumberFormat("ar-SA-u-nu-latn", {
   maximumFractionDigits: 2,
 });
 
@@ -135,7 +135,7 @@ function fmtCompact(
     Math.min(2, Math.floor(Number(decimalDigits ?? 2))),
   );
 
-  const formatted = new Intl.NumberFormat("ar-SA", {
+  const formatted = new Intl.NumberFormat("ar-SA-u-nu-latn", {
     maximumFractionDigits,
     minimumFractionDigits: maximumFractionDigits > 0 ? 0 : 0,
   }).format(val);

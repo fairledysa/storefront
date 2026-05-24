@@ -189,7 +189,7 @@ function formatDateTime(value?: string | null) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "";
 
-  return d.toLocaleString("ar-SA", {
+  return d.toLocaleString("ar-SA-u-nu-latn", {
     year: "numeric",
     month: "long",
     day: "2-digit",

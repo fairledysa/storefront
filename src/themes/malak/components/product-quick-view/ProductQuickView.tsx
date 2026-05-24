@@ -103,7 +103,7 @@ function readBoolMaybe(value: any): boolean | null {
 }
 
 function formatPrice(value: number) {
-  return new Intl.NumberFormat("ar-SA", {
+  return new Intl.NumberFormat("ar-SA-u-nu-latn", {
     maximumFractionDigits: 0,
   }).format(value);
 }

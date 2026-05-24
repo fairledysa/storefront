@@ -685,7 +685,7 @@ function normalizeProductResult(
 
   const priceText =
     priceValue > 0
-      ? `${symbol} ${new Intl.NumberFormat("ar-SA", {
+      ? `${symbol} ${new Intl.NumberFormat("ar-SA-u-nu-latn", {
           minimumFractionDigits: 0,
           maximumFractionDigits: decimals,
         }).format(priceValue)}`.trim()
@@ -693,7 +693,7 @@ function normalizeProductResult(
 
   const comparePriceText =
     compareValue > priceValue
-      ? `${symbol} ${new Intl.NumberFormat("ar-SA", {
+      ? `${symbol} ${new Intl.NumberFormat("ar-SA-u-nu-latn", {
           minimumFractionDigits: 0,
           maximumFractionDigits: decimals,
         }).format(compareValue)}`.trim()

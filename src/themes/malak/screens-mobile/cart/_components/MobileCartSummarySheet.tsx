@@ -104,7 +104,7 @@ function fmt(amount: number, currencySymbol: string, decimalDigits: number) {
   const val = Number.isFinite(n) ? n : 0;
   const symbol = String(currencySymbol || "").trim();
 
-  const formatted = new Intl.NumberFormat("ar-SA", {
+  const formatted = new Intl.NumberFormat("ar-SA-u-nu-latn", {
     minimumFractionDigits: decimalDigits,
     maximumFractionDigits: decimalDigits,
   }).format(val);
@@ -126,7 +126,7 @@ function fmtCompact(
     Math.min(2, Math.floor(Number(decimalDigits ?? 2))),
   );
 
-  const formatted = new Intl.NumberFormat("ar-SA", {
+  const formatted = new Intl.NumberFormat("ar-SA-u-nu-latn", {
     maximumFractionDigits,
     minimumFractionDigits: 0,
   }).format(val);

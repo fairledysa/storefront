@@ -34,7 +34,7 @@ function formatMoney(
   const n = Number(value);
   if (!Number.isFinite(n)) return null;
 
-  const formatter = new Intl.NumberFormat("ar-SA", {
+  const formatter = new Intl.NumberFormat("ar-SA-u-nu-latn", {
     minimumFractionDigits: decimalDigits,
     maximumFractionDigits: decimalDigits,
   });
