@@ -104,7 +104,31 @@ function readBoolMaybe(value: any): boolean | null {
 function readBool(value: any, fallback = false) {
   return readBoolMaybe(value) ?? fallback;
 }
+function readProductUnlimitedFromMetadata(metadata: any) {
+  const meta =
+    metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      ? metadata
+      : {};
 
+  const stock =
+    meta.stock && typeof meta.stock === "object" && !Array.isArray(meta.stock)
+      ? meta.stock
+      : {};
+
+  return readBool(
+    firstDefined(
+      stock.unlimited_quantity,
+      stock.unlimitedQuantity,
+
+      meta.unlimited_quantity,
+      meta.unlimitedQuantity,
+
+      meta.qtyUnlimited,
+      meta.quantityUnlimited,
+    ),
+    false,
+  );
+}
 function clampTaxRate(value: any) {
   const n = Number(value ?? 0);
   if (!Number.isFinite(n)) return 0;
@@ -636,21 +660,38 @@ function coerceOptionsFromMetadata(metadata: any): any[] {
     );
 }
 
-function coerceVariantsFromMetadata(metadata: any): any[] {
+ function coerceVariantsFromMetadata(metadata: any): any[] {
   const raw = Array.isArray(metadata?.variants) ? metadata.variants : [];
   if (!raw.length) return [];
+
+  const productUnlimited = readProductUnlimitedFromMetadata(metadata);
 
   return raw
     .map((v: any) => ({
       id: String(v?.id),
       product_id: String(metadata?.product_id ?? ""),
       stock_quantity:
-        typeof v?.qty === "number" ? v.qty : Number(v?.qty ?? 0),
+        typeof v?.qty === "number"
+          ? v.qty
+          : Number(
+              firstDefined(
+                v?.stock_quantity,
+                v?.stockQuantity,
+                v?.quantity,
+                v?.qty,
+                0,
+              ),
+            ),
       unlimited_quantity: Boolean(
-        v?.unlimited_quantity ?? v?.unlimitedQty ?? false,
+        productUnlimited ||
+          v?.unlimited_quantity ||
+          v?.unlimitedQuantity ||
+          v?.unlimitedQty ||
+          v?.qtyUnlimited ||
+          v?.quantityUnlimited,
       ),
-      price: v?.price ?? null,
-      sale_price: v?.discount ?? v?.sale_price ?? null,
+      price: firstDefined(v?.price, null),
+      sale_price: firstDefined(v?.discount, v?.sale_price, v?.salePrice, null),
       is_default: Boolean(v?.is_default ?? v?.isDefault ?? false),
     }))
     .filter((x: any) => x.id);
@@ -826,16 +867,18 @@ function getProductStockInfo(args: { metadata: any; stockRow: any }) {
   };
 }
 
-function getVariantStockInfo(args: {
+ function getVariantStockInfo(args: {
   metadata: any;
   variant_id: string;
   dbVariantById: Map<string, any>;
 }) {
   const vid = s(args.variant_id);
+  const productUnlimited = readProductUnlimitedFromMetadata(args.metadata);
 
   const dbv = args.dbVariantById.get(vid);
   if (dbv) {
-    const unlimited = Boolean(dbv?.unlimited_quantity ?? false);
+    const unlimited =
+      productUnlimited || Boolean(dbv?.unlimited_quantity ?? false);
 
     return {
       exists: true,
@@ -851,7 +894,12 @@ function getVariantStockInfo(args: {
 
   if (mv) {
     const unlimited = Boolean(
-      mv?.unlimited_quantity ?? mv?.unlimitedQty ?? false,
+      productUnlimited ||
+        mv?.unlimited_quantity ||
+        mv?.unlimitedQuantity ||
+        mv?.unlimitedQty ||
+        mv?.qtyUnlimited ||
+        mv?.quantityUnlimited,
     );
 
     return {
@@ -859,13 +907,26 @@ function getVariantStockInfo(args: {
       unlimited,
       available_qty: unlimited
         ? 999999
-        : Math.max(0, Math.floor(toNumber(mv?.qty))),
+        : Math.max(
+            0,
+            Math.floor(
+              toNumber(
+                firstDefined(
+                  mv?.stock_quantity,
+                  mv?.stockQuantity,
+                  mv?.quantity,
+                  mv?.qty,
+                  mv?.available_qty,
+                  mv?.availableQty,
+                ),
+              ),
+            ),
+          ),
     };
   }
 
   return { exists: false, unlimited: false, available_qty: 0 };
 }
-
 function computeHardMax(args: {
   desiredQty: number;
   unlimited: boolean;
@@ -1223,10 +1284,34 @@ async function normalizeCartLines(args: {
     activeByLineKey.set(line_key, { id: itemId, qty: finalQty });
   }
 
-  if (changed) {
+   if (changed) {
+    const countR = await sb
+      .from("cart_items")
+      .select("qty")
+      .eq("cart_id", cart_id);
+
+    if (countR.error) throw new Error(countR.error.message);
+
+    const rows: Array<{ qty?: number | string | null }> = Array.isArray(
+      countR.data,
+    )
+      ? countR.data
+      : [];
+
+    const item_count = rows.reduce((sum: number, row) => {
+      const qty = Number(row?.qty ?? 0);
+
+      return (
+        sum + (Number.isFinite(qty) ? Math.max(0, Math.floor(qty)) : 0)
+      );
+    }, 0);
+
     const upCart = await sb
       .from("carts")
-      .update({ last_activity_at: new Date().toISOString() })
+      .update({
+        item_count,
+        last_activity_at: new Date().toISOString(),
+      })
       .eq("id", cart_id)
       .eq("store_id", args.store_id);
 
@@ -1235,7 +1320,6 @@ async function normalizeCartLines(args: {
 
   return { changed, removedIds };
 }
-
 function normalizeCurrencyInfo(currency: string, info: any) {
   const code = String(currency || info?.code || "SAR").trim().toUpperCase();
   const symbol = s(info?.symbol) || code;
@@ -1391,7 +1475,7 @@ function buildMaps(args: {
   };
 }
 
-function resolveConvertedItemPrices(args: {
+ function resolveConvertedItemPrices(args: {
   pricingRow: any;
   variantRow: any | null;
   selectedOptionValueIds: string[];
@@ -1405,23 +1489,28 @@ function resolveConvertedItemPrices(args: {
   );
 
   if (args.variantRow) {
-    const rawPrice = toNumber(args.variantRow?.price);
-    const rawSalePrice = toNumber(args.variantRow?.sale_price);
+    const rawVariantPrice = toNumber(args.variantRow?.price);
+    const rawVariantSalePrice = toNumber(args.variantRow?.sale_price);
 
-    return {
-      price: convertNullablePrice({
-        amount: rawPrice,
-        sourceCode,
-        targetCurrency: args.targetCurrency,
-        currencyRuntime: args.currencyRuntime,
-      }),
-      sale_price: convertNullablePrice({
-        amount: rawSalePrice,
-        sourceCode,
-        targetCurrency: args.targetCurrency,
-        currencyRuntime: args.currencyRuntime,
-      }),
-    };
+    const variantHasOwnPrice =
+      rawVariantPrice > 0 || rawVariantSalePrice > 0;
+
+    if (variantHasOwnPrice) {
+      return {
+        price: convertNullablePrice({
+          amount: rawVariantPrice,
+          sourceCode,
+          targetCurrency: args.targetCurrency,
+          currencyRuntime: args.currencyRuntime,
+        }),
+        sale_price: convertNullablePrice({
+          amount: rawVariantSalePrice,
+          sourceCode,
+          targetCurrency: args.targetCurrency,
+          currencyRuntime: args.currencyRuntime,
+        }),
+      };
+    }
   }
 
   const rawBase = toNumber(args.pricingRow?.price);
