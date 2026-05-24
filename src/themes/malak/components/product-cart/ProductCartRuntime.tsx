@@ -396,13 +396,15 @@ function readItemDecimals(item: AddToCartItem) {
   return Number.isFinite(n) ? clampDecimals(n, 0) : null;
 }
 
-function readItemPrice(item: AddToCartItem) {
+ function readItemPrice(item: AddToCartItem) {
   const sale = safeNum(
     item.sale_price ??
       item.salePrice ??
       item.product?.sale_price ??
       item.metadata?.sale_price ??
-      item.metadata?.salePrice,
+      item.metadata?.salePrice ??
+      item.metadata?.base_sale_price_fallback ??
+      item.metadata?.baseSalePriceFallback,
   );
 
   if (sale !== null && sale > 0) return sale;
@@ -410,7 +412,13 @@ function readItemPrice(item: AddToCartItem) {
   const price = safeNum(
     item.price ??
       item.product?.price ??
-      item.metadata?.price,
+      item.metadata?.price ??
+      item.metadata?.regular_price ??
+      item.metadata?.regularPrice ??
+      item.metadata?.base_price_fallback ??
+      item.metadata?.basePriceFallback ??
+      item.metadata?.variants_price_min ??
+      item.metadata?.variantsPriceMin,
   );
 
   return price !== null && price > 0 ? price : null;

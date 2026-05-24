@@ -101,6 +101,105 @@ function normalizeSelectedOptions(
   return out;
 }
 
+
+function firstDefined(...values: any[]) {
+  for (const value of values) {
+    if (value !== undefined && value !== null) return value;
+  }
+
+  return undefined;
+}
+
+function readBool(value: any, fallback = false) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1;
+
+  if (typeof value === "string") {
+    const text = value.trim().toLowerCase();
+
+    if (["true", "1", "yes", "on", "enabled"].includes(text)) return true;
+    if (["false", "0", "no", "off", "disabled"].includes(text)) return false;
+  }
+
+  return fallback;
+}
+
+function toNumOrNull(value: any): number | null {
+  if (value === null || value === undefined || value === "") return null;
+
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function readProductUnlimitedFromMeta(metadata: any) {
+  const meta = metadata && typeof metadata === "object" ? metadata : {};
+  const stock = meta.stock && typeof meta.stock === "object" ? meta.stock : {};
+
+  return readBool(
+    firstDefined(
+      stock.unlimited_quantity,
+      stock.unlimitedQuantity,
+
+      meta.unlimited_quantity,
+      meta.unlimitedQuantity,
+
+      meta.qtyUnlimited,
+      meta.quantityUnlimited,
+    ),
+    false,
+  );
+}
+
+function readProductQtyFromMeta(metadata: any) {
+  const meta = metadata && typeof metadata === "object" ? metadata : {};
+  const stock = meta.stock && typeof meta.stock === "object" ? meta.stock : {};
+
+  const qty = toNumOrNull(
+    firstDefined(
+      stock.quantity,
+      stock.qty,
+
+      meta.quantity,
+      meta.qty,
+
+      meta.base_qty_fallback,
+      meta.baseQtyFallback,
+    ),
+  );
+
+  return qty === null ? 0 : Math.max(0, Math.floor(qty));
+}
+
+function readVariantUnlimitedFromMeta(variant: any, productUnlimited: boolean) {
+  if (productUnlimited) return true;
+
+  return readBool(
+    firstDefined(
+      variant?.unlimited_quantity,
+      variant?.unlimitedQuantity,
+      variant?.unlimitedQty,
+      variant?.qtyUnlimited,
+      variant?.quantityUnlimited,
+    ),
+    false,
+  );
+}
+
+function readVariantQtyFromMeta(variant: any) {
+  const qty = toNumOrNull(
+    firstDefined(
+      variant?.stock_quantity,
+      variant?.stockQuantity,
+      variant?.quantity,
+      variant?.qty,
+      variant?.available_qty,
+      variant?.availableQty,
+    ),
+  );
+
+  return qty === null ? 0 : Math.max(0, Math.floor(qty));
+}
+
 function upsertSelectedOption(
   rows: Array<{ name: string; value: string }>,
   name: string,
@@ -445,7 +544,7 @@ async function buildSelectedOptionsFromDb(
   return out;
 }
 
-async function getStockInfo(
+ async function getStockInfo(
   sb: any,
   args: { store_id: string; product_id: string; variant_id: string | null },
 ): Promise<StockInfo> {
@@ -469,6 +568,8 @@ async function getStockInfo(
     return { ok: false, reason: "PRODUCT_NOT_FOUND" };
   }
 
+  const productMeta = pR.data?.metadata ?? null;
+
   const psR = await sb
     .from("product_stock")
     .select("quantity,unlimited_quantity,maximum_quantity_per_order")
@@ -479,6 +580,9 @@ async function getStockInfo(
   if (psR.error) throw new Error(psR.error.message);
 
   const stockRow = psR.data ?? null;
+
+  const metaUnlimited = readProductUnlimitedFromMeta(productMeta);
+  const productUnlimited = Boolean(stockRow?.unlimited_quantity ?? false) || metaUnlimited;
 
   const max_per_order =
     typeof stockRow?.maximum_quantity_per_order === "number"
@@ -502,7 +606,8 @@ async function getStockInfo(
         return { ok: false, reason: "INVALID_VARIANT_FOR_PRODUCT" };
       }
 
-      const unlimited = Boolean(v.unlimited_quantity ?? false);
+      const unlimited =
+        productUnlimited || Boolean(v.unlimited_quantity ?? false);
 
       return {
         ok: true,
@@ -514,20 +619,21 @@ async function getStockInfo(
       };
     }
 
-    const meta = pR.data?.metadata;
-    const metaVariants = Array.isArray(meta?.variants) ? meta.variants : [];
+    const metaVariants = Array.isArray(productMeta?.variants)
+      ? productMeta.variants
+      : [];
 
     const mv = metaVariants.find(
       (x: any) => String(x?.id) === String(args.variant_id),
     );
 
     if (mv) {
-      const unlimited = Boolean(mv?.unlimited_quantity ?? mv?.unlimitedQty);
+      const unlimited = readVariantUnlimitedFromMeta(mv, productUnlimited);
 
       return {
         ok: true,
         unlimited,
-        available_qty: unlimited ? 999999 : Math.max(0, Number(mv?.qty ?? 0)),
+        available_qty: unlimited ? 999999 : readVariantQtyFromMeta(mv),
         max_per_order,
       };
     }
@@ -535,19 +641,19 @@ async function getStockInfo(
     return { ok: false, reason: "VARIANT_NOT_FOUND" };
   }
 
-  const unlimited = Boolean(stockRow?.unlimited_quantity ?? false);
-
   return {
     ok: true,
-    unlimited,
-    available_qty: unlimited
+    unlimited: productUnlimited,
+    available_qty: productUnlimited
       ? 999999
-      : Math.max(0, Number(stockRow?.quantity ?? 0)),
+      : stockRow
+        ? Math.max(0, Number(stockRow.quantity ?? 0))
+        : readProductQtyFromMeta(productMeta),
     max_per_order,
   };
 }
 
-async function getStockInfoFast(
+ async function getStockInfoFast(
   sb: any,
   args: {
     product_id: string;
@@ -566,6 +672,9 @@ async function getStockInfoFast(
 
   const stockRow = psR.data ?? null;
 
+  const metaUnlimited = readProductUnlimitedFromMeta(args.productMeta);
+  const productUnlimited = Boolean(stockRow?.unlimited_quantity ?? false) || metaUnlimited;
+
   const max_per_order =
     typeof stockRow?.maximum_quantity_per_order === "number"
       ? Math.max(1, Math.floor(stockRow.maximum_quantity_per_order))
@@ -588,7 +697,8 @@ async function getStockInfoFast(
         return { ok: false, reason: "INVALID_VARIANT_FOR_PRODUCT" };
       }
 
-      const unlimited = Boolean(v.unlimited_quantity ?? false);
+      const unlimited =
+        productUnlimited || Boolean(v.unlimited_quantity ?? false);
 
       return {
         ok: true,
@@ -609,12 +719,12 @@ async function getStockInfoFast(
     );
 
     if (mv) {
-      const unlimited = Boolean(mv?.unlimited_quantity ?? mv?.unlimitedQty);
+      const unlimited = readVariantUnlimitedFromMeta(mv, productUnlimited);
 
       return {
         ok: true,
         unlimited,
-        available_qty: unlimited ? 999999 : Math.max(0, Number(mv?.qty ?? 0)),
+        available_qty: unlimited ? 999999 : readVariantQtyFromMeta(mv),
         max_per_order,
       };
     }
@@ -622,14 +732,14 @@ async function getStockInfoFast(
     return { ok: false, reason: "VARIANT_NOT_FOUND" };
   }
 
-  const unlimited = Boolean(stockRow?.unlimited_quantity ?? false);
-
   return {
     ok: true,
-    unlimited,
-    available_qty: unlimited
+    unlimited: productUnlimited,
+    available_qty: productUnlimited
       ? 999999
-      : Math.max(0, Number(stockRow?.quantity ?? 0)),
+      : stockRow
+        ? Math.max(0, Number(stockRow.quantity ?? 0))
+        : readProductQtyFromMeta(args.productMeta),
     max_per_order,
   };
 }

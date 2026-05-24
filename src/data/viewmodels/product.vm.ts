@@ -941,20 +941,40 @@ function applyTaxToNullableSourceAmount(
   return applyTaxToSourceAmount(amount, tax);
 }
 
-function readPricing(
+ function readPricing(
   product: any,
   currencies?: CurrenciesLike | null,
   tax?: ProductTaxVM | null,
 ) {
   const pricing = readProductPricingObject(product);
   const productTax = tax ?? normalizeProductTax({ product, tax: null });
+  const meta = readMetadata(product);
 
   const rawBaseRegularPrice = toNum(
     firstDefined(
       pricing?.price,
+      pricing?.regular_price,
+      pricing?.regularPrice,
+
       product?.price,
+      product?.regular_price,
+      product?.regularPrice,
+
       product?.seo?.price,
-      product?.metadata?.price,
+      product?.seo?.regular_price,
+      product?.seo?.regularPrice,
+
+      meta.price,
+      meta.regular_price,
+      meta.regularPrice,
+
+      // مهم جدًا: هذا هو السعر الموجود عند منتجك الحالي
+      meta.base_price_fallback,
+      meta.basePriceFallback,
+
+      // احتياط لو الإدارة خزنت أقل سعر للخيارات
+      meta.variants_price_min,
+      meta.variantsPriceMin,
     ),
     0,
   );
@@ -962,12 +982,18 @@ function readPricing(
   const salePriceRaw = firstDefined(
     pricing?.sale_price,
     pricing?.salePrice,
+
     product?.sale_price,
     product?.salePrice,
+
     product?.seo?.sale_price,
     product?.seo?.salePrice,
-    product?.metadata?.sale_price,
-    product?.metadata?.salePrice,
+
+    meta.sale_price,
+    meta.salePrice,
+
+    meta.base_sale_price_fallback,
+    meta.baseSalePriceFallback,
   );
 
   const rawBaseSalePriceValue = toNumOrNull(salePriceRaw);
@@ -988,11 +1014,14 @@ function readPricing(
     rawBaseRegularPrice,
     productTax,
   );
+
   const baseFinalPrice = applyTaxToSourceAmount(rawBaseFinalPrice, productTax);
+
   const baseCompareAtPrice = applyTaxToNullableSourceAmount(
     rawBaseCompareAtPrice,
     productTax,
   );
+
   const baseSalePrice = applyTaxToNullableSourceAmount(
     rawBaseSalePrice,
     productTax,
@@ -1040,8 +1069,8 @@ function readPricing(
       pricing?.saleStart,
       product?.sale_start,
       product?.saleStart,
-      product?.metadata?.sale_start,
-      product?.metadata?.saleStart,
+      meta.sale_start,
+      meta.saleStart,
     ),
   );
 
@@ -1051,8 +1080,8 @@ function readPricing(
       pricing?.saleEnd,
       product?.sale_end,
       product?.saleEnd,
-      product?.metadata?.sale_end,
-      product?.metadata?.saleEnd,
+      meta.sale_end,
+      meta.saleEnd,
     ),
   );
 
@@ -1312,7 +1341,7 @@ function normalizeOptions(product: any): ProductCardOptionVM[] {
     });
 }
 
-function normalizeVariants(
+ function normalizeVariants(
   product: any,
   currencies?: CurrenciesLike | null,
   productSourceCurrencyCode = "",
@@ -1326,6 +1355,76 @@ function normalizeVariants(
   const source = direct.length ? direct : metadataVariants;
   const productTax = tax ?? normalizeProductTax({ product, tax: null });
 
+  const pricing = readProductPricingObject(product);
+  const meta = readMetadata(product);
+
+  const productUnlimited = readBool(
+    firstDefined(
+      product?.stock?.unlimited_quantity,
+      product?.stock?.unlimitedQuantity,
+
+      product?.unlimited_quantity,
+      product?.unlimitedQuantity,
+
+      meta.stock?.unlimited_quantity,
+      meta.stock?.unlimitedQuantity,
+
+      meta.unlimited_quantity,
+      meta.unlimitedQuantity,
+
+      // مهم جدًا: الموجود في منتجك الحالي
+      meta.qtyUnlimited,
+      meta.quantityUnlimited,
+    ),
+    false,
+  );
+
+  const productBasePriceFallback = toNumOrNull(
+    firstDefined(
+      pricing?.price,
+      pricing?.regular_price,
+      pricing?.regularPrice,
+
+      product?.price,
+      product?.regular_price,
+      product?.regularPrice,
+
+      product?.seo?.price,
+      product?.seo?.regular_price,
+      product?.seo?.regularPrice,
+
+      meta.price,
+      meta.regular_price,
+      meta.regularPrice,
+
+      // مهم جدًا: الموجود في منتجك الحالي
+      meta.base_price_fallback,
+      meta.basePriceFallback,
+
+      meta.variants_price_min,
+      meta.variantsPriceMin,
+    ),
+  );
+
+  const productSalePriceFallback = toNumOrNull(
+    firstDefined(
+      pricing?.sale_price,
+      pricing?.salePrice,
+
+      product?.sale_price,
+      product?.salePrice,
+
+      product?.seo?.sale_price,
+      product?.seo?.salePrice,
+
+      meta.sale_price,
+      meta.salePrice,
+
+      meta.base_sale_price_fallback,
+      meta.baseSalePriceFallback,
+    ),
+  );
+
   return source.filter(Boolean).map((variant: any) => {
     const stockQuantity = toNumOrNull(
       firstDefined(
@@ -1336,15 +1435,17 @@ function normalizeVariants(
       ),
     );
 
-    const unlimited = readBool(
-      firstDefined(
-        variant?.unlimited_quantity,
-        variant?.unlimitedQuantity,
-        variant?.qtyUnlimited,
-        variant?.quantityUnlimited,
-      ),
-      false,
-    );
+    const unlimited =
+      productUnlimited ||
+      readBool(
+        firstDefined(
+          variant?.unlimited_quantity,
+          variant?.unlimitedQuantity,
+          variant?.qtyUnlimited,
+          variant?.quantityUnlimited,
+        ),
+        false,
+      );
 
     const optionValues = Array.isArray(variant?.option_values)
       ? variant.option_values
@@ -1385,10 +1486,29 @@ function normalizeVariants(
       normalizeCurrencyCode(productSourceCurrencyCode) ||
       getDefaultCurrencyCode(currencies);
 
-    const rawBaseVariantPrice = toNumOrNull(variant?.price);
+    const rawBaseVariantPrice = toNumOrNull(
+      firstDefined(
+        variant?.price,
+        variant?.regular_price,
+        variant?.regularPrice,
+        variant?.base_price,
+        variant?.basePrice,
+
+        // إذا الخيار ما فيه سعر، خذ سعر المنتج الأساسي
+        productBasePriceFallback,
+      ),
+    );
 
     const rawBaseVariantSalePrice = toNumOrNull(
-      firstDefined(variant?.sale_price, variant?.salePrice),
+      firstDefined(
+        variant?.sale_price,
+        variant?.salePrice,
+        variant?.base_sale_price,
+        variant?.baseSalePrice,
+
+        // إذا المنتج عليه سعر خصم عام
+        productSalePriceFallback,
+      ),
     );
 
     const baseVariantPrice = applyTaxToNullableSourceAmount(
@@ -1430,6 +1550,7 @@ function normalizeVariants(
       stockQuantity,
       unlimited_quantity: unlimited,
       unlimitedQuantity: unlimited,
+
       is_default: readBool(
         firstDefined(variant?.is_default, variant?.isDefault),
         false,
@@ -1438,6 +1559,7 @@ function normalizeVariants(
         firstDefined(variant?.isDefault, variant?.is_default),
         false,
       ),
+
       option_values: optionValues,
       optionValueIds,
     };
@@ -1610,18 +1732,28 @@ if (!hasVariants) {
     hasDiscount: cheapest.hasDiscount,
   };
 }
-function readStock(product: any, variants: ProductCardVariantVM[]) {
+ function readStock(product: any, variants: ProductCardVariantVM[]) {
   const rawStock =
     product?.stock && typeof product.stock === "object" ? product.stock : {};
+
+  const meta = readMetadata(product);
 
   const quantity = toNumOrNull(
     firstDefined(
       rawStock.quantity,
       rawStock.qty,
+
       product?.quantity,
       product?.qty,
-      product?.metadata?.stock?.quantity,
-      product?.metadata?.stock?.qty,
+
+      meta.stock?.quantity,
+      meta.stock?.qty,
+
+      meta.quantity,
+      meta.qty,
+
+      meta.base_qty_fallback,
+      meta.baseQtyFallback,
     ),
   );
 
@@ -1629,10 +1761,19 @@ function readStock(product: any, variants: ProductCardVariantVM[]) {
     firstDefined(
       rawStock.unlimited_quantity,
       rawStock.unlimitedQuantity,
+
       product?.unlimited_quantity,
       product?.unlimitedQuantity,
-      product?.metadata?.unlimited_quantity,
-      product?.metadata?.unlimitedQuantity,
+
+      meta.stock?.unlimited_quantity,
+      meta.stock?.unlimitedQuantity,
+
+      meta.unlimited_quantity,
+      meta.unlimitedQuantity,
+
+      // مهم جدًا: الموجود في منتجك الحالي
+      meta.qtyUnlimited,
+      meta.quantityUnlimited,
     ),
     false,
   );
@@ -1641,10 +1782,12 @@ function readStock(product: any, variants: ProductCardVariantVM[]) {
     firstDefined(
       rawStock.hide_quantity,
       rawStock.hideQuantity,
+
       product?.hide_quantity,
       product?.hideQuantity,
-      product?.metadata?.hide_quantity,
-      product?.metadata?.hideQuantity,
+
+      meta.hide_quantity,
+      meta.hideQuantity,
     ),
     false,
   );
@@ -1653,10 +1796,12 @@ function readStock(product: any, variants: ProductCardVariantVM[]) {
     firstDefined(
       rawStock.maximum_quantity_per_order,
       rawStock.maximumQuantityPerOrder,
+
       product?.maximum_quantity_per_order,
       product?.maximumQuantityPerOrder,
-      product?.metadata?.maximum_quantity_per_order,
-      product?.metadata?.maximumQuantityPerOrder,
+
+      meta.maximum_quantity_per_order,
+      meta.maximumQuantityPerOrder,
     ),
   );
 
@@ -1664,9 +1809,11 @@ function readStock(product: any, variants: ProductCardVariantVM[]) {
     firstDefined(
       product?.isOutOfStock,
       product?.is_out_of_stock,
+
       product?.seo?.in_stock === false ? true : null,
-      product?.metadata?.isOutOfStock,
-      product?.metadata?.is_out_of_stock,
+
+      meta.isOutOfStock,
+      meta.is_out_of_stock,
     ),
   );
 
@@ -1674,9 +1821,11 @@ function readStock(product: any, variants: ProductCardVariantVM[]) {
 
   if (explicitOutOfStock !== null) {
     isOutOfStock = explicitOutOfStock;
+  } else if (unlimitedQuantity) {
+    isOutOfStock = false;
   } else if (variants.length > 0) {
     isOutOfStock = !variants.some(isVariantSellable);
-  } else if (!unlimitedQuantity && quantity !== null) {
+  } else if (quantity !== null) {
     isOutOfStock = quantity <= 0;
   }
 
