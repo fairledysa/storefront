@@ -1785,19 +1785,7 @@ footer,
 .mk-app-shell[data-mk-slider-overlay="true"] .mk-responsive-hero-slider-section {
   position: relative;
 }
-
-.mk-app-shell[data-mk-slider-overlay="true"] .mk-responsive-hero-slider-section::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(
-    180deg,
-    rgba(0, 0, 0, 0.18),
-    rgba(0, 0, 0, 0.04)
-  );
-  z-index: 1;
-}
+ 
 
 .mk-app-shell[data-mk-slider-overlay="true"][data-mk-transparent-header="true"] .mk-header {
   color: #ffffff;
