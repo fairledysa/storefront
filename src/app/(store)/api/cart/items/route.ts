@@ -1,5 +1,3 @@
-// FILE: apps/storefront/src/app/api/cart/items/route.ts
-
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/data/store/supabase.server";
 import { isProductVisibleInWeb } from "@/data/catalog/products";
@@ -78,29 +76,9 @@ function uniqStr(arr: any[]) {
 }
 
 function shortId(id: string) {
-  const s = String(id || "");
-  return s.length > 8 ? s.slice(0, 8) : s;
+  const value = String(id || "");
+  return value.length > 8 ? value.slice(0, 8) : value;
 }
-
-function normalizeSelectedOptions(
-  x: any,
-): Array<{ name: string; value: string }> {
-  if (!Array.isArray(x)) return [];
-
-  const out: Array<{ name: string; value: string }> = [];
-
-  for (const row of x) {
-    const name = String(row?.name ?? "").trim();
-    const value = String(row?.value ?? "").trim();
-
-    if (name && value) {
-      out.push({ name, value });
-    }
-  }
-
-  return out;
-}
-
 
 function firstDefined(...values: any[]) {
   for (const value of values) {
@@ -131,18 +109,132 @@ function toNumOrNull(value: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function safeMeta(value: any) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value
+    : {};
+}
+
+function getMetadataVariants(metadata: any): any[] {
+  const meta = safeMeta(metadata);
+  return Array.isArray(meta.variants) ? meta.variants.filter(Boolean) : [];
+}
+
+function getVariantOptionValueIds(variant: any) {
+  const ids = new Set<string>();
+
+  const arrays = [
+    variant?.option_value_ids,
+    variant?.optionValueIds,
+    variant?.selected_option_value_ids,
+    variant?.selectedOptionValueIds,
+  ];
+
+  for (const arr of arrays) {
+    if (!Array.isArray(arr)) continue;
+
+    for (const id of arr) {
+      const value = String(id ?? "").trim();
+      if (value) ids.add(value);
+    }
+  }
+
+  const optionValues = Array.isArray(variant?.option_values)
+    ? variant.option_values
+    : [];
+
+  for (const value of optionValues) {
+    const id =
+      String(value?.id ?? "").trim() ||
+      String(value?.value_id ?? "").trim() ||
+      String(value?.valueId ?? "").trim() ||
+      String(value?.option_value_id ?? "").trim() ||
+      String(value?.optionValueId ?? "").trim();
+
+    if (id) ids.add(id);
+  }
+
+  const selections = Array.isArray(variant?.selections)
+    ? variant.selections
+    : [];
+
+  for (const selection of selections) {
+    const id =
+      String(selection?.valueId ?? "").trim() ||
+      String(selection?.value_id ?? "").trim() ||
+      String(selection?.id ?? "").trim() ||
+      String(selection?.option_value_id ?? "").trim() ||
+      String(selection?.optionValueId ?? "").trim();
+
+    if (id) ids.add(id);
+  }
+
+  return Array.from(ids);
+}
+
+function findMetadataVariantById(metadata: any, variantId: string | null) {
+  const id = String(variantId ?? "").trim();
+  if (!id) return null;
+
+  return (
+    getMetadataVariants(metadata).find(
+      (variant) => String(variant?.id ?? "").trim() === id,
+    ) ?? null
+  );
+}
+
+function resolveMetaVariantIdFromOptions(metadata: any, optionValueIds: string[]) {
+  const selected = uniqStr(optionValueIds);
+  if (!selected.length) return null;
+
+  const selectedSet = new Set(selected);
+
+  for (const variant of getMetadataVariants(metadata)) {
+    const ids = getVariantOptionValueIds(variant);
+    if (ids.length !== selectedSet.size) continue;
+
+    const idsSet = new Set(ids);
+    let ok = true;
+
+    for (const id of selectedSet) {
+      if (!idsSet.has(id)) {
+        ok = false;
+        break;
+      }
+    }
+
+    if (ok) {
+      const variantId = String(variant?.id ?? "").trim();
+      if (variantId) return variantId;
+    }
+  }
+
+  return null;
+}
+
+function resolveDefaultMetaVariantId(metadata: any) {
+  const variants = getMetadataVariants(metadata);
+  if (!variants.length) return null;
+
+  const def =
+    variants.find((variant) =>
+      readBool(firstDefined(variant?.is_default, variant?.isDefault), false),
+    ) ?? variants[0];
+
+  const id = String(def?.id ?? "").trim();
+  return id || null;
+}
+
 function readProductUnlimitedFromMeta(metadata: any) {
-  const meta = metadata && typeof metadata === "object" ? metadata : {};
-  const stock = meta.stock && typeof meta.stock === "object" ? meta.stock : {};
+  const meta = safeMeta(metadata);
+  const stock = safeMeta(meta.stock);
 
   return readBool(
     firstDefined(
       stock.unlimited_quantity,
       stock.unlimitedQuantity,
-
       meta.unlimited_quantity,
       meta.unlimitedQuantity,
-
       meta.qtyUnlimited,
       meta.quantityUnlimited,
     ),
@@ -151,17 +243,15 @@ function readProductUnlimitedFromMeta(metadata: any) {
 }
 
 function readProductQtyFromMeta(metadata: any) {
-  const meta = metadata && typeof metadata === "object" ? metadata : {};
-  const stock = meta.stock && typeof meta.stock === "object" ? meta.stock : {};
+  const meta = safeMeta(metadata);
+  const stock = safeMeta(meta.stock);
 
   const qty = toNumOrNull(
     firstDefined(
       stock.quantity,
       stock.qty,
-
       meta.quantity,
       meta.qty,
-
       meta.base_qty_fallback,
       meta.baseQtyFallback,
     ),
@@ -198,6 +288,25 @@ function readVariantQtyFromMeta(variant: any) {
   );
 
   return qty === null ? 0 : Math.max(0, Math.floor(qty));
+}
+
+function normalizeSelectedOptions(
+  x: any,
+): Array<{ name: string; value: string }> {
+  if (!Array.isArray(x)) return [];
+
+  const out: Array<{ name: string; value: string }> = [];
+
+  for (const row of x) {
+    const name = String(row?.name ?? "").trim();
+    const value = String(row?.value ?? "").trim();
+
+    if (name && value) {
+      out.push({ name, value });
+    }
+  }
+
+  return out;
 }
 
 function upsertSelectedOption(
@@ -440,16 +549,22 @@ function buildSelectedOptionsFromMetadata(
     const sels = Array.isArray(v?.selections) ? v.selections : [];
 
     for (const row of sels) {
-      const vid = String(row?.valueId ?? row?.id ?? "").trim();
+      const vid =
+        String(row?.valueId ?? "").trim() ||
+        String(row?.value_id ?? "").trim() ||
+        String(row?.id ?? "").trim();
+
       if (!vid) continue;
       if (valueMap.has(vid)) continue;
 
       const optName =
-        String(row?.name ?? row?.optionName ?? "خيار").trim() || "خيار";
+        String(row?.groupName ?? row?.name ?? row?.optionName ?? "خيار").trim() ||
+        "خيار";
 
       const label =
         String(
-          row?.value ??
+          row?.valueName ??
+            row?.value ??
             row?.display_value ??
             row?.displayValue ??
             row?.label ??
@@ -544,230 +659,6 @@ async function buildSelectedOptionsFromDb(
   return out;
 }
 
- async function getStockInfo(
-  sb: any,
-  args: { store_id: string; product_id: string; variant_id: string | null },
-): Promise<StockInfo> {
-  const pR = await sb
-    .from("products")
-    .select("id,store_id,status,metadata")
-    .eq("id", args.product_id)
-    .eq("store_id", args.store_id)
-    .limit(1)
-    .maybeSingle();
-
-  if (pR.error) throw new Error(pR.error.message);
-  if (!pR.data?.id) return { ok: false, reason: "PRODUCT_NOT_FOUND" };
-
-  if (
-    !isProductVisibleInWeb({
-      status: pR.data?.status,
-      metadata: pR.data?.metadata,
-    })
-  ) {
-    return { ok: false, reason: "PRODUCT_NOT_FOUND" };
-  }
-
-  const productMeta = pR.data?.metadata ?? null;
-
-  const psR = await sb
-    .from("product_stock")
-    .select("quantity,unlimited_quantity,maximum_quantity_per_order")
-    .eq("product_id", args.product_id)
-    .limit(1)
-    .maybeSingle();
-
-  if (psR.error) throw new Error(psR.error.message);
-
-  const stockRow = psR.data ?? null;
-
-  const metaUnlimited = readProductUnlimitedFromMeta(productMeta);
-  const productUnlimited = Boolean(stockRow?.unlimited_quantity ?? false) || metaUnlimited;
-
-  const max_per_order =
-    typeof stockRow?.maximum_quantity_per_order === "number"
-      ? Math.max(1, Math.floor(stockRow.maximum_quantity_per_order))
-      : null;
-
-  if (args.variant_id) {
-    const vR = await sb
-      .from("product_variants")
-      .select("id,product_id,stock_quantity,unlimited_quantity")
-      .eq("id", args.variant_id)
-      .limit(1)
-      .maybeSingle();
-
-    if (vR.error) throw new Error(vR.error.message);
-
-    const v = vR.data ?? null;
-
-    if (v?.id) {
-      if (String(v.product_id) !== String(args.product_id)) {
-        return { ok: false, reason: "INVALID_VARIANT_FOR_PRODUCT" };
-      }
-
-      const unlimited =
-        productUnlimited || Boolean(v.unlimited_quantity ?? false);
-
-      return {
-        ok: true,
-        unlimited,
-        available_qty: unlimited
-          ? 999999
-          : Math.max(0, Number(v.stock_quantity ?? 0)),
-        max_per_order,
-      };
-    }
-
-    const metaVariants = Array.isArray(productMeta?.variants)
-      ? productMeta.variants
-      : [];
-
-    const mv = metaVariants.find(
-      (x: any) => String(x?.id) === String(args.variant_id),
-    );
-
-    if (mv) {
-      const unlimited = readVariantUnlimitedFromMeta(mv, productUnlimited);
-
-      return {
-        ok: true,
-        unlimited,
-        available_qty: unlimited ? 999999 : readVariantQtyFromMeta(mv),
-        max_per_order,
-      };
-    }
-
-    return { ok: false, reason: "VARIANT_NOT_FOUND" };
-  }
-
-  return {
-    ok: true,
-    unlimited: productUnlimited,
-    available_qty: productUnlimited
-      ? 999999
-      : stockRow
-        ? Math.max(0, Number(stockRow.quantity ?? 0))
-        : readProductQtyFromMeta(productMeta),
-    max_per_order,
-  };
-}
-
- async function getStockInfoFast(
-  sb: any,
-  args: {
-    product_id: string;
-    variant_id: string | null;
-    productMeta: any;
-  },
-): Promise<StockInfo> {
-  const psR = await sb
-    .from("product_stock")
-    .select("quantity,unlimited_quantity,maximum_quantity_per_order")
-    .eq("product_id", args.product_id)
-    .limit(1)
-    .maybeSingle();
-
-  if (psR.error) throw new Error(psR.error.message);
-
-  const stockRow = psR.data ?? null;
-
-  const metaUnlimited = readProductUnlimitedFromMeta(args.productMeta);
-  const productUnlimited = Boolean(stockRow?.unlimited_quantity ?? false) || metaUnlimited;
-
-  const max_per_order =
-    typeof stockRow?.maximum_quantity_per_order === "number"
-      ? Math.max(1, Math.floor(stockRow.maximum_quantity_per_order))
-      : null;
-
-  if (args.variant_id) {
-    const vR = await sb
-      .from("product_variants")
-      .select("id,product_id,stock_quantity,unlimited_quantity")
-      .eq("id", args.variant_id)
-      .limit(1)
-      .maybeSingle();
-
-    if (vR.error) throw new Error(vR.error.message);
-
-    const v = vR.data ?? null;
-
-    if (v?.id) {
-      if (String(v.product_id) !== String(args.product_id)) {
-        return { ok: false, reason: "INVALID_VARIANT_FOR_PRODUCT" };
-      }
-
-      const unlimited =
-        productUnlimited || Boolean(v.unlimited_quantity ?? false);
-
-      return {
-        ok: true,
-        unlimited,
-        available_qty: unlimited
-          ? 999999
-          : Math.max(0, Number(v.stock_quantity ?? 0)),
-        max_per_order,
-      };
-    }
-
-    const metaVariants = Array.isArray(args.productMeta?.variants)
-      ? args.productMeta.variants
-      : [];
-
-    const mv = metaVariants.find(
-      (x: any) => String(x?.id) === String(args.variant_id),
-    );
-
-    if (mv) {
-      const unlimited = readVariantUnlimitedFromMeta(mv, productUnlimited);
-
-      return {
-        ok: true,
-        unlimited,
-        available_qty: unlimited ? 999999 : readVariantQtyFromMeta(mv),
-        max_per_order,
-      };
-    }
-
-    return { ok: false, reason: "VARIANT_NOT_FOUND" };
-  }
-
-  return {
-    ok: true,
-    unlimited: productUnlimited,
-    available_qty: productUnlimited
-      ? 999999
-      : stockRow
-        ? Math.max(0, Number(stockRow.quantity ?? 0))
-        : readProductQtyFromMeta(args.productMeta),
-    max_per_order,
-  };
-}
-
-async function getCartItemOrThrow(
-  sb: any,
-  cart_id: string,
-  cart_item_id: string,
-) {
-  const r = await sb
-    .from("cart_items")
-    .select(
-      "id,cart_id,product_id,variant_id,qty,line_key,selected_option_value_ids,selected_options",
-    )
-    .eq("id", cart_item_id)
-    .limit(1)
-    .maybeSingle();
-
-  if (r.error) throw new Error(r.error.message);
-  if (!r.data?.id) throw new Error("CART_ITEM_NOT_FOUND");
-
-  if (String(r.data.cart_id) !== String(cart_id)) {
-    throw new Error("CART_ITEM_NOT_IN_CART");
-  }
-
-  return r.data;
-}
-
 async function resolveVariantIdFromOptions(
   sb: any,
   args: { product_id: string; selected_option_value_ids: string[] },
@@ -850,13 +741,171 @@ async function resolveDefaultVariantId(sb: any, product_id: string) {
   return vR.data?.id ? String(vR.data.id) : null;
 }
 
+async function resolveDbVariantIdForCart(
+  sb: any,
+  args: { product_id: string; variant_id: string | null },
+) {
+  const variantId = String(args.variant_id ?? "").trim();
+  if (!variantId) return null;
+
+  const r = await sb
+    .from("product_variants")
+    .select("id,product_id")
+    .eq("id", variantId)
+    .limit(1)
+    .maybeSingle();
+
+  if (r.error) throw new Error(r.error.message);
+
+  if (!r.data?.id) return null;
+  if (String(r.data.product_id) !== String(args.product_id)) return null;
+
+  return String(r.data.id);
+}
+
+async function syncCartActivityAndCount(sb: any, cartId: string) {
+  const itemsR = await sb.from("cart_items").select("qty").eq("cart_id", cartId);
+
+  if (itemsR.error) throw new Error(itemsR.error.message);
+
+const rows: Array<{ qty?: number | string | null }> = Array.isArray(itemsR.data)
+  ? itemsR.data
+  : [];
+
+const item_count = rows.reduce((sum: number, row) => {
+  const qty = Number(row?.qty ?? 0);
+  return sum + (Number.isFinite(qty) ? Math.max(0, Math.floor(qty)) : 0);
+}, 0);
+
+  const upR = await sb
+    .from("carts")
+    .update({
+      item_count,
+      last_activity_at: new Date().toISOString(),
+    })
+    .eq("id", cartId);
+
+  if (upR.error) throw new Error(upR.error.message);
+
+  return item_count;
+}
+
+async function getStockInfoFast(
+  sb: any,
+  args: {
+    product_id: string;
+    variant_id: string | null;
+    productMeta: any;
+  },
+): Promise<StockInfo> {
+  const psR = await sb
+    .from("product_stock")
+    .select("quantity,unlimited_quantity,maximum_quantity_per_order")
+    .eq("product_id", args.product_id)
+    .limit(1)
+    .maybeSingle();
+
+  if (psR.error) throw new Error(psR.error.message);
+
+  const stockRow = psR.data ?? null;
+
+  const metaUnlimited = readProductUnlimitedFromMeta(args.productMeta);
+  const productUnlimited =
+    Boolean(stockRow?.unlimited_quantity ?? false) || metaUnlimited;
+
+  const max_per_order =
+    typeof stockRow?.maximum_quantity_per_order === "number"
+      ? Math.max(1, Math.floor(stockRow.maximum_quantity_per_order))
+      : null;
+
+  if (args.variant_id) {
+    const vR = await sb
+      .from("product_variants")
+      .select("id,product_id,stock_quantity,unlimited_quantity")
+      .eq("id", args.variant_id)
+      .limit(1)
+      .maybeSingle();
+
+    if (vR.error) throw new Error(vR.error.message);
+
+    const v = vR.data ?? null;
+
+    if (v?.id) {
+      if (String(v.product_id) !== String(args.product_id)) {
+        return { ok: false, reason: "INVALID_VARIANT_FOR_PRODUCT" };
+      }
+
+      const unlimited =
+        productUnlimited || Boolean(v.unlimited_quantity ?? false);
+
+      return {
+        ok: true,
+        unlimited,
+        available_qty: unlimited
+          ? 999999
+          : Math.max(0, Number(v.stock_quantity ?? 0)),
+        max_per_order,
+      };
+    }
+
+    const mv = findMetadataVariantById(args.productMeta, args.variant_id);
+
+    if (mv) {
+      const unlimited = readVariantUnlimitedFromMeta(mv, productUnlimited);
+
+      return {
+        ok: true,
+        unlimited,
+        available_qty: unlimited ? 999999 : readVariantQtyFromMeta(mv),
+        max_per_order,
+      };
+    }
+
+    return { ok: false, reason: "VARIANT_NOT_FOUND" };
+  }
+
+  return {
+    ok: true,
+    unlimited: productUnlimited,
+    available_qty: productUnlimited
+      ? 999999
+      : stockRow
+        ? Math.max(0, Number(stockRow.quantity ?? 0))
+        : readProductQtyFromMeta(args.productMeta),
+    max_per_order,
+  };
+}
+
+async function getCartItemOrThrow(
+  sb: any,
+  cart_id: string,
+  cart_item_id: string,
+) {
+  const r = await sb
+    .from("cart_items")
+    .select(
+      "id,cart_id,product_id,variant_id,qty,line_key,selected_option_value_ids,selected_options",
+    )
+    .eq("id", cart_item_id)
+    .limit(1)
+    .maybeSingle();
+
+  if (r.error) throw new Error(r.error.message);
+  if (!r.data?.id) throw new Error("CART_ITEM_NOT_FOUND");
+
+  if (String(r.data.cart_id) !== String(cart_id)) {
+    throw new Error("CART_ITEM_NOT_IN_CART");
+  }
+
+  return r.data;
+}
+
 function computeAllowedQty(args: {
   desiredQty: number;
   existingQtyInCartForThisLine: number;
   stock: Extract<StockInfo, { ok: true }>;
 }) {
   const desired = Math.max(1, Math.floor(args.desiredQty));
-  const existing = Math.max(0, Math.floor(args.existingQtyInCartForThisLine));
 
   const maxByStock = args.stock.unlimited
     ? 999999
@@ -876,7 +925,6 @@ function computeAllowedQty(args: {
     wasLimited: finalQty !== desired,
     available: args.stock.unlimited ? null : args.stock.available_qty,
     max_per_order: args.stock.max_per_order,
-    existing_in_cart_for_line: existing,
   };
 }
 
@@ -1048,9 +1096,9 @@ export async function POST(req: Request) {
 
     const product_id = parsed.product_id;
     let variant_id = parsed.variant_id;
+    let selected_option_value_ids = parsed.selected_option_value_ids;
 
     const qtyToAdd = parsed.qty;
-    const selected_option_value_ids = parsed.selected_option_value_ids;
     const selected_options_ui = parsed.selected_options_ui;
 
     if (!product_id) {
@@ -1102,6 +1150,7 @@ export async function POST(req: Request) {
     }
 
     const productMeta = prodR.data?.metadata ?? null;
+    const metaVariants = getMetadataVariants(productMeta);
 
     const variantsCountR = await sb
       .from("product_variants")
@@ -1110,14 +1159,20 @@ export async function POST(req: Request) {
 
     if (variantsCountR.error) throw new Error(variantsCountR.error.message);
 
-    const hasVariants = (variantsCountR.count ?? 0) > 0;
+    const hasDbVariants = (variantsCountR.count ?? 0) > 0;
+    const hasMetaVariants = metaVariants.length > 0;
+    const hasVariants = hasDbVariants || hasMetaVariants;
 
     if (hasVariants) {
       if (!variant_id && selected_option_value_ids.length > 0) {
-        variant_id = await resolveVariantIdFromOptions(sb, {
-          product_id,
-          selected_option_value_ids,
-        });
+        variant_id =
+          (hasDbVariants
+            ? await resolveVariantIdFromOptions(sb, {
+                product_id,
+                selected_option_value_ids,
+              })
+            : null) ||
+          resolveMetaVariantIdFromOptions(productMeta, selected_option_value_ids);
 
         if (!variant_id) {
           return NextResponse.json(
@@ -1131,7 +1186,9 @@ export async function POST(req: Request) {
       }
 
       if (!variant_id && selected_option_value_ids.length === 0) {
-        variant_id = await resolveDefaultVariantId(sb, product_id);
+        variant_id =
+          (hasDbVariants ? await resolveDefaultVariantId(sb, product_id) : null) ||
+          resolveDefaultMetaVariantId(productMeta);
 
         if (!variant_id) {
           return NextResponse.json(
@@ -1143,25 +1200,14 @@ export async function POST(req: Request) {
           );
         }
       }
+
+      if (variant_id && selected_option_value_ids.length === 0) {
+        const mv = findMetadataVariantById(productMeta, variant_id);
+        if (mv) {
+          selected_option_value_ids = getVariantOptionValueIds(mv);
+        }
+      }
     }
-
-    const line_key = buildLineKey({
-      product_id,
-      variant_id,
-      selected_option_value_ids,
-    });
-
-    const existingR = await sb
-      .from("cart_items")
-      .select("id,qty")
-      .eq("cart_id", cart.id)
-      .eq("line_key", line_key)
-      .limit(1)
-      .maybeSingle();
-
-    if (existingR.error) throw new Error(existingR.error.message);
-
-    const existingQty = Math.max(0, Number(existingR.data?.qty ?? 0));
 
     const stock = await getStockInfoFast(sb, {
       product_id,
@@ -1183,6 +1229,29 @@ export async function POST(req: Request) {
         { status: stock.reason === "PRODUCT_NOT_FOUND" ? 404 : 400 },
       );
     }
+
+    const cartVariantId = await resolveDbVariantIdForCart(sb, {
+      product_id,
+      variant_id,
+    });
+
+    const line_key = buildLineKey({
+      product_id,
+      variant_id,
+      selected_option_value_ids,
+    });
+
+    const existingR = await sb
+      .from("cart_items")
+      .select("id,qty")
+      .eq("cart_id", cart.id)
+      .eq("line_key", line_key)
+      .limit(1)
+      .maybeSingle();
+
+    if (existingR.error) throw new Error(existingR.error.message);
+
+    const existingQty = Math.max(0, Number(existingR.data?.qty ?? 0));
 
     const limitByStock = stock.unlimited
       ? 999999
@@ -1281,31 +1350,28 @@ export async function POST(req: Request) {
 
       item = upR.data;
     } else {
-     const insR = await sb
-  .from("cart_items")
-  .insert({
-    store_id,
-    cart_id: cart.id,
-    product_id,
-    variant_id,
-    qty: canAddNow,
-    currency: String(cart.currency || "SAR"),
-    line_key,
-    selected_option_value_ids,
-    ...(selected_options.length ? { selected_options } : {}),
-  })
-  .select("*")
-  .single();
+      const insR = await sb
+        .from("cart_items")
+        .insert({
+          store_id,
+          cart_id: cart.id,
+          product_id,
+          variant_id: cartVariantId,
+          qty: canAddNow,
+          currency: String(cart.currency || "SAR"),
+          line_key,
+          selected_option_value_ids,
+          ...(selected_options.length ? { selected_options } : {}),
+        })
+        .select("*")
+        .single();
 
       if (insR.error) throw new Error(insR.error.message);
 
       item = insR.data;
     }
 
-    await sb
-      .from("carts")
-      .update({ last_activity_at: new Date().toISOString() })
-      .eq("id", cart.id);
+    await syncCartActivityAndCount(sb, cart.id);
 
     const isPartial = canAddNow < qtyToAdd;
 
@@ -1407,11 +1473,7 @@ export async function PATCH(req: Request) {
       })
     ) {
       await sb.from("cart_items").delete().eq("id", item0.id);
-
-      await sb
-        .from("carts")
-        .update({ last_activity_at: new Date().toISOString() })
-        .eq("id", cart.id);
+      await syncCartActivityAndCount(sb, cart.id);
 
       return NextResponse.json(
         {
@@ -1439,11 +1501,7 @@ export async function PATCH(req: Request) {
 
       if (!stock.ok) {
         await sb.from("cart_items").delete().eq("id", item0.id);
-
-        await sb
-          .from("carts")
-          .update({ last_activity_at: new Date().toISOString() })
-          .eq("id", cart.id);
+        await syncCartActivityAndCount(sb, cart.id);
 
         return NextResponse.json(
           {
@@ -1467,11 +1525,7 @@ export async function PATCH(req: Request) {
 
       if (hardMax <= 0 || finalQty <= 0) {
         await sb.from("cart_items").delete().eq("id", item0.id);
-
-        await sb
-          .from("carts")
-          .update({ last_activity_at: new Date().toISOString() })
-          .eq("id", cart.id);
+        await syncCartActivityAndCount(sb, cart.id);
 
         const res = NextResponse.json({
           data: {
@@ -1516,10 +1570,7 @@ export async function PATCH(req: Request) {
 
       if (upR.error) throw new Error(upR.error.message);
 
-      await sb
-        .from("carts")
-        .update({ last_activity_at: new Date().toISOString() })
-        .eq("id", cart.id);
+      await syncCartActivityAndCount(sb, cart.id);
 
       const res = NextResponse.json({
         data: {
@@ -1563,8 +1614,10 @@ export async function PATCH(req: Request) {
 
     if (op === "set_variant") {
       const product_id = String(item0.product_id);
+      const productMeta = visibleProductR.data?.metadata ?? null;
+      const metaVariants = getMetadataVariants(productMeta);
 
-      const selected_option_value_ids = Array.isArray(
+      let selected_option_value_ids = Array.isArray(
         (body as any).selected_option_value_ids,
       )
         ? (body as any).selected_option_value_ids.map(String).filter(Boolean)
@@ -1582,13 +1635,6 @@ export async function PATCH(req: Request) {
         ? String((body as any).variant_id)
         : null;
 
-      if (!variant_id) {
-        variant_id = await resolveVariantIdFromOptions(sb, {
-          product_id,
-          selected_option_value_ids,
-        });
-      }
-
       const variantsCountR = await sb
         .from("product_variants")
         .select("id", { count: "exact", head: true })
@@ -1596,7 +1642,27 @@ export async function PATCH(req: Request) {
 
       if (variantsCountR.error) throw new Error(variantsCountR.error.message);
 
-      const hasVariants = (variantsCountR.count ?? 0) > 0;
+      const hasDbVariants = (variantsCountR.count ?? 0) > 0;
+      const hasMetaVariants = metaVariants.length > 0;
+      const hasVariants = hasDbVariants || hasMetaVariants;
+
+      if (!variant_id && selected_option_value_ids.length) {
+        variant_id =
+          (hasDbVariants
+            ? await resolveVariantIdFromOptions(sb, {
+                product_id,
+                selected_option_value_ids,
+              })
+            : null) ||
+          resolveMetaVariantIdFromOptions(productMeta, selected_option_value_ids);
+      }
+
+      if (variant_id && selected_option_value_ids.length === 0) {
+        const mv = findMetadataVariantById(productMeta, variant_id);
+        if (mv) {
+          selected_option_value_ids = getVariantOptionValueIds(mv);
+        }
+      }
 
       if (hasVariants && !variant_id) {
         return NextResponse.json(
@@ -1608,7 +1674,10 @@ export async function PATCH(req: Request) {
         );
       }
 
-      const productMeta = visibleProductR.data?.metadata ?? null;
+      const cartVariantId = await resolveDbVariantIdForCart(sb, {
+        product_id,
+        variant_id,
+      });
 
       let selected_options: Array<{ name: string; value: string }> = [];
 
@@ -1663,11 +1732,7 @@ export async function PATCH(req: Request) {
 
       if (!stock.ok) {
         await sb.from("cart_items").delete().eq("id", item0.id);
-
-        await sb
-          .from("carts")
-          .update({ last_activity_at: new Date().toISOString() })
-          .eq("id", cart.id);
+        await syncCartActivityAndCount(sb, cart.id);
 
         return NextResponse.json(
           {
@@ -1696,11 +1761,7 @@ export async function PATCH(req: Request) {
 
         if (hardMax <= 0 || finalQty <= 0) {
           await sb.from("cart_items").delete().eq("id", item0.id);
-
-          await sb
-            .from("carts")
-            .update({ last_activity_at: new Date().toISOString() })
-            .eq("id", cart.id);
+          await syncCartActivityAndCount(sb, cart.id);
 
           const res = NextResponse.json({
             data: {
@@ -1708,7 +1769,8 @@ export async function PATCH(req: Request) {
               removed_item_id: item0.id,
               notice: {
                 code: "QTY_LIMITED_REMOVED",
-                message: "هذه الخيارات غير متوفرة حاليًا، وتم حذف هذا السطر من السلة.",
+                message:
+                  "هذه الخيارات غير متوفرة حاليًا، وتم حذف هذا السطر من السلة.",
                 desired: desiredMergedQty,
                 final: 0,
                 available,
@@ -1793,10 +1855,7 @@ export async function PATCH(req: Request) {
         const delOld = await sb.from("cart_items").delete().eq("id", item0.id);
         if (delOld.error) throw new Error(delOld.error.message);
 
-        await sb
-          .from("carts")
-          .update({ last_activity_at: new Date().toISOString() })
-          .eq("id", cart.id);
+        await syncCartActivityAndCount(sb, cart.id);
 
         const res = NextResponse.json({
           data: {
@@ -1857,11 +1916,7 @@ export async function PATCH(req: Request) {
 
       if (hardMax <= 0 || finalQty <= 0) {
         await sb.from("cart_items").delete().eq("id", item0.id);
-
-        await sb
-          .from("carts")
-          .update({ last_activity_at: new Date().toISOString() })
-          .eq("id", cart.id);
+        await syncCartActivityAndCount(sb, cart.id);
 
         const res = NextResponse.json({
           data: {
@@ -1942,7 +1997,7 @@ export async function PATCH(req: Request) {
       const upSelf = await sb
         .from("cart_items")
         .update({
-          variant_id,
+          variant_id: cartVariantId,
           selected_option_value_ids,
           line_key: new_line_key,
           qty: finalQty,
@@ -1954,10 +2009,7 @@ export async function PATCH(req: Request) {
 
       if (upSelf.error) throw new Error(upSelf.error.message);
 
-      await sb
-        .from("carts")
-        .update({ last_activity_at: new Date().toISOString() })
-        .eq("id", cart.id);
+      await syncCartActivityAndCount(sb, cart.id);
 
       const res = NextResponse.json({
         data: {
@@ -2043,10 +2095,7 @@ export async function DELETE(req: Request) {
 
     if (delR.error) throw new Error(delR.error.message);
 
-    await sb
-      .from("carts")
-      .update({ last_activity_at: new Date().toISOString() })
-      .eq("id", cart.id);
+    await syncCartActivityAndCount(sb, cart.id);
 
     const res = NextResponse.json({
       data: {
