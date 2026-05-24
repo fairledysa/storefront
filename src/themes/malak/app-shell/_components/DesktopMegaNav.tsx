@@ -37,6 +37,7 @@ function safeNumber(x: any) {
 
 function readEventQty(event: Event) {
   const detail = (event as CustomEvent<any>).detail || {};
+
   return (
     safeNumber(detail.qty) ||
     safeNumber(detail.addedQty) ||
@@ -96,16 +97,10 @@ export default function DesktopMegaNav({
   );
 
   const roots = useMemo(() => {
-    const arr = Array.isArray(tree) ? tree : [];
-    return arr.slice(0, 5);
+    return Array.isArray(tree) ? tree : [];
   }, [tree]);
 
-  const rootsWithChildren = useMemo(() => {
-    const arr = Array.isArray(tree) ? tree : [];
-    return arr.filter((category: any) => hasChildren(category));
-  }, [tree]);
-
-  const hasAnyMegaContent = rootsWithChildren.length > 0;
+  const hasAnyMegaContent = roots.length > 0;
 
   const [open, setOpen] = useState(false);
   const [showAll, setShowAll] = useState(true);
@@ -157,6 +152,12 @@ export default function DesktopMegaNav({
     [prefetchHref],
   );
 
+  const prefetchTopRoots = useCallback(() => {
+    roots.slice(0, 8).forEach((root: any) => {
+      prefetchCategory(root);
+    });
+  }, [roots, prefetchCategory]);
+
   useEffect(() => {
     if (prefetchTimer.current) {
       window.clearTimeout(prefetchTimer.current);
@@ -167,10 +168,7 @@ export default function DesktopMegaNav({
       prefetchTimer.current = null;
 
       prefetchHref("/cart");
-
-      roots.forEach((root: any) => {
-        prefetchHref(root?.href);
-      });
+      prefetchTopRoots();
     }, 700);
 
     return () => {
@@ -179,7 +177,7 @@ export default function DesktopMegaNav({
         prefetchTimer.current = null;
       }
     };
-  }, [roots, prefetchHref]);
+  }, [prefetchHref, prefetchTopRoots]);
 
   useEffect(() => {
     setCartCount(safeNumber(initialCartCount));
@@ -242,6 +240,7 @@ export default function DesktopMegaNav({
       const detail = (event as CustomEvent<any>).detail || {};
       const count =
         detail.count ?? detail.cartCount ?? detail.cart_count ?? detail.total;
+
       setCartCount(safeNumber(count));
     };
 
@@ -380,13 +379,13 @@ export default function DesktopMegaNav({
     if (!Array.isArray(tree)) return [];
 
     if (showAll) {
-      return tree.filter((category: any) => hasChildren(category));
+      return tree;
     }
 
     if (!activeRootId) return [];
 
-    return tree.filter((r: any) => {
-      return String(r.id) === String(activeRootId) && hasChildren(r);
+    return tree.filter((root: any) => {
+      return String(root.id) === String(activeRootId);
     });
   }, [tree, showAll, activeRootId]);
 
@@ -452,11 +451,10 @@ export default function DesktopMegaNav({
         <span className="mk-vdiv" />
 
         <div className="mk-desktop-nav__deliveryCurrency" dir="rtl">
-           
-
           {showCurrencySwitcher ? (
             <>
               <span className="mk-vdiv mk-vdiv--currency" />
+
               <CurrencySwitcher
                 storeId={bootstrap?.store?.id}
                 currencies={currencies}
@@ -474,10 +472,7 @@ export default function DesktopMegaNav({
           onMouseEnter={
             header.desktopSideMenu && hasAnyMegaContent
               ? () => {
-                  roots.slice(0, 5).forEach((root: any) => {
-                    prefetchCategory(root);
-                  });
-
+                  prefetchTopRoots();
                   openAllSoon();
                 }
               : undefined
@@ -488,9 +483,7 @@ export default function DesktopMegaNav({
               return;
             }
 
-            roots.slice(0, 5).forEach((root: any) => {
-              prefetchCategory(root);
-            });
+            prefetchTopRoots();
 
             calcOverlayTop();
             setShowAll(true);
@@ -505,10 +498,7 @@ export default function DesktopMegaNav({
           <div
             className="mk-desktop-nav__itemWrap"
             onMouseEnter={() => {
-              roots.slice(0, 5).forEach((root: any) => {
-                prefetchCategory(root);
-              });
-
+              prefetchTopRoots();
               openAllSoon();
             }}
             onMouseLeave={closeSoon}
@@ -519,9 +509,7 @@ export default function DesktopMegaNav({
               aria-expanded={showAllMega}
               aria-haspopup="dialog"
               onClick={() => {
-                roots.slice(0, 5).forEach((root: any) => {
-                  prefetchCategory(root);
-                });
+                prefetchTopRoots();
 
                 calcOverlayTop();
                 setShowAll(true);
@@ -529,9 +517,7 @@ export default function DesktopMegaNav({
                 setOpen((value) => !(value && showAll));
               }}
               onFocus={() => {
-                roots.slice(0, 5).forEach((root: any) => {
-                  prefetchCategory(root);
-                });
+                prefetchTopRoots();
 
                 calcOverlayTop();
                 setShowAll(true);
