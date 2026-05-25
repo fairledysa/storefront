@@ -967,7 +967,7 @@ function CountdownOfferSection({
   );
 }
 
-function ProductsTabsSection({
+ function ProductsTabsSection({
   section,
   data,
   seoMode,
@@ -1008,73 +1008,142 @@ function ProductsTabsSection({
 
   if (!tabs.length) return null;
 
-const activeTab = tabs.find((tab) => tab.id === activeId) || tabs[0];
-const activeTabTitle = cleanProductsTabTitle(activeTab?.title);
-const activeDescription = s((activeTab as any).description);
-const isSingleTab = tabs.length === 1;
+  const activeTab = tabs.find((tab) => tab.id === activeId) || tabs[0];
+  const activeDescription = s((activeTab as any).description);
+  const isSingleTab = tabs.length === 1;
+
+  const singleTitle = groupTitle || activeTab.title;
+  const singleDescription = groupDescription || activeDescription;
+
+  if (isSingleTab) {
+    return (
+      <section className="mk-products-tabs-section mk-home-product-section">
+  {singleTitle || singleDescription ? (
+  <div className="mk-products-tabs-single-head">
+    {singleTitle ? (
+      <h2 className="mk-products-tabs-single-title">
+        {singleTitle}
+      </h2>
+    ) : null}
+
+    {singleDescription ? (
+      <p className="mk-products-tabs-single-desc">
+        {singleDescription}
+      </p>
+    ) : null}
+  </div>
+) : null}
+
+        {activeTab.products.length ? (
+          <ProductsSlider
+            products={activeTab.products}
+            data={data}
+            currencies={currencies}
+            tax={tax}
+          />
+        ) : (
+          <div className="mk-products-tabs-empty">
+            لا توجد منتجات لعرضها
+          </div>
+        )}
+      </section>
+    );
+  }
+
+
+
+
 
   return (
-    <section className="mk-products-tabs-section mk-home-product-section">
-      {isSingleTab ? (
-        groupTitle || groupDescription ? (
-          <div className="mk-home-product-head">
-            {groupTitle ? (
-              <h2 className="mk-products-tabs-single-title">{groupTitle}</h2>
-            ) : null}
+  <section
+    className={[
+      "mk-products-tabs-section",
+      "mk-home-product-section",
+      tabs.length === 1
+        ? "mk-products-tabs-section--single"
+        : "mk-products-tabs-section--multi",
+    ].join(" ")}
+  >
+    {tabs.length === 1 ? (
+      groupTitle || activeTab.title || groupDescription || activeDescription ? (
+        <div className="mk-home-product-head mk-products-tabs-single-head">
+          {groupTitle || activeTab.title ? (
+            <h2 className="mk-products-tabs-single-title">
+              {groupTitle || activeTab.title}
+            </h2>
+          ) : null}
 
-            {groupDescription ? (
-              <p className="mk-products-tabs-single-desc">
-                {groupDescription}
-              </p>
-            ) : null}
-          </div>
-        ) : null
-      ) : (
-        <div className="mk-home-product-head">
-          <div className="mk-products-tabs-header">
-            {tabs.map((tab) => {
-              const active = tab.id === activeTab.id;
-
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveId(tab.id)}
-                  className={[
-                    "mk-products-tab-button",
-                    active ? "mk-products-tab-button-active" : "",
-                  ].join(" ")}
-                >
-                  {tab.title}
-                </button>
-              );
-            })}
-          </div>
-
-          {activeDescription ? (
-            <div className="mk-products-tabs-active-desc">
-              {activeDescription}
-            </div>
+          {groupDescription || activeDescription ? (
+            <p className="mk-products-tabs-single-desc">
+              {groupDescription || activeDescription}
+            </p>
           ) : null}
         </div>
-      )}
+      ) : null
+    ) : (
+      <div className="mk-home-product-head mk-products-tabs-multi-head">
+        {groupTitle ? (
+          <h2 className="mk-products-tabs-single-title">{groupTitle}</h2>
+        ) : null}
 
-      {activeTab.products.length ? (
-<ProductsSlider
-  title={activeTabTitle}
-  products={activeTab.products}
-  data={data}
-  currencies={currencies}
-  tax={tax}
-/>
-      ) : (
-        <div className="mk-products-tabs-empty">
-          لا توجد منتجات لعرضها في هذا التاب
+        <div
+          className="mk-products-tabs-header"
+          role="tablist"
+          aria-label="تبويبات المنتجات"
+        >
+          {tabs.map((tab) => {
+            const active = tab.id === activeTab.id;
+
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setActiveId(tab.id)}
+                className={[
+                  "mk-products-tab-button",
+                  active ? "mk-products-tab-button-active" : "",
+                ].join(" ")}
+              >
+                {tab.title}
+              </button>
+            );
+          })}
         </div>
-      )}
-    </section>
-  );
+
+        {activeDescription || groupDescription ? (
+          <p className="mk-products-tabs-active-desc">
+            {activeDescription || groupDescription}
+          </p>
+        ) : null}
+      </div>
+    )}
+
+    {activeTab.products.length ? (
+      <ProductsSlider
+        products={activeTab.products}
+        data={data}
+        currencies={currencies}
+        tax={tax}
+      />
+    ) : (
+      <div className="mk-products-tabs-empty">
+        لا توجد منتجات لعرضها في هذا التاب
+      </div>
+    )}
+  </section>
+);
 }
+
+
+
+ 
+
+
+
+
+
 
 function AdvancedProductsCollectionSection({
   section,

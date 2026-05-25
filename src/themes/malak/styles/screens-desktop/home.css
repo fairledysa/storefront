@@ -4167,3 +4167,531 @@
   object-fit: cover !important;
   object-position: center center !important;
 }
+
+
+
+
+
+
+
+
+
+
+
+.mk-products-tabs-single-head {
+  width: min(100% - 32px, 1440px);
+margin: 16px auto 18px;
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 7px;
+}
+
+.mk-products-tabs-single-title {
+  margin: 0;
+  max-width: 760px;
+  color: var(--mk-text-main, #18181b);
+  font-size: clamp(22px, 1.55vw, 30px);
+  font-weight: 900;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
+}
+
+.mk-products-tabs-single-desc {
+  margin: 0;
+  max-width: 680px;
+  color: var(--mk-text-muted, #71717a);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.9;
+}
+
+
+
+
+
+
+
+
+/* Products Tabs - Desktop polish */
+.mk-products-tabs-section {
+  padding-block: 22px 18px;
+}
+
+.mk-products-tabs-single-head,
+.mk-products-tabs-multi-head {
+  width: min(100%, 1440px);
+  margin-inline: auto;
+  padding-inline: 16px;
+  margin-bottom: 18px;
+  text-align: center;
+}
+
+.mk-products-tabs-single-head {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+}
+
+.mk-products-tabs-multi-head {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+}
+
+.mk-products-tabs-single-title {
+  margin: 0;
+  color: #18181b;
+  font-size: clamp(24px, 2.1vw, 36px);
+  font-weight: 950;
+  line-height: 1.25;
+  letter-spacing: -0.03em;
+}
+
+.mk-products-tabs-single-desc,
+.mk-products-tabs-active-desc {
+  margin: 0;
+  max-width: 680px;
+  color: #71717a;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.9;
+}
+
+.mk-products-tabs-active-desc {
+  padding: 7px 18px;
+  border: 1px solid rgba(24, 24, 27, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.04);
+}
+
+.mk-products-tabs-header {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 5px;
+  border: 1px solid rgba(24, 24, 27, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.05);
+}
+
+.mk-products-tab-button {
+  height: 42px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #3f3f46;
+  padding-inline: 20px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 900;
+  white-space: nowrap;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.mk-products-tab-button:hover {
+  color: #18181b;
+  background: rgba(24, 24, 27, 0.04);
+}
+
+.mk-products-tab-button-active {
+  color: #ffffff;
+  background: #18181b;
+  box-shadow: 0 10px 22px rgba(24, 24, 27, 0.16);
+}
+
+.mk-products-tab-button-active:hover {
+  color: #ffffff;
+  background: #18181b;
+}
+
+.mk-products-tabs-empty {
+  width: min(100%, 1440px);
+  margin: 0 auto;
+  padding: 28px 16px;
+  color: #71717a;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+
+
+
+
+
+
+/* Products Tabs - final multi tabs polish */
+.mk-products-tabs-section {
+  padding-block: 34px 24px;
+}
+
+.mk-products-tabs-multi-head {
+  width: min(100%, 1440px);
+  margin-inline: auto;
+  padding-inline: 16px;
+  margin-bottom: 28px;
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.mk-products-tabs-header {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 5px;
+  border: 1px solid rgba(24, 24, 27, 0.08);
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 14px 35px rgba(15, 23, 42, 0.06);
+}
+
+.mk-products-tab-button {
+  height: 40px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #3f3f46;
+  padding-inline: 22px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.mk-products-tab-button:hover {
+  color: #18181b;
+  background: rgba(24, 24, 27, 0.045);
+}
+
+.mk-products-tab-button-active,
+.mk-products-tab-button-active:hover {
+  color: #ffffff;
+  background: #18181b;
+  box-shadow: 0 10px 22px rgba(24, 24, 27, 0.18);
+}
+
+.mk-products-tabs-active-desc {
+  margin: 0;
+  max-width: 720px;
+  color: #71717a;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.9;
+}
+
+.mk-products-tabs-single-head {
+  width: min(100%, 1440px);
+  margin-inline: auto;
+  padding-inline: 16px;
+  margin-bottom: 26px;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.mk-products-tabs-single-title {
+  margin: 0;
+  color: #18181b;
+  font-size: clamp(26px, 2.2vw, 38px);
+  font-weight: 950;
+  line-height: 1.25;
+  letter-spacing: -0.03em;
+}
+
+.mk-products-tabs-single-desc {
+  margin: 0;
+  max-width: 720px;
+  color: #71717a;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.9;
+}
+
+
+ /* =========================================================
+   Products Tabs - clean final desktop polish
+   ========================================================= */
+
+.mk-products-tabs-section {
+  position: relative;
+  overflow: visible;
+  margin: 0 !important;
+  padding-block: 22px 30px !important;
+}
+
+.mk-products-tabs-section.mk-home-product-section {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding-top: 5px !important;
+  padding-bottom: 30px !important;
+}
+
+/* رأس القسم: يدعم single / multi */
+.mk-products-tabs-section .mk-home-product-head,
+.mk-products-tabs-multi-head,
+.mk-products-tabs-single-head {
+  width: min(100%, 1440px);
+  margin-inline: auto;
+  padding-inline: 16px;
+  display: grid;
+  justify-items: center;
+  text-align: center;
+}
+
+/* حالة أكثر من تاب */
+.mk-products-tabs-multi-head,
+.mk-products-tabs-section .mk-home-product-head {
+  gap: 10px;
+  margin-bottom: 14px !important;
+}
+
+/* حالة تاب واحد فقط */
+.mk-products-tabs-single-head {
+  gap: 7px;
+  margin-bottom: 16px !important;
+}
+
+/* العنوان والوصف العام */
+.mk-products-tabs-group-head {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  text-align: center;
+}
+
+/* عنوان حالة التاب الواحد */
+.mk-products-tabs-single-title {
+  margin: 0;
+  color: #18181b;
+  font-size: clamp(30px, 2.2vw, 40px);
+  font-weight: 950;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  text-align: center;
+}
+
+/* وصف حالة التاب الواحد */
+.mk-products-tabs-single-desc {
+  width: fit-content;
+  max-width: min(760px, calc(100vw - 48px));
+  margin: 0 auto !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: #71717a;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.8;
+  text-align: center;
+}
+
+/* أزرار التابات */
+.mk-products-tabs-header {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: fit-content;
+  max-width: calc(100vw - 40px);
+  margin: 0 auto !important;
+  padding: 5px;
+  border: 1px solid rgba(24, 24, 27, 0.08);
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.07);
+}
+
+.mk-products-tab-button {
+  min-height: 38px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #3f3f46;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.mk-products-tab-button:hover {
+  background: #f4f4f5;
+}
+
+.mk-products-tab-button-active,
+.mk-products-tab-button-active:hover {
+  background: #18181b;
+  color: #ffffff;
+  box-shadow: 0 9px 20px rgba(24, 24, 27, 0.18);
+}
+
+/* وصف التاب النشط في حالة أكثر من تاب */
+.mk-products-tabs-active-desc {
+  display: block;
+  width: fit-content;
+  max-width: min(760px, calc(100vw - 48px));
+  margin: 0 auto 4px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: #71717a !important;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.8;
+  text-align: center;
+}
+
+/* قرب المنتجات من العنوان / التابات */
+.mk-products-tabs-section .mk-products-slider,
+.mk-products-tabs-section .mk-products-slider-section,
+.mk-products-tabs-section .mk-home-products-slider,
+.mk-products-tabs-section .mk-products-slider-wrap,
+.mk-products-tabs-section .mk-products-slider__wrap,
+.mk-products-tabs-section .mk-products-row,
+.mk-products-tabs-section .swiper {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+/* سحب السلايدر لفوق بشكل خفيف بدون تخريب */
+.mk-products-tabs-section .mk-products-slider,
+.mk-products-tabs-section .mk-products-slider-section,
+.mk-products-tabs-section .mk-home-products-slider {
+  transform: translateY(-4px);
+}
+
+/* منع الفراغ الكبير تحت السلايدر */
+.mk-products-tabs-section .swiper {
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.mk-products-tabs-section .swiper-wrapper {
+  align-items: stretch !important;
+}
+
+.mk-products-tabs-section .swiper-slide {
+  height: auto !important;
+}
+
+/* منع أي فراغ زائد من كروت المنتجات */
+.mk-products-tabs-section .mkpc-card,
+.mk-products-tabs-section [data-mk-product-card-id] {
+  margin-bottom: 0 !important;
+}
+
+/* المسافة بين أقسام المنتجات المتتالية */
+.mk-products-tabs-section + .mk-products-tabs-section,
+.mk-products-tabs-section + .mk-advanced-products-section,
+.mk-products-tabs-section + .mk-home-product-section,
+.mk-home-product-section + .mk-products-tabs-section {
+  margin-top: 18px !important;
+}
+
+/* موبايل احتياطي */
+@media (max-width: 767px) {
+  .mk-products-tabs-section,
+  .mk-products-tabs-section.mk-home-product-section {
+    padding-top: 18px !important;
+    padding-bottom: 22px !important;
+  }
+
+  .mk-products-tabs-section .mk-home-product-head,
+  .mk-products-tabs-multi-head,
+  .mk-products-tabs-single-head {
+    padding-inline: 12px;
+    margin-bottom: 14px !important;
+  }
+
+  .mk-products-tabs-header {
+    max-width: calc(100vw - 24px);
+    overflow-x: auto;
+    justify-content: flex-start;
+    scrollbar-width: none;
+  }
+
+  .mk-products-tabs-header::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mk-products-tab-button {
+    min-height: 36px;
+    padding: 0 18px;
+    font-size: 13px;
+  }
+
+  .mk-products-tabs-single-title {
+    font-size: 26px;
+  }
+
+  .mk-products-tabs-single-desc,
+  .mk-products-tabs-active-desc {
+    font-size: 13px;
+    line-height: 1.7;
+  }
+
+  .mk-products-tabs-section .mk-products-slider,
+  .mk-products-tabs-section .mk-products-slider-section,
+  .mk-products-tabs-section .mk-home-products-slider {
+    transform: none;
+  }
+}
+
+
+/* =========================================================
+   Fix spacing when Products Tabs comes after Products Tabs
+   ========================================================= */
+
+.mk-products-tabs-section + .mk-products-tabs-section {
+  margin-top: 0 !important;
+  padding-top: 8px !important;
+}
+
+.mk-products-tabs-section + .mk-products-tabs-section .mk-home-product-head,
+.mk-products-tabs-section + .mk-products-tabs-section .mk-products-tabs-multi-head,
+.mk-products-tabs-section + .mk-products-tabs-section .mk-products-tabs-single-head {
+  margin-top: 0 !important;
+  margin-bottom: 12px !important;
+}
+
+/* قلل نهاية القسم الأول عشان ما يترك فراغ قبل القسم اللي بعده */
+.mk-products-tabs-section:has(+ .mk-products-tabs-section) {
+  padding-bottom: 14px !important;
+}
+
+/* لا نخلي السلايدر يضيف فراغ زيادة قبل القسم التالي */
+.mk-products-tabs-section:has(+ .mk-products-tabs-section) .swiper {
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+
