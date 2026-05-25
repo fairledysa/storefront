@@ -1514,12 +1514,18 @@ footer,
   border-color: var(--mk-border-strong);
 }
 
+ 
+/* صورة عناصر البحث تكون دائرية فقط */
 .mk-desktop-search__brandImg {
-  width: 100%;
-  height: auto;
-  object-fit: contain;
+  width: 74px !important;
+  height: 74px !important;
+  aspect-ratio: 1 / 1;
+  border-radius: 999px !important;
+  object-fit: cover !important;
+  object-position: center;
+  display: block;
+  overflow: hidden;
 }
-
 .mk-desktop-search__brandText {
   text-align: center;
   font-size: 10px;
