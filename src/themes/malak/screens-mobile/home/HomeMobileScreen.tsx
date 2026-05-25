@@ -1331,7 +1331,7 @@ function MobileProductCard({ product }: { product: ProductCardVM }) {
   );
 }
 
-function MobileProductsTabsSection({
+ function MobileProductsTabsSection({
   section,
   data,
   seoMode,
@@ -1363,6 +1363,10 @@ function MobileProductsTabsSection({
   if (!tabs.length) return null;
 
   const activeTab = tabs.find((tab) => tab.id === activeId) || tabs[0];
+  const isSingleTab = tabs.length === 1;
+
+  const activeTitle = s((activeTab as any)?.title);
+  const activeDescription = s((activeTab as any)?.description);
 
   const products = normalizeProductCards({
     products: activeTab.products,
@@ -1372,28 +1376,63 @@ function MobileProductsTabsSection({
   });
 
   return (
-    <section className="mk-mobile-products mk-mobile-products--tabs">
-      <div className="mk-mobile-products-tabs">
-        {tabs.map((tab) => {
-          const active = tab.id === activeTab.id;
+    <section
+      className={[
+        "mk-mobile-products mk-mobile-products--tabs",
+        isSingleTab
+          ? "mk-mobile-products--single-tab"
+          : "mk-mobile-products--multi-tabs",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      {isSingleTab ? (
+        activeTitle || activeDescription ? (
+          <div className="mk-mobile-products-single-head">
+            {activeTitle ? (
+              <h2 className="mk-mobile-products-single-title">
+                {activeTitle}
+              </h2>
+            ) : null}
 
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveId(tab.id)}
-              className={[
-                "mk-mobile-products-tabs__btn",
-                active ? "is-active" : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-            >
-              {tab.title}
-            </button>
-          );
-        })}
-      </div>
+            {activeDescription ? (
+              <p className="mk-mobile-products-single-desc">
+                {activeDescription}
+              </p>
+            ) : null}
+          </div>
+        ) : null
+      ) : (
+        <>
+          <div className="mk-mobile-products-tabs">
+            {tabs.map((tab) => {
+              const active = tab.id === activeTab.id;
+
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveId(tab.id)}
+                  className={[
+                    "mk-mobile-products-tabs__btn",
+                    active ? "is-active" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                >
+                  {tab.title}
+                </button>
+              );
+            })}
+          </div>
+
+          {activeDescription ? (
+            <p className="mk-mobile-products-tabs-desc">
+              {activeDescription}
+            </p>
+          ) : null}
+        </>
+      )}
 
       {products.length ? (
         <div className="mk-mobile-products-grid">

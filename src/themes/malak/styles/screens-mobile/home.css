@@ -3721,3 +3721,54 @@
     padding: 13px !important;
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+.mk-mobile-products-single-head {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 18px 16px 12px;
+  text-align: center;
+}
+
+.mk-mobile-products-single-title {
+  margin: 0;
+  color: #18181b;
+  font-size: 24px;
+  font-weight: 950;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+
+.mk-mobile-products-single-desc {
+  max-width: 330px;
+  margin: 0;
+  color: #71717a;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.7;
+}
+
+.mk-mobile-products-tabs-desc {
+  max-width: 330px;
+  margin: 8px auto 12px;
+  padding-inline: 16px;
+  color: #71717a;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.7;
+  text-align: center;
+}
+
+.mk-mobile-products--single-tab .mk-mobile-products-tabs {
+  display: none !important;
+}
