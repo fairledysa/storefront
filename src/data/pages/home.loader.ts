@@ -511,6 +511,53 @@ function collectManualProductsFromHomepageThemeOptions(themeOptions: any) {
   return Array.from(ids).filter(Boolean).slice(0, 80);
 }
 
+
+
+
+function collectCountdownOfferProductIdsFromHomepageThemeOptions(
+  themeOptions: any,
+) {
+  const ids = new Set<string>();
+
+  const homepageSections = Array.isArray(themeOptions?.homepage?.sections)
+    ? themeOptions.homepage.sections
+    : [];
+
+  for (const section of homepageSections) {
+    if (!section || section.enabled === false) continue;
+
+    const key = getSectionKey(section);
+
+    if (key !== "countdown_offer" && !key.includes("countdown_offer")) {
+      continue;
+    }
+
+    const values = safeObject(section.values);
+    const field4 = values?.field_4;
+
+    const buttonLink =
+      field4 && typeof field4 === "object" && !Array.isArray(field4)
+        ? field4.link ?? field4
+        : null;
+
+    if (
+      buttonLink &&
+      typeof buttonLink === "object" &&
+      !Array.isArray(buttonLink) &&
+      normalizeLinkType(buttonLink) === "product"
+    ) {
+      const id = normalizeProductId(buttonLink);
+      if (id) ids.add(id);
+    }
+  }
+
+  return Array.from(ids).filter(Boolean).slice(0, 10);
+}
+
+
+
+
+
 function collectLinkedCategoriesFromHomepageThemeOptions(themeOptions: any) {
   const ids = new Set<string>();
 
@@ -871,7 +918,7 @@ function loadStoreReviews(storeId: string) {
   return fn();
 }
 
-async function loadHomePageRaw(args: {
+ async function loadHomePageRaw(args: {
   store_id: string;
   limit: number;
   themeOptions: Record<string, any>;
@@ -885,6 +932,15 @@ async function loadHomePageRaw(args: {
 
   const manualProductIds =
     collectManualProductsFromHomepageThemeOptions(args.themeOptions);
+
+  const countdownOfferProductIds =
+    collectCountdownOfferProductIdsFromHomepageThemeOptions(args.themeOptions);
+
+  const linkedProductIds = Array.from(
+    new Set(
+      [...manualProductIds, ...countdownOfferProductIds].map(s).filter(Boolean),
+    ),
+  ).slice(0, 100);
 
   const linkedCategoryIds =
     collectLinkedCategoriesFromHomepageThemeOptions(args.themeOptions);
@@ -910,10 +966,10 @@ async function loadHomePageRaw(args: {
         })
       : Promise.resolve([]),
 
-    manualProductIds.length
+    linkedProductIds.length
       ? loadLinkedProductsById({
           store_id: args.store_id,
-          productIds: manualProductIds,
+          productIds: linkedProductIds,
         })
       : Promise.resolve({}),
 
@@ -982,7 +1038,6 @@ async function loadHomePageRaw(args: {
     },
   };
 }
-
 const homePageCache = new Map<string, () => Promise<any>>();
 
 export async function loadHomePage(args: {

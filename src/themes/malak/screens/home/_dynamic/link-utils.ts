@@ -509,6 +509,16 @@ export function resolveLinkHref(linkValue: any, data: any, seoMode: any): string
     );
   }
 
+
+
+
+
+
+
+
+
+
+  
   if (type === "product") {
     if (!id) return "#";
 
@@ -520,6 +530,20 @@ export function resolveLinkHref(linkValue: any, data: any, seoMode: any): string
 
     return buildStoreProductHrefFromProduct(product, seoMode);
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   if (type === "category") {
     if (!id) return "#";
@@ -699,7 +723,7 @@ export function mapSectionItems(section: any, data: any, seoMode: any) {
     .filter((item: HomeDynamicItem) => item.src);
 }
 
-export function getCountdownButton(values: any) {
+ export function getCountdownButton(values: any) {
   const raw = getFieldValue(values, [
     "field_4",
     "button",
@@ -709,7 +733,7 @@ export function getCountdownButton(values: any) {
     "buttonValue",
   ]);
 
-  if (raw && typeof raw === "object") {
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
     return {
       text:
         s(raw.text) ||
@@ -718,7 +742,6 @@ export function getCountdownButton(values: any) {
         s(raw.name) ||
         s(raw.button_text) ||
         s(raw.buttonText) ||
-        s(raw.value) ||
         "",
       link:
         raw.link ??
@@ -727,6 +750,8 @@ export function getCountdownButton(values: any) {
         raw.url ??
         raw.button_link ??
         raw.buttonLink ??
+        raw.cta_link ??
+        raw.ctaLink ??
         "",
     };
   }
@@ -742,6 +767,9 @@ export function getCountdownButton(values: any) {
       s(values?.ctaText),
     link:
       getFieldValue(values, [
+        "field_5",
+        "field_6",
+        "field_7",
         "button_link",
         "buttonLink",
         "btn_link",

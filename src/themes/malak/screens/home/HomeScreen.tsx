@@ -853,7 +853,7 @@ function CountdownCircle({
   );
 }
 
-function CountdownOfferSection({
+ function CountdownOfferSection({
   section,
   data,
   seoMode,
@@ -888,6 +888,7 @@ function CountdownOfferSection({
 
   const title = s(content.title);
   const subtitle = s(content.subtitle);
+  const buttonText = s(content.buttonText);
 
   const labels = {
     days: s(content.labels?.days) || "يوم",
@@ -955,11 +956,22 @@ function CountdownOfferSection({
               </div>
             ) : null}
 
-            {content.buttonText && hasHref ? (
-              <a href={href} className="mk-countdown-offer-button">
-                <span>{content.buttonText}</span>
-              </a>
-            ) : null}
+           {content.buttonText ? (
+  <a
+    href={hasHref ? href : "#"}
+    className={[
+      "mk-countdown-offer-button",
+      !hasHref ? "mk-countdown-offer-button--disabled" : "",
+    ]
+      .filter(Boolean)
+      .join(" ")}
+    onClick={(event) => {
+      if (!hasHref) event.preventDefault();
+    }}
+  >
+    <span>{content.buttonText}</span>
+  </a>
+) : null}
           </div>
         </div>
       </div>
