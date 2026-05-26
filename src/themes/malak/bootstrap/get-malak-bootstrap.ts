@@ -12,7 +12,7 @@ import {
 import { supabaseAdmin } from "@/data/store/supabase.server";
 import type { SeoUrlMode } from "@/data/store/settings";
 import { createDefaultMalakBootstrap } from "./defaults";
-
+import { sanitizeThemeCustomCode } from "@/theme-engine/injectors/custom-code";
 import type {
   MalakBootstrap,
   MalakBootstrapPwa,
@@ -2820,7 +2820,9 @@ export async function getMalakBootstrap(input: {
   });
 
   const themeOptions = safeObject(resolvedThemeOptions);
-  const mainInfo = safeObject(resolvedMainInfo);
+const mainInfo = safeObject(resolvedMainInfo);
+
+const customCode = sanitizeThemeCustomCode(themeOptions.custom_code);
 
   const mainPrimaryColor =
     s(mainInfo.primary_color) ||
@@ -3399,6 +3401,8 @@ export async function getMalakBootstrap(input: {
 
     tax: storeTax,
 pwa,
+customCode,
+
     appearance,
 
     header: {

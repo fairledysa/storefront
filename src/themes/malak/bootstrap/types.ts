@@ -1,6 +1,7 @@
 // FILE: apps/storefront/src/themes/malak/bootstrap/types.ts
 
 import type { SeoUrlMode } from "@/data/store/settings";
+import type { ThemeCustomCode } from "@/theme-engine/injectors/custom-code";
 
 export type MalakBootstrapCategory = {
   id: string;
@@ -358,6 +359,7 @@ export type MalakBootstrapMarketingSearch = {
 export type MalakBootstrapMarketing = {
   search: MalakBootstrapMarketingSearch;
 };
+
 export type MalakBootstrapPwaOnboardingSlide = {
   id: string;
   enabled: boolean;
@@ -404,6 +406,36 @@ export type MalakBootstrapPwa = {
     description: string;
   };
 };
+
+export type MalakBootstrapRatingSettings = {
+  publishTestimonials: boolean;
+  publishRatings: boolean;
+  allowAttachImages: boolean;
+  allowLikes: boolean;
+  showRatingSummary: boolean;
+  showRecommendation: boolean;
+  allowContactSupport: boolean;
+  allowUpdate: boolean;
+  allowUpdatePeriod: number;
+
+  testimonialsEnabled: boolean;
+  shippingEnabled: boolean;
+  productsEnabled: boolean;
+  allowHiddenNames: boolean;
+  displayTestimonials: boolean;
+  displayCustomerReviews: boolean;
+  displayProductReviewsOnApp: boolean;
+
+  orderStatuses: string[];
+  thanksMessage: string;
+
+  ratingEnabled: boolean;
+  ratingHoursPeriod: number;
+  channels: string[];
+  ratingMessageTitle: string;
+  ratingMessage: string;
+};
+
 export type MalakBootstrap = {
   version: number;
 
@@ -421,7 +453,11 @@ export type MalakBootstrap = {
   currencies?: MalakBootstrapCurrencies;
 
   tax?: MalakBootstrapTax;
-pwa?: MalakBootstrapPwa;
+
+  pwa?: MalakBootstrapPwa;
+
+  customCode?: ThemeCustomCode;
+
   appearance?: Record<string, any>;
 
   header: {
@@ -487,7 +523,9 @@ pwa?: MalakBootstrapPwa;
   };
 
   marketing?: MalakBootstrapMarketing;
+
   ratingSettings?: MalakBootstrapRatingSettings;
+
   product?: {
     options: MalakBootstrapProductOptions;
   };
@@ -542,34 +580,4 @@ pwa?: MalakBootstrapPwa;
     show_apps?: boolean;
     show_social?: boolean;
   };
-};
-
-
-export type MalakBootstrapRatingSettings = {
-  publishTestimonials: boolean;
-  publishRatings: boolean;
-  allowAttachImages: boolean;
-  allowLikes: boolean;
-  showRatingSummary: boolean;
-  showRecommendation: boolean;
-  allowContactSupport: boolean;
-  allowUpdate: boolean;
-  allowUpdatePeriod: number;
-
-  testimonialsEnabled: boolean;
-  shippingEnabled: boolean;
-  productsEnabled: boolean;
-  allowHiddenNames: boolean;
-  displayTestimonials: boolean;
-  displayCustomerReviews: boolean;
-  displayProductReviewsOnApp: boolean;
-
-  orderStatuses: string[];
-  thanksMessage: string;
-
-  ratingEnabled: boolean;
-  ratingHoursPeriod: number;
-  channels: string[];
-  ratingMessageTitle: string;
-  ratingMessage: string;
 };

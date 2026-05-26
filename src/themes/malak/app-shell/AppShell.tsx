@@ -125,6 +125,12 @@ const DEFAULT_STOREFRONT = {
   moreButtonEnabled: true,
 };
 
+const CUSTOM_CSS_STYLE_ID = "mk-store-custom-css";
+const CUSTOM_JS_SCRIPT_ID = "mk-store-custom-js";
+
+const MAX_CUSTOM_CSS_SIZE = 300 * 1024;
+const MAX_CUSTOM_JS_SIZE = 150 * 1024;
+
 function pickColor(value: any, fallback: string) {
   const text = String(value ?? "").trim();
   return text || fallback;
@@ -254,6 +260,60 @@ function isSkippableHref(href: string) {
     value.startsWith("whatsapp:") ||
     value.startsWith("javascript:")
   );
+}
+
+function hasBlockedCustomCode(value: string, blocked: string[]) {
+  const lower = String(value ?? "").toLowerCase();
+  return blocked.some((item) => lower.includes(item));
+}
+
+function resolveBootstrapCustomCss(bootstrapAny: any) {
+  const customCode = bootstrapAny?.customCode || {};
+  const enabled = toBool(customCode.enabled, false);
+  const css = String(customCode.css ?? "");
+
+  if (!enabled) return "";
+  if (!css.trim()) return "";
+  if (css.length > MAX_CUSTOM_CSS_SIZE) return "";
+
+  if (
+    hasBlockedCustomCode(css, [
+      "<script",
+      "</script",
+      "</style",
+      "javascript:",
+      "expression(",
+    ])
+  ) {
+    return "";
+  }
+
+  return css;
+}
+
+function resolveBootstrapCustomJs(bootstrapAny: any) {
+  const customCode = bootstrapAny?.customCode || {};
+  const enabled = toBool(customCode.js_enabled, false);
+  const js = String(customCode.js ?? "");
+
+  if (!enabled) return "";
+  if (!js.trim()) return "";
+  if (js.length > MAX_CUSTOM_JS_SIZE) return "";
+
+  if (
+    hasBlockedCustomCode(js, [
+      "<script",
+      "</script",
+      "</style",
+      "document.cookie",
+      "eval(",
+      "new function(",
+    ])
+  ) {
+    return "";
+  }
+
+  return js;
 }
 
 function NavigationTransition({ enabled }: { enabled: boolean }) {
@@ -674,6 +734,16 @@ export default function AppShell({
   const bootstrapAny: any = bootstrap || {};
   const bootstrapHeader: any = bootstrapAny.header || {};
   const bootstrapAppearance: any = bootstrapAny.appearance || {};
+
+  const customCss = useMemo(
+    () => resolveBootstrapCustomCss(bootstrapAny),
+    [bootstrapAny],
+  );
+
+  const customJs = useMemo(
+    () => resolveBootstrapCustomJs(bootstrapAny),
+    [bootstrapAny],
+  );
 
   const isDarkMode = Boolean(themeUi.darkMode);
   const isHome = isHomePath(pathname);
@@ -1165,6 +1235,37 @@ export default function AppShell({
     };
   }, [storefront.disableRightClick]);
 
+  useEffect(() => {
+    const current = document.getElementById(CUSTOM_JS_SCRIPT_ID);
+    if (current) current.remove();
+
+    if (!customJs) return;
+
+    const script = document.createElement("script");
+
+    script.id = CUSTOM_JS_SCRIPT_ID;
+    script.type = "text/javascript";
+    script.dataset.malakCustomJs = "true";
+
+    script.text = `
+      ;(function () {
+        try {
+          ${customJs}
+          window.dispatchEvent(new CustomEvent("mk:custom-js-loaded"));
+        } catch (error) {
+          console.error("[Malak custom JS]", error);
+        }
+      })();
+    `;
+
+    document.body.appendChild(script);
+
+    return () => {
+      const node = document.getElementById(CUSTOM_JS_SCRIPT_ID);
+      if (node === script) node.remove();
+    };
+  }, [customJs]);
+
   const shellStyle = useMemo(() => {
     const primary = pickColor(
       firstDefined(
@@ -1435,7 +1536,6 @@ export default function AppShell({
       "--malak-product-bg": productBg,
       "--malak-primary": primary,
       "--malak-font": fontFamily,
-
       "--mk-product-card-bg": productBg,
 
       "--mk-product-card-border-color": productCard.hasBorder
@@ -1576,21 +1676,29 @@ export default function AppShell({
       }
       style={shellStyle}
     >
-     <MobileNavigationTransition enabled={isMobile} />
-<NavigationTransition enabled={!isMobile} />
+      {customCss ? (
+        <style
+          id={CUSTOM_CSS_STYLE_ID}
+          data-malak-custom-css="true"
+          dangerouslySetInnerHTML={{
+            __html: customCss,
+          }}
+        />
+      ) : null}
+
+      <MobileNavigationTransition enabled={isMobile} />
+      <NavigationTransition enabled={!isMobile} />
 
       {isMobile ? (
-         <MobileShell
-  theme={theme}
-  seoMode={seoMode}
-  data={data}
-  bootstrap={bootstrap}
-  initialCartCount={initialCartCount}
->
-  {children}
-</MobileShell>
-
-
+        <MobileShell
+          theme={theme}
+          seoMode={seoMode}
+          data={data}
+          bootstrap={bootstrap}
+          initialCartCount={initialCartCount}
+        >
+          {children}
+        </MobileShell>
       ) : (
         <DesktopShell
           theme={theme}

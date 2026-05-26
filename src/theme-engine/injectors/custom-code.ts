@@ -9,6 +9,13 @@ export type CustomScriptUrl = {
   strategy?: "beforeInteractive" | "afterInteractive" | "lazyOnload";
 };
 
+export type ThemeCustomCode = {
+  enabled: boolean;
+  css: string;
+  js_enabled: boolean;
+  js: string;
+};
+
 type StoreCustomCodeRow = {
   css: string | null;
   scripts: any[] | null;
@@ -17,6 +24,30 @@ type StoreCustomCodeRow = {
   updated_at: string;
 };
 
+const MAX_THEME_CSS_SIZE = 300 * 1024;
+const MAX_THEME_JS_SIZE = 150 * 1024;
+
+const DEFAULT_THEME_CUSTOM_CODE: ThemeCustomCode = {
+  enabled: false,
+  css: "",
+  js_enabled: false,
+  js: "",
+};
+
+function s(value: unknown) {
+  return String(value ?? "").trim();
+}
+
+function safeObject(value: any): Record<string, any> {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value;
+  return {};
+}
+
+/**
+ * النظام القديم:
+ * يقرأ من جدول store_custom_code.
+ * نتركه كما هو حتى لا نكسر أي استخدام قديم في الثيمات الأخرى.
+ */
 function normalize(row: StoreCustomCodeRow | null): {
   css: string;
   scripts: CustomScriptUrl[];
@@ -31,7 +62,17 @@ function normalize(row: StoreCustomCodeRow | null): {
       src: String(x?.src || "").trim(),
       strategy: (x?.strategy as any) || "afterInteractive",
     }))
-    .filter((s) => !!s.src);
+    .filter((item) => {
+      if (!item.src) return false;
+
+      const src = item.src.toLowerCase();
+
+      if (src.startsWith("javascript:")) return false;
+      if (src.includes("<script")) return false;
+      if (src.includes("</script")) return false;
+
+      return true;
+    });
 
   return { css, scripts };
 }
@@ -97,3 +138,110 @@ export const loadCustomCode = cache(
     return normalize(row);
   },
 );
+
+/**
+ * النظام الجديد:
+ * هذا يقرأ custom_code من theme_options للثيم الحالي.
+ * الإدارة تحفظه داخل:
+ * theme_options.custom_code = {
+ *   enabled: boolean,
+ *   css: string,
+ *   js_enabled: boolean,
+ *   js: string
+ * }
+ */
+export function normalizeThemeCustomCode(value: any): ThemeCustomCode {
+  const obj = safeObject(value);
+
+  const css = typeof obj.css === "string" ? obj.css : "";
+  const js = typeof obj.js === "string" ? obj.js : "";
+
+  return {
+    enabled:
+      typeof obj.enabled === "boolean"
+        ? obj.enabled
+        : DEFAULT_THEME_CUSTOM_CODE.enabled,
+
+    css,
+
+    js_enabled:
+      typeof obj.js_enabled === "boolean"
+        ? obj.js_enabled
+        : DEFAULT_THEME_CUSTOM_CODE.js_enabled,
+
+    js,
+  };
+}
+
+export function validateThemeCustomCss(css: string) {
+  const value = String(css ?? "");
+
+  if (!value.trim()) return "";
+
+  if (value.length > MAX_THEME_CSS_SIZE) {
+    return "حجم CSS أكبر من الحد المسموح 300KB.";
+  }
+
+  const lower = value.toLowerCase();
+
+  const blocked = [
+    "<script",
+    "</script",
+    "</style",
+    "javascript:",
+    "expression(",
+  ];
+
+  const found = blocked.find((item) => lower.includes(item));
+
+  if (found) {
+    return `كود CSS يحتوي على عبارة غير مسموحة: ${found}`;
+  }
+
+  return "";
+}
+
+export function validateThemeCustomJs(js: string) {
+  const value = String(js ?? "");
+
+  if (!value.trim()) return "";
+
+  if (value.length > MAX_THEME_JS_SIZE) {
+    return "حجم JavaScript أكبر من الحد المسموح 150KB.";
+  }
+
+  const lower = value.toLowerCase();
+
+  const blocked = [
+    "<script",
+    "</script",
+    "</style",
+    "document.cookie",
+    "eval(",
+    "new function(",
+  ];
+
+  const found = blocked.find((item) => lower.includes(item));
+
+  if (found) {
+    return `كود JavaScript يحتوي على عبارة غير مسموحة: ${found}`;
+  }
+
+  return "";
+}
+
+export function sanitizeThemeCustomCode(value: any): ThemeCustomCode {
+  const normalized = normalizeThemeCustomCode(value);
+
+  const cssError = validateThemeCustomCss(normalized.css);
+  const jsError = validateThemeCustomJs(normalized.js);
+
+  return {
+    enabled: normalized.enabled && !cssError && Boolean(s(normalized.css)),
+    css: cssError ? "" : normalized.css,
+
+    js_enabled:
+      normalized.js_enabled && !jsError && Boolean(s(normalized.js)),
+    js: jsError ? "" : normalized.js,
+  };
+}
