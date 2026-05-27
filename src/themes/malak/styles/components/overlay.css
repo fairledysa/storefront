@@ -1,18 +1,62 @@
 /* FILE: apps/storefront/src/themes/malak/styles/components/overlay.css */
 
+/* =========================================================
+   Malak Global Loading Overlay
+   موحد لكل المشروع + لون من هوية المتجر
+   ========================================================= */
+
 .mk-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.25);
-  display: grid;
-  place-items: center;
+  display: grid !important;
+  place-items: center !important;
+  pointer-events: none !important;
+}
+
+/* لودر صفحة كامل */
+.mk-overlay[data-mode="page"],
+.mk-overlay:not([data-mode]) {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 99999 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  background: color-mix(
+    in srgb,
+    var(--mk-bg-page, #ffffff) 62%,
+    transparent
+  ) !important;
+  backdrop-filter: blur(1px) !important;
+  -webkit-backdrop-filter: blur(1px) !important;
+  pointer-events: auto !important;
+}
+
+/* لودر داخل محتوى معين */
+.mk-overlay[data-mode="content"] {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 12 !important;
+  min-height: 220px !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  pointer-events: none !important;
 }
 
 .mk-spinner {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--mk-radius-pill);
-  border: 3px solid rgba(255, 255, 255, 0.35);
-  border-top-color: #fff;
-  animation: mk-spin 1s linear infinite;
+  width: 38px !important;
+  height: 38px !important;
+  border-radius: var(--mk-radius-pill, 999px) !important;
+  border: 3px solid color-mix(
+    in srgb,
+    var(--mk-color-primary, var(--mk-primary, #111827)) 16%,
+    transparent
+  ) !important;
+  border-top-color: var(--mk-color-primary, var(--mk-primary, #111827)) !important;
+  background: transparent !important;
+  animation: mk-spin 650ms linear infinite !important;
+}
+
+@keyframes mk-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }

@@ -160,29 +160,8 @@
   direction: rtl;
 }
 
-.mk-dcat-products[data-pending="true"] .mk-dcat__grid {
-  opacity: 0.66;
+ .mk-dcat-products[data-pending="true"] .mk-dcat__grid {
   pointer-events: none;
-  transition: opacity 120ms ease;
-}
-
-.mk-dcat-products__pending {
-  position: sticky;
-  top: 12px;
-  z-index: 4;
-  width: fit-content;
-  margin: 0 0 10px auto;
-  border: 1px solid rgba(24, 24, 27, 0.08);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.94);
-  color: rgba(39, 39, 42, 0.72);
-  padding: 7px 12px;
-  font-size: 11px;
-  font-weight: 900;
-  line-height: 1;
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.055);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
 }
 
 .mk-dcat-filterPanel {
@@ -895,4 +874,111 @@
   .mk-dcat-filterPanel__actions {
     top: 55px;
   }
+}
+
+
+
+
+
+
+
+
+
+
+/* =========================================================
+   Fix ProductCard height when desktop filters are enabled
+   يمنع الفراغ الكبير داخل كرت المنتج في صفحة الفلتر فقط
+   ========================================================= */
+
+.mk-dcat--filters .mk-dcat__grid {
+  align-items: start;
+}
+
+.mk-dcat--filters .mkpc-card {
+  align-self: start;
+  height: auto !important;
+  min-height: 0 !important;
+}
+
+.mk-dcat--filters .mkpc-media {
+  height: auto !important;
+  min-height: 0 !important;
+  aspect-ratio: 3 / 3.85 !important;
+}
+
+.mk-dcat--filters .mkpc-media-img,
+.mk-dcat--filters .mkpc-media-img--hover {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  object-position: center top !important;
+}
+
+.mk-dcat--filters .mkpc-body {
+  height: auto !important;
+  min-height: 150px !important;
+  padding-top: 14px !important;
+}
+
+.mk-dcat--filters .mkpc-options-overlay {
+  margin-top: 0 !important;
+}
+
+
+
+
+/* =========================================================
+   Balanced product cards when desktop filter panel is visible
+   ========================================================= */
+
+@media (min-width: 1181px) {
+  .mk-dcat--filters .mk-dcat-layout {
+    grid-template-columns: minmax(0, 1fr) 304px;
+    gap: 22px;
+  }
+
+  .mk-dcat--filters .mk-dcat-products .mk-dcat__grid {
+    grid-template-columns: repeat(3, minmax(230px, 1fr)) !important;
+    gap: 24px !important;
+    align-items: start !important;
+  }
+
+  .mk-dcat--filters .mkpc-card {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+}
+
+@media (min-width: 1440px) {
+  .mk-dcat--filters .mk-dcat__container {
+    max-width: 1540px;
+  }
+
+  .mk-dcat--filters .mk-dcat-products .mk-dcat__grid {
+    grid-template-columns: repeat(4, minmax(220px, 1fr)) !important;
+  }
+}
+
+@media (min-width: 1600px) {
+  .mk-dcat--filters .mk-dcat__container {
+    max-width: 1680px;
+  }
+
+  .mk-dcat--filters .mk-dcat-products .mk-dcat__grid {
+    grid-template-columns: repeat(4, minmax(240px, 1fr)) !important;
+  }
+}
+
+
+
+
+
+
+
+.mk-dcat-products {
+  position: relative;
+}
+
+.mk-dcat-products[data-pending="true"] .mk-dcat__grid {
+  pointer-events: none;
 }

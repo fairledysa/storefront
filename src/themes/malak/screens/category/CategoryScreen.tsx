@@ -13,7 +13,7 @@ import {
   type ProductCardVM,
 } from "@/data/viewmodels/product.vm";
 import ProductCard from "@/themes/malak/components/product-card/ProductCard";
-
+import LoadingOverlay from "../../components/LoadingOverlay";
 type Props = {
   data?: any;
   mode: SeoUrlMode;
@@ -481,10 +481,31 @@ export default function CategoryScreen({ data, mode }: Props) {
       ? clampNumber(selectedPriceMaxNumber, priceBoundMin, priceBoundMax)
       : priceBoundMax;
 
-  const [priceRange, setPriceRange] = useState<PriceRange>(() => ({
-    min: Math.min(normalizedPriceMin, normalizedPriceMax),
-    max: Math.max(normalizedPriceMin, normalizedPriceMax),
-  }));
+  const safePriceRange = useMemo<PriceRange>(() => {
+    const min = Math.min(normalizedPriceMin, normalizedPriceMax);
+    const max = Math.max(normalizedPriceMin, normalizedPriceMax);
+
+    if (!effectivePriceMin && !effectivePriceMax) {
+      return {
+        min: priceBoundMin,
+        max: priceBoundMax,
+      };
+    }
+
+    return {
+      min,
+      max,
+    };
+  }, [
+    effectivePriceMin,
+    effectivePriceMax,
+    normalizedPriceMin,
+    normalizedPriceMax,
+    priceBoundMin,
+    priceBoundMax,
+  ]);
+
+  const [priceRange, setPriceRange] = useState<PriceRange>(() => safePriceRange);
 
   const effectiveAvailable = hasTruthyParam(effectiveParams, [
     "available",
@@ -503,15 +524,12 @@ export default function CategoryScreen({ data, mode }: Props) {
   const effectiveSort = s(effectiveParams.get("sort")) || s(activeFilters?.sort);
 
   useEffect(() => {
-    setOptimisticSearch(null);
-  }, [searchParamsText]);
+    setPriceRange(safePriceRange);
+  }, [safePriceRange]);
 
   useEffect(() => {
-    setPriceRange({
-      min: Math.min(normalizedPriceMin, normalizedPriceMax),
-      max: Math.max(normalizedPriceMin, normalizedPriceMax),
-    });
-  }, [normalizedPriceMin, normalizedPriceMax]);
+    setOptimisticSearch(null);
+  }, [searchParamsText]);
 
   const currencies = useMemo(() => resolveCurrenciesFromData(data), [data]);
   const tax = useMemo(() => resolveTaxFromData(data), [data]);
@@ -1252,8 +1270,9 @@ export default function CategoryScreen({ data, mode }: Props) {
     );
   }
 
-  return (
-    <div dir="rtl" className="mk-dcat mk-dcat--filters">
+return (
+  <div dir="rtl" className="mk-dcat mk-dcat--filters">
+    <LoadingOverlay show={isPending} mode="page" />
       <button
         type="button"
         className="mk-dcat-filterOverlay"
@@ -1334,34 +1353,28 @@ export default function CategoryScreen({ data, mode }: Props) {
         </div>
 
         <div className="mk-dcat-layout">
-          <section
-            className="mk-dcat-products"
-            data-pending={isPending ? "true" : "false"}
-            aria-busy={isPending ? "true" : "false"}
-          >
-            {isPending ? (
-              <div className="mk-dcat-products__pending">
-                جاري تحديث النتائج…
-              </div>
-            ) : null}
-
-            {products.length === 0 ? (
-              <div className="mk-dcat__empty">
-                لا توجد منتجات مطابقة للفلاتر الحالية
-              </div>
-            ) : (
-              <div className="mk-dcat__grid">
-                {products.map((product: ProductCardVM, index: number) => (
-                  <ProductCard
-                    key={`${product.id || product.publicNo || index}_${
-                      product.publicNo ?? index
-                    }`}
-                    item={product as any}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
+<section
+  className="mk-dcat-products"
+  data-pending={isPending ? "true" : "false"}
+  aria-busy={isPending ? "true" : "false"}
+>
+  {products.length === 0 ? (
+    <div className="mk-dcat__empty">
+      لا توجد منتجات مطابقة للفلاتر الحالية
+    </div>
+  ) : (
+    <div className="mk-dcat__grid">
+      {products.map((product: ProductCardVM, index: number) => (
+        <ProductCard
+          key={`${product.id || product.publicNo || index}_${
+            product.publicNo ?? index
+          }`}
+          item={product as any}
+        />
+      ))}
+    </div>
+  )}
+</section>
 
           <aside
             className="mk-dcat-filterPanel"
