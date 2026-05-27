@@ -34,6 +34,7 @@
 @import "./screens-desktop/home.css";
 @import "./screens-desktop/product.css";
 @import "./screens-desktop/category.css";
+@import "./screens-desktop/category-filters.css";
 @import "./screens-desktop/categories.css";
 @import "./screens-desktop/cart.css";
 @import "./screens-desktop/thankyou.css";

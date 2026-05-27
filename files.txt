@@ -575,6 +575,46 @@ CREATE TABLE public.product_channels (
   CONSTRAINT product_channels_pkey PRIMARY KEY (id),
   CONSTRAINT product_channels_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id)
 );
+CREATE TABLE public.product_filter_index (
+  store_id uuid NOT NULL,
+  product_id uuid NOT NULL,
+  status text NOT NULL DEFAULT 'draft'::text,
+  channels ARRAY NOT NULL DEFAULT ARRAY[]::text[],
+  category_ids ARRAY NOT NULL DEFAULT ARRAY[]::uuid[],
+  brand_id uuid,
+  brand_name text,
+  currency text NOT NULL,
+  price_min numeric,
+  price_max numeric,
+  in_stock boolean NOT NULL DEFAULT false,
+  discounted boolean NOT NULL DEFAULT false,
+  option_value_ids ARRAY NOT NULL DEFAULT ARRAY[]::text[],
+  option_values ARRAY NOT NULL DEFAULT ARRAY[]::text[],
+  size_values ARRAY NOT NULL DEFAULT ARRAY[]::text[],
+  color_values ARRAY NOT NULL DEFAULT ARRAY[]::text[],
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT product_filter_index_pkey PRIMARY KEY (store_id, product_id),
+  CONSTRAINT product_filter_index_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id),
+  CONSTRAINT product_filter_index_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id),
+  CONSTRAINT product_filter_index_brand_id_fkey FOREIGN KEY (brand_id) REFERENCES public.brands(id)
+);
+CREATE TABLE public.product_filter_option_index (
+  store_id uuid NOT NULL,
+  product_id uuid NOT NULL,
+  option_key text NOT NULL,
+  option_label text NOT NULL,
+  option_type text NOT NULL DEFAULT 'text'::text,
+  value_key text NOT NULL,
+  value_label text NOT NULL,
+  value_color text,
+  value_image_url text,
+  sort_order integer NOT NULL DEFAULT 0,
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT product_filter_option_index_pkey PRIMARY KEY (store_id, product_id, option_key, value_key),
+  CONSTRAINT product_filter_option_index_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.stores(id),
+  CONSTRAINT product_filter_option_index_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id)
+);
 CREATE TABLE public.product_media (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   store_id uuid NOT NULL,

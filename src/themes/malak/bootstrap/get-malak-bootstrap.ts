@@ -15,6 +15,7 @@ import { createDefaultMalakBootstrap } from "./defaults";
 import { sanitizeThemeCustomCode } from "@/theme-engine/injectors/custom-code";
 import type {
   MalakBootstrap,
+  MalakBootstrapCatalogFilters,
   MalakBootstrapPwa,
   MalakBootstrapCategory,
   MalakBootstrapCurrencies,
@@ -64,6 +65,7 @@ type StoreSettingsMap = {
   social: Record<string, any>;
   app: Record<string, any>;
   pwa: Record<string, any>;
+  catalogFilters: Record<string, any>;
   ratingSettings: Record<string, any>;
 };
 
@@ -319,7 +321,148 @@ function settingStringArray(
 
   return fallback;
 }
+function normalizeCatalogFiltersSettings(
+  sourceValue: Record<string, any>,
+  fallbackValue?: MalakBootstrapCatalogFilters,
+): MalakBootstrapCatalogFilters {
+  const source = safeObject(sourceValue);
 
+  const fallback: MalakBootstrapCatalogFilters = fallbackValue ?? {
+    enabled: false,
+
+    show_in_search: true,
+    showInSearch: true,
+
+    show_in_category: true,
+    showInCategory: true,
+
+    show_categories: true,
+    showCategories: true,
+
+    show_brands: true,
+    showBrands: true,
+
+    show_price: true,
+    showPrice: true,
+
+    show_rating: false,
+    showRating: false,
+
+    show_product_options: true,
+    showProductOptions: true,
+
+    show_availability: true,
+    showAvailability: true,
+
+    show_discounted: false,
+    showDiscounted: false,
+
+    category_depth: 6,
+    categoryDepth: 6,
+  };
+
+  const enabled = settingBool(
+    source,
+    ["enabled", "is_enabled", "active"],
+    fallback.enabled,
+  );
+
+  const showInSearch = settingBool(
+    source,
+    ["show_in_search", "showInSearch", "search_enabled"],
+    fallback.show_in_search,
+  );
+
+  const showInCategory = settingBool(
+    source,
+    ["show_in_category", "showInCategory", "category_enabled"],
+    fallback.show_in_category,
+  );
+
+  const showCategories = settingBool(
+    source,
+    ["show_categories", "showCategories", "categories"],
+    fallback.show_categories,
+  );
+
+  const showBrands = settingBool(
+    source,
+    ["show_brands", "showBrands", "brands"],
+    fallback.show_brands,
+  );
+
+  const showPrice = settingBool(
+    source,
+    ["show_price", "showPrice", "price"],
+    fallback.show_price,
+  );
+
+  const showRating = settingBool(
+    source,
+    ["show_rating", "showRating", "rating"],
+    fallback.show_rating,
+  );
+
+  const showProductOptions = settingBool(
+    source,
+    ["show_product_options", "showProductOptions", "product_options", "options"],
+    fallback.show_product_options,
+  );
+
+  const showAvailability = settingBool(
+    source,
+    ["show_availability", "showAvailability", "availability", "stock"],
+    fallback.show_availability,
+  );
+
+  const showDiscounted = settingBool(
+    source,
+    ["show_discounted", "showDiscounted", "discounted", "sale"],
+    fallback.show_discounted,
+  );
+
+  const categoryDepth = settingNumber(
+    source,
+    ["category_depth", "categoryDepth", "max_category_depth", "maxCategoryDepth"],
+    fallback.category_depth,
+    1,
+    6,
+  );
+
+  return {
+    enabled,
+
+    show_in_search: showInSearch,
+    showInSearch,
+
+    show_in_category: showInCategory,
+    showInCategory,
+
+    show_categories: showCategories,
+    showCategories,
+
+    show_brands: showBrands,
+    showBrands,
+
+    show_price: showPrice,
+    showPrice,
+
+    show_rating: showRating,
+    showRating,
+
+    show_product_options: showProductOptions,
+    showProductOptions,
+
+    show_availability: showAvailability,
+    showAvailability,
+
+    show_discounted: showDiscounted,
+    showDiscounted,
+
+    category_depth: categoryDepth,
+    categoryDepth,
+  };
+}
 function normalizeRatingSettings(
   sourceValue: Record<string, any>,
   fallbackValue?: MalakBootstrapRatingSettings,
@@ -1411,12 +1554,15 @@ async function loadStoreSettingsMapRaw(
     .from("store_settings")
     .select("slug,value,created_at,updated_at")
     .eq("store_id", storeId)
-     .in("slug", [
+          .in("slug", [
       "profile",
       "store.profile",
       "store.support",
       "store.social",
       "store.app",
+      "app/pwa",
+      "catalog.filters",
+      "catalog_filters",
       "rating_settings",
       "store.rating_settings",
       "rating.settings",
@@ -1430,7 +1576,8 @@ async function loadStoreSettingsMapRaw(
       support: {},
       social: {},
       app: {},
-       pwa: {},
+      pwa: {},
+      catalogFilters: {},
       ratingSettings: {},
     };
   }
@@ -1450,7 +1597,10 @@ async function loadStoreSettingsMapRaw(
     social: safeObject(bySlug.get("store.social")),
     app: safeObject(bySlug.get("store.app")),
     pwa: safeObject(bySlug.get("app/pwa")),
-        ratingSettings: safeObject(
+    catalogFilters: safeObject(
+      bySlug.get("catalog.filters") ?? bySlug.get("catalog_filters"),
+    ),
+    ratingSettings: safeObject(
       bySlug.get("rating_settings") ??
         bySlug.get("store.rating_settings") ??
         bySlug.get("rating.settings"),
@@ -2866,7 +3016,10 @@ const customCode = sanitizeThemeCustomCode(themeOptions.custom_code);
     storeSettings.ratingSettings,
     base.ratingSettings,
   );
-
+  const catalogFilters = normalizeCatalogFiltersSettings(
+    storeSettings.catalogFilters,
+    base.catalogFilters,
+  );
   const profileLogoUrl = s(profile.logo_url);
   const profileFaviconUrl = s(profile.favicon_url);
   const profileDescription = s(profile.description);
@@ -3402,7 +3555,7 @@ const customCode = sanitizeThemeCustomCode(themeOptions.custom_code);
     tax: storeTax,
 pwa,
 customCode,
-
+catalogFilters,
     appearance,
 
     header: {

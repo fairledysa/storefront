@@ -29,6 +29,8 @@ import {
   loadCategoryPageByPublicNo,
   loadCategoryPageByShortCode,
 } from "@/data/pages/category.loader";
+import { loadCategoryFiltersForPage } from "@/data/pages/category-filters.loader";
+
 import {
   loadProductPageByPublicNo,
   loadProductPageByShortCode,
@@ -144,6 +146,16 @@ const loadCategoryByShortOrBase62Cached = cache(
     return await loadCategoryByShortOrBase62({
       storeId,
       code,
+    });
+  },
+);
+const loadCategoryFiltersForPageCached = cache(
+  async (storeId: string, categoryId: string, searchParams?: SP) => {
+    return await loadCategoryFiltersForPage({
+      store_id: storeId,
+      category_id: categoryId,
+      searchParams,
+      limit: 60,
     });
   },
 );
@@ -751,7 +763,28 @@ async function loadCategoryByShortOrBase62(args: {
 
   return category;
 }
+async function attachCatalogFiltersToCategoryData(args: {
+  storeId: string;
+  data: any;
+  searchParams?: SP;
+}) {
+  const categoryId = s(args.data?.category?.id);
 
+  if (!categoryId) return args.data;
+
+  const catalogFilters = await loadCategoryFiltersForPageCached(
+    args.storeId,
+    categoryId,
+    args.searchParams,
+  );
+
+  if (!catalogFilters) return args.data;
+
+  return {
+    ...(args.data ?? {}),
+    catalogFilters,
+  };
+}
 async function loadProductByShortOrBase62(args: {
   storeId: string;
   code: string;
@@ -2984,13 +3017,19 @@ const data = await loadHomePageCached(
     );
   }
 
-  if (decision.type === "named_category") {
-const data = await loadCategoryPageByPublicNoCached(
+if (decision.type === "named_category") {
+const rawData = await loadCategoryPageByPublicNoCached(
   ctx.store.id,
   decision.publicNo,
-);;
+);
 
-    if (!data) return notFound();
+    if (!rawData) return notFound();
+
+    const data = await attachCatalogFiltersToCategoryData({
+      storeId: ctx.store.id,
+      data: rawData,
+      searchParams: sp,
+    });
 
    const seoMode = await getSeoUrlModeCached(ctx.store.id);
     const category = data.category;
@@ -3086,13 +3125,19 @@ const data = await loadCategoryPageByPublicNoCached(
     return withJsonLd(content, jsonLdEntries);
   }
 
-  if (decision.type === "short_category") {
-const category = await loadCategoryByShortOrBase62Cached(
+if (decision.type === "short_category") {
+const rawCategory = await loadCategoryByShortOrBase62Cached(
   ctx.store.id,
   decision.code,
 );
 
-    if (!category) return notFound();
+    if (!rawCategory) return notFound();
+
+    const category = await attachCatalogFiltersToCategoryData({
+      storeId: ctx.store.id,
+      data: rawCategory,
+      searchParams: sp,
+    });
 
     const seoMode = await getSeoUrlModeCached(ctx.store.id);
     const row = category.category;
@@ -3187,12 +3232,17 @@ const category = await loadCategoryByShortOrBase62Cached(
       return withJsonLd(content, jsonLdEntries);
     }
 
-   const category = await loadCategoryByShortOrBase62Cached(
+ const rawCategory = await loadCategoryByShortOrBase62Cached(
   ctx.store.id,
   decision.code,
 );
 
-    if (category) {
+    if (rawCategory) {
+      const category = await attachCatalogFiltersToCategoryData({
+        storeId: ctx.store.id,
+        data: rawCategory,
+        searchParams: sp,
+      });
       const seoMode = await getSeoUrlModeCached(ctx.store.id);
       const row = category.category;
       const title = s(row?.seo_title) || s(row?.name) || storeName;

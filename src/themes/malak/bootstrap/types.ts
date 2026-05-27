@@ -435,7 +435,39 @@ export type MalakBootstrapRatingSettings = {
   ratingMessageTitle: string;
   ratingMessage: string;
 };
+export type MalakBootstrapCatalogFilters = {
+  enabled: boolean;
 
+  show_in_search: boolean;
+  showInSearch: boolean;
+
+  show_in_category: boolean;
+  showInCategory: boolean;
+
+  show_categories: boolean;
+  showCategories: boolean;
+
+  show_brands: boolean;
+  showBrands: boolean;
+
+  show_price: boolean;
+  showPrice: boolean;
+
+  show_rating: boolean;
+  showRating: boolean;
+
+  show_product_options: boolean;
+  showProductOptions: boolean;
+
+  show_availability: boolean;
+  showAvailability: boolean;
+
+  show_discounted: boolean;
+  showDiscounted: boolean;
+
+  category_depth: number;
+  categoryDepth: number;
+};
 export type MalakBootstrap = {
   version: number;
 
@@ -457,7 +489,7 @@ export type MalakBootstrap = {
   pwa?: MalakBootstrapPwa;
 
   customCode?: ThemeCustomCode;
-
+  catalogFilters?: MalakBootstrapCatalogFilters;
   appearance?: Record<string, any>;
 
   header: {
