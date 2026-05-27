@@ -450,22 +450,73 @@ export default function CategoryMobileScreen({ data, mode, seoMode }: Props) {
 
   const priceStep = Math.max(1, Math.round((priceBoundMax - priceBoundMin) / 100));
 
-  const draftPriceMaxRaw =
-    s(draftParams.get("price_max")) ||
-    s(draftParams.get("max_price")) ||
-    s(draftParams.get("to"));
 
-  const draftPriceMaxNumber = toFiniteNumber(draftPriceMaxRaw);
 
-  const draftPriceMax =
-    draftPriceMaxNumber !== null
-      ? clampNumber(draftPriceMaxNumber, priceBoundMin, priceBoundMax)
-      : priceBoundMax;
 
-  const priceFill =
-    ((draftPriceMax - priceBoundMin) /
-      Math.max(1, priceBoundMax - priceBoundMin)) *
-    100;
+
+
+
+
+
+
+
+
+
+ const draftPriceMinRaw =
+  s(draftParams.get("price_min")) ||
+  s(draftParams.get("min_price")) ||
+  s(draftParams.get("from"));
+
+const draftPriceMaxRaw =
+  s(draftParams.get("price_max")) ||
+  s(draftParams.get("max_price")) ||
+  s(draftParams.get("to"));
+
+const hasDraftPriceMin = Boolean(draftPriceMinRaw);
+const hasDraftPriceMax = Boolean(draftPriceMaxRaw);
+
+const draftPriceMinNumber = toFiniteNumber(draftPriceMinRaw);
+const draftPriceMaxNumber = toFiniteNumber(draftPriceMaxRaw);
+
+const draftPriceMin =
+  hasDraftPriceMin && draftPriceMinNumber !== null
+    ? clampNumber(draftPriceMinNumber, priceBoundMin, priceBoundMax)
+    : priceBoundMin;
+
+const draftPriceMax =
+  hasDraftPriceMax && draftPriceMaxNumber !== null
+    ? clampNumber(draftPriceMaxNumber, priceBoundMin, priceBoundMax)
+    : priceBoundMax;
+
+const draftRangeMin = Math.min(draftPriceMin, draftPriceMax);
+const draftRangeMax = Math.max(draftPriceMin, draftPriceMax);
+
+const priceFromPercent =
+  ((draftRangeMin - priceBoundMin) /
+    Math.max(1, priceBoundMax - priceBoundMin)) *
+  100;
+
+const priceToPercent =
+  ((draftRangeMax - priceBoundMin) /
+    Math.max(1, priceBoundMax - priceBoundMin)) *
+  100;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
 
   const { categoryById, categoryTreeItems } = useMemo(() => {
     const byId = new Map<string, any>();
@@ -658,22 +709,43 @@ export default function CategoryMobileScreen({ data, mode, seoMode }: Props) {
     });
   }
 
-  function setDraftPriceMax(value: number) {
-    const safeValue = clampNumber(value, priceBoundMin, priceBoundMax);
+ function setDraftPriceRange(minValue: number, maxValue: number) {
+  const safeMin = clampNumber(minValue, priceBoundMin, priceBoundMax);
+  const safeMax = clampNumber(maxValue, priceBoundMin, priceBoundMax);
 
-    updateDraftParams((params) => {
-      params.delete("price_min");
-      params.delete("min_price");
-      params.delete("from");
-      params.delete("price_max");
-      params.delete("max_price");
-      params.delete("to");
+  const nextMin = Math.min(safeMin, safeMax);
+  const nextMax = Math.max(safeMin, safeMax);
 
-      if (safeValue < priceBoundMax) {
-        params.set("price_max", String(safeValue));
-      }
-    });
-  }
+  updateDraftParams((params) => {
+    params.delete("price_min");
+    params.delete("min_price");
+    params.delete("from");
+
+    params.delete("price_max");
+    params.delete("max_price");
+    params.delete("to");
+
+    if (nextMin > priceBoundMin) {
+      params.set("price_min", String(nextMin));
+    }
+
+    if (nextMax < priceBoundMax) {
+      params.set("price_max", String(nextMax));
+    }
+  });
+}
+
+function resetDraftPriceRange() {
+  updateDraftParams((params) => {
+    params.delete("price_min");
+    params.delete("min_price");
+    params.delete("from");
+
+    params.delete("price_max");
+    params.delete("max_price");
+    params.delete("to");
+  });
+}
 
   if (!data || !category) {
     return (
@@ -801,52 +873,73 @@ export default function CategoryMobileScreen({ data, mode, seoMode }: Props) {
                     </section>
                   ) : null}
 
-                  <section className="mk-mobile-filterSec">
-                    <div className="mk-mobile-filterSec__head">
-                      <h3>السعر</h3>
+                <section className="mk-mobile-filterSec">
+  <div className="mk-mobile-filterSec__head">
+    <h3>السعر</h3>
 
-                      <button
-                        type="button"
-                        onClick={() => setDraftPriceMax(priceBoundMax)}
-                        disabled={draftPriceMax >= priceBoundMax}
-                      >
-                        إعادة
-                      </button>
-                    </div>
+    <button
+      type="button"
+      onClick={resetDraftPriceRange}
+      disabled={draftRangeMin <= priceBoundMin && draftRangeMax >= priceBoundMax}
+    >
+      إعادة
+    </button>
+  </div>
 
-                    <div className="mk-mobile-price">
-                      <div className="mk-mobile-price__values">
-                        <span>{readPriceLabel(priceBoundMin, currencyLabel)}</span>
-                        <span>{readPriceLabel(draftPriceMax, currencyLabel)}</span>
-                      </div>
+  <div className="mk-mobile-price">
+    <div className="mk-mobile-price__values">
+      <span>{readPriceLabel(draftRangeMin, currencyLabel)} من</span>
+      <span>{readPriceLabel(draftRangeMax, currencyLabel)} إلى</span>
+    </div>
 
-                      <div
-                        className="mk-mobile-price__slider"
-                        style={{ "--price-fill": `${priceFill}%` } as any}
-                      >
-                        <div className="mk-mobile-price__track" />
-                        <span className="mk-mobile-price__minThumb" />
+    <div
+      className="mk-mobile-price__slider"
+      style={
+        {
+          "--price-from": `${priceFromPercent}%`,
+          "--price-to": `${priceToPercent}%`,
+        } as any
+      }
+    >
+      <div className="mk-mobile-price__track" />
 
-                        <input
-                          dir="rtl"
-                          type="range"
-                          min={priceBoundMin}
-                          max={priceBoundMax}
-                          step={priceStep}
-                          value={draftPriceMax}
-                          onChange={(event) =>
-                            setDraftPriceMax(Number(event.target.value))
-                          }
-                          aria-label="أعلى سعر"
-                        />
-                      </div>
+      <input
+        className="mk-mobile-price__input mk-mobile-price__input--min"
+        dir="rtl"
+        type="range"
+        min={priceBoundMin}
+        max={priceBoundMax}
+        step={priceStep}
+        value={draftRangeMin}
+        onChange={(event) => {
+          const value = Number(event.target.value);
+          setDraftPriceRange(Math.min(value, draftRangeMax), draftRangeMax);
+        }}
+        aria-label="أقل سعر"
+      />
 
-                      <div className="mk-mobile-price__bounds">
-                        <small>{readPriceLabel(priceBoundMin, currencyLabel)}</small>
-                        <small>{readPriceLabel(priceBoundMax, currencyLabel)}</small>
-                      </div>
-                    </div>
-                  </section>
+      <input
+        className="mk-mobile-price__input mk-mobile-price__input--max"
+        dir="rtl"
+        type="range"
+        min={priceBoundMin}
+        max={priceBoundMax}
+        step={priceStep}
+        value={draftRangeMax}
+        onChange={(event) => {
+          const value = Number(event.target.value);
+          setDraftPriceRange(draftRangeMin, Math.max(value, draftRangeMin));
+        }}
+        aria-label="أعلى سعر"
+      />
+    </div>
+
+    <div className="mk-mobile-price__bounds">
+      <small>{readPriceLabel(priceBoundMin, currencyLabel)}</small>
+      <small>{readPriceLabel(priceBoundMax, currencyLabel)}</small>
+    </div>
+  </div>
+</section>
 
                   {facets.map((facet: any) => {
                     const values = Array.isArray(facet?.values)
