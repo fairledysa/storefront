@@ -15,6 +15,7 @@ type CartSnapshot = {
 
 const CACHE_KEY = "mk:mobile-cart:v1";
 const CACHE_VERSION = 1;
+const CACHE_MAX_AGE_MS = 1000 * 60 * 30;
 
 let memorySnapshot: CartSnapshot | null = null;
 const subscribers = new Set<() => void>();
@@ -43,11 +44,14 @@ function computeTotalQty(items: any[]) {
 }
 
 function isValidSnapshot(value: any): value is CartSnapshot {
-  return Boolean(
-    value &&
-      value.version === CACHE_VERSION &&
-      Array.isArray(value.items),
-  );
+  if (!value) return false;
+  if (value.version !== CACHE_VERSION) return false;
+  if (!Array.isArray(value.items)) return false;
+
+  const cachedAt = Number(value.cachedAt || 0);
+  if (!Number.isFinite(cachedAt) || cachedAt <= 0) return false;
+
+  return Date.now() - cachedAt <= CACHE_MAX_AGE_MS;
 }
 
 function notifyCartCacheSubscribers() {
@@ -60,8 +64,29 @@ function notifyCartCacheSubscribers() {
   });
 }
 
+function clearCartCache() {
+  memorySnapshot = null;
+
+  if (typeof window !== "undefined") {
+    try {
+      window.sessionStorage.removeItem(CACHE_KEY);
+    } catch {
+      // ignore storage errors
+    }
+  }
+
+  notifyCartCacheSubscribers();
+}
+
 function readCartCache(): CartSnapshot | null {
-  if (memorySnapshot) return memorySnapshot;
+  if (memorySnapshot && isValidSnapshot(memorySnapshot)) {
+    return memorySnapshot;
+  }
+
+  if (memorySnapshot && !isValidSnapshot(memorySnapshot)) {
+    clearCartCache();
+    return null;
+  }
 
   if (typeof window === "undefined") return null;
 
@@ -82,9 +107,7 @@ function readCartCache(): CartSnapshot | null {
       items: Array.isArray(parsed.items) ? parsed.items : [],
       summary: parsed.summary ?? null,
       coupon: parsed.coupon ?? null,
-      totalQty: normalizeQty(
-        parsed.totalQty ?? computeTotalQty(parsed.items),
-      ),
+      totalQty: normalizeQty(parsed.totalQty ?? computeTotalQty(parsed.items)),
     };
 
     return memorySnapshot;
@@ -94,15 +117,15 @@ function readCartCache(): CartSnapshot | null {
 }
 
 function writeCartCache(snapshot: Omit<CartSnapshot, "version" | "cachedAt">) {
+  const items = Array.isArray(snapshot.items) ? snapshot.items : [];
+
   const next: CartSnapshot = {
     version: CACHE_VERSION,
     cachedAt: Date.now(),
-    items: Array.isArray(snapshot.items) ? snapshot.items : [],
+    items,
     summary: snapshot.summary ?? null,
     coupon: snapshot.coupon ?? null,
-    totalQty: normalizeQty(
-      snapshot.totalQty ?? computeTotalQty(snapshot.items),
-    ),
+    totalQty: normalizeQty(snapshot.totalQty ?? computeTotalQty(items)),
   };
 
   memorySnapshot = next;
@@ -134,15 +157,9 @@ function getCartCacheServerSnapshot() {
   return null;
 }
 
- function hasCachedItems(snapshot: CartSnapshot | null) {
-  return Boolean(
-    snapshot &&
-      Array.isArray(snapshot.items) &&
-      snapshot.items.length > 0,
-  );
-}
 export function useMobileCart() {
   const base = useBaseCart();
+
   const cached = useSyncExternalStore(
     subscribeCartCache,
     getCartCacheSnapshot,
@@ -150,6 +167,8 @@ export function useMobileCart() {
   );
 
   const reloadRef = useRef<any>(base.reload);
+  const writeTimerRef = useRef<number | null>(null);
+  const externalReloadTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     reloadRef.current = base.reload;
@@ -159,19 +178,27 @@ export function useMobileCart() {
     if (base.loading) return;
     if (base.error) return;
 
-    const timer = window.setTimeout(() => {
+    if (writeTimerRef.current) {
+      window.clearTimeout(writeTimerRef.current);
+      writeTimerRef.current = null;
+    }
+
+    writeTimerRef.current = window.setTimeout(() => {
+      writeTimerRef.current = null;
+
       writeCartCache({
         items: Array.isArray(base.items) ? base.items : [],
         summary: base.summary ?? null,
         coupon: base.coupon ?? null,
-        totalQty: normalizeQty(
-          base.totalQty ?? computeTotalQty(base.items),
-        ),
+        totalQty: normalizeQty(base.totalQty ?? computeTotalQty(base.items)),
       });
-    }, 0);
+    }, 60);
 
     return () => {
-      window.clearTimeout(timer);
+      if (writeTimerRef.current) {
+        window.clearTimeout(writeTimerRef.current);
+        writeTimerRef.current = null;
+      }
     };
   }, [
     base.loading,
@@ -183,41 +210,52 @@ export function useMobileCart() {
   ]);
 
   useEffect(() => {
-    let timer: number | null = null;
-
-    function silentReload() {
-      if (timer) {
-        window.clearTimeout(timer);
+    function scheduleExternalSilentReload(delay: number) {
+      if (externalReloadTimerRef.current) {
+        window.clearTimeout(externalReloadTimerRef.current);
+        externalReloadTimerRef.current = null;
       }
 
-      timer = window.setTimeout(() => {
-        timer = null;
+      externalReloadTimerRef.current = window.setTimeout(() => {
+        externalReloadTimerRef.current = null;
 
         try {
-          reloadRef.current?.({ silent: true });
+          reloadRef.current?.({ silent: true, force: true });
         } catch {
           // ignore
         }
-      }, 180);
+      }, delay);
     }
 
-    window.addEventListener("cart:changed", silentReload);
-    window.addEventListener("cart:optimistic-add", silentReload);
-    window.addEventListener("product:add-to-cart:done", silentReload);
+    function onOptimisticAdd() {
+      scheduleExternalSilentReload(650);
+    }
+
+    function onAddDone() {
+      scheduleExternalSilentReload(160);
+    }
+
+    /*
+      مهم:
+      لا نسمع cart:changed هنا لأن useCart الأساسي يسمعه أصلًا.
+      لو سمعناه هنا بنعمل طلبين /api/cart لنفس التغيير، وهذا يثقل الجوال.
+    */
+    window.addEventListener("cart:optimistic-add", onOptimisticAdd);
+    window.addEventListener("product:add-to-cart:done", onAddDone);
 
     return () => {
-      window.removeEventListener("cart:changed", silentReload);
-      window.removeEventListener("cart:optimistic-add", silentReload);
-      window.removeEventListener("product:add-to-cart:done", silentReload);
+      window.removeEventListener("cart:optimistic-add", onOptimisticAdd);
+      window.removeEventListener("product:add-to-cart:done", onAddDone);
 
-      if (timer) {
-        window.clearTimeout(timer);
+      if (externalReloadTimerRef.current) {
+        window.clearTimeout(externalReloadTimerRef.current);
+        externalReloadTimerRef.current = null;
       }
     };
   }, []);
 
   const shouldUseCache = Boolean(
-    hasCachedItems(cached) &&
+    cached &&
       (base.loading ||
         (base.error && (!Array.isArray(base.items) || base.items.length === 0))),
   );

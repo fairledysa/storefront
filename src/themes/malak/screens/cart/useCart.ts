@@ -21,6 +21,14 @@ type Toast = null | { message: string; kind: ToastKind };
 
 type ReloadOptions = {
   silent?: boolean;
+  force?: boolean;
+};
+
+type CouponPreview = {
+  code: string;
+  ratio: number | null;
+  amount: number;
+  maxAmount: number | null;
 };
 
 function toNumber(value: any) {
@@ -28,17 +36,21 @@ function toNumber(value: any) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function round2(value: any) {
+  const n = Number(value ?? 0);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(n * 100) / 100;
+}
+
 function clampQty(value: any) {
   const n = Number(value ?? 1);
   if (!Number.isFinite(n)) return 1;
-
   return Math.max(1, Math.floor(n));
 }
 
 function firstPositiveNumber(...values: any[]) {
   for (const value of values) {
     const n = Number(value);
-
     if (Number.isFinite(n) && n > 0) return n;
   }
 
@@ -50,6 +62,10 @@ function readUnitPrice(item: CartItemEnriched) {
   const qty = Math.max(1, Math.floor(toNumber(itemAny.qty)));
 
   const directUnit = firstPositiveNumber(
+    itemAny.unit_price_before_tax,
+    itemAny.unitPriceBeforeTax,
+    itemAny.final_unit_price_before_tax,
+    itemAny.finalUnitPriceBeforeTax,
     itemAny.unit_price,
     itemAny.unitPrice,
     itemAny.final_unit_price,
@@ -58,6 +74,13 @@ function readUnitPrice(item: CartItemEnriched) {
   );
 
   if (directUnit > 0) return directUnit;
+
+  const lineSubtotal = firstPositiveNumber(
+    itemAny.line_subtotal,
+    itemAny.lineSubtotal,
+  );
+
+  if (lineSubtotal > 0) return lineSubtotal / qty;
 
   const lineTotal = firstPositiveNumber(
     itemAny.line_total,
@@ -129,30 +152,168 @@ function enrichFreeShippingProgress(summary: any, subtotal: number) {
   };
 }
 
+function buildCouponPreview(
+  summary: CartSummaryMoney | null,
+  coupon: CartCoupon,
+): CouponPreview | null {
+  const couponAny: any = coupon ?? null;
+  const summaryAny: any = summary ?? null;
+
+  const code = String(couponAny?.code ?? "").trim();
+  if (!code) return null;
+
+  const subtotal = Math.max(0, toNumber(summaryAny?.subtotal));
+  const discount = Math.max(0, toNumber(summaryAny?.discount));
+
+  const maxAmountFromCoupon = firstPositiveNumber(
+    couponAny?.maximum_amount,
+    couponAny?.maximumAmount,
+    couponAny?.max_amount,
+    couponAny?.maxAmount,
+  );
+
+  const explicitType = String(
+    couponAny?.discount_type ??
+      couponAny?.discountType ??
+      couponAny?.type ??
+      "",
+  )
+    .trim()
+    .toUpperCase();
+
+  if (!(subtotal > 0) || !(discount > 0)) {
+    return {
+      code,
+      ratio: null,
+      amount: 0,
+      maxAmount: maxAmountFromCoupon > 0 ? maxAmountFromCoupon : null,
+    };
+  }
+
+  if (
+    explicitType === "P" ||
+    explicitType === "PERCENT" ||
+    explicitType === "PERCENTAGE"
+  ) {
+    const explicitAmount = toNumber(couponAny?.amount ?? couponAny?.value);
+    const ratio =
+      explicitAmount > 0 && explicitAmount <= 100
+        ? explicitAmount / 100
+        : discount / subtotal;
+
+    const safeRatio = Math.max(0, Math.min(0.95, ratio));
+    const rawPercentDiscount = subtotal * safeRatio;
+
+    const inferredMaxAmount =
+      maxAmountFromCoupon > 0
+        ? maxAmountFromCoupon
+        : rawPercentDiscount > discount + 0.01
+          ? discount
+          : null;
+
+    return {
+      code,
+      ratio: safeRatio,
+      amount: discount,
+      maxAmount: inferredMaxAmount,
+    };
+  }
+
+  if (
+    explicitType === "F" ||
+    explicitType === "FIXED" ||
+    explicitType === "AMOUNT"
+  ) {
+    return {
+      code,
+      ratio: null,
+      amount: discount,
+      maxAmount: maxAmountFromCoupon > 0 ? maxAmountFromCoupon : null,
+    };
+  }
+
+  const ratio = discount / subtotal;
+
+  return {
+    code,
+    ratio: ratio > 0 && ratio <= 0.95 ? ratio : null,
+    amount: discount,
+    maxAmount: maxAmountFromCoupon > 0 ? maxAmountFromCoupon : null,
+  };
+}
+
+function computeLocalCouponDiscount(args: {
+  subtotal: number;
+  currentSummary: CartSummaryMoney | null;
+  couponPreview: CouponPreview | null;
+}) {
+  const subtotal = Math.max(0, toNumber(args.subtotal));
+  if (!(subtotal > 0)) return 0;
+
+  const preview = args.couponPreview;
+  if (!preview?.code) return 0;
+
+  let discount = 0;
+
+  if (preview.ratio !== null && preview.ratio > 0) {
+    discount = subtotal * preview.ratio;
+  } else {
+    const currentAny: any = args.currentSummary ?? {};
+    const currentDiscount = Math.max(0, toNumber(currentAny?.discount));
+    const fallbackAmount = Math.max(
+      0,
+      preview.amount > 0 ? preview.amount : currentDiscount,
+    );
+
+    discount = fallbackAmount;
+  }
+
+  if (preview.maxAmount !== null && preview.maxAmount > 0) {
+    discount = Math.min(discount, preview.maxAmount);
+  }
+
+  return round2(Math.max(0, Math.min(subtotal, discount)));
+}
+
 function recomputeSummaryFromItems(
   nextItems: CartItemEnriched[],
   currentSummary: CartSummaryMoney | null,
+  couponPreview: CouponPreview | null,
 ) {
   const currentAny: any = currentSummary ?? {};
 
   const currency = String(currentAny?.currency || "SAR").trim().toUpperCase();
 
-  const subtotal = nextItems.reduce((sum, item) => {
-    const qty = Math.max(1, Math.floor(toNumber(item.qty)));
-    return sum + readUnitPrice(item) * qty;
-  }, 0);
+  const subtotal = round2(
+    nextItems.reduce((sum, item) => {
+      const qty = Math.max(1, Math.floor(toNumber(item.qty)));
+      return sum + readUnitPrice(item) * qty;
+    }, 0),
+  );
 
-  const currentDiscount = Math.max(0, toNumber(currentAny?.discount));
-  const discount = Math.min(currentDiscount, subtotal);
+  const previousSubtotal = Math.max(0, toNumber(currentAny?.subtotal));
+  const previousTax = Math.max(0, toNumber(currentAny?.tax));
 
-  const tax = Math.max(0, toNumber(currentAny?.tax));
+  const taxRate =
+    previousSubtotal > 0 && previousTax > 0 ? previousTax / previousSubtotal : 0;
+
+  const tax = round2(taxRate > 0 ? Math.max(0, subtotal * taxRate) : 0);
+
+  const discount = computeLocalCouponDiscount({
+    subtotal,
+    currentSummary,
+    couponPreview,
+  });
+
   const shipping = Math.max(0, toNumber(currentAny?.shipping));
   const paymentFee = Math.max(
     0,
     toNumber(currentAny?.payment_fee ?? currentAny?.paymentFee),
   );
 
-  const total = Math.max(0, subtotal - discount + tax + shipping + paymentFee);
+  const total = round2(
+    Math.max(0, subtotal - discount + tax + shipping + paymentFee),
+  );
 
   return enrichFreeShippingProgress(
     {
@@ -169,6 +330,16 @@ function recomputeSummaryFromItems(
     },
     subtotal,
   );
+}
+
+function patchCouponDiscount(coupon: CartCoupon, discount: number): CartCoupon {
+  const couponAny: any = coupon ?? null;
+  if (!couponAny?.code) return coupon;
+
+  return {
+    ...couponAny,
+    discount_amount: round2(discount),
+  } as CartCoupon;
 }
 
 function emitCartCountDelta(delta: number) {
@@ -213,9 +384,11 @@ export function useCart() {
 
   const itemsRef = useRef<CartItemEnriched[]>([]);
   const summaryRef = useRef<CartSummaryMoney | null>(null);
+  const couponRef = useRef<CartCoupon>(null);
+  const couponPreviewRef = useRef<CouponPreview | null>(null);
 
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconcileTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const mountedRef = useRef(true);
   const reloadSeqRef = useRef(0);
@@ -265,36 +438,27 @@ export function useCart() {
     );
   }, []);
 
-  const setItemsFast = useCallback((nextItems: CartItemEnriched[]) => {
-    itemsRef.current = nextItems;
-    setItems(nextItems);
-
-    const nextSummary = recomputeSummaryFromItems(
-      nextItems,
-      summaryRef.current,
-    );
-
-    summaryRef.current = nextSummary;
-    setSummary(nextSummary);
-  }, []);
-
   const applyCartResponse = useCallback((json: CartResponse) => {
     const nextItems = (json?.data?.items ?? []) as CartItemEnriched[];
     const nextSummary = (json?.data?.summary ?? null) as CartSummaryMoney | null;
+    const nextCoupon = (json?.data?.coupon ?? null) as CartCoupon;
 
     setCart(json?.data?.cart ?? null);
 
     itemsRef.current = nextItems;
     summaryRef.current = nextSummary;
+    couponRef.current = nextCoupon;
+    couponPreviewRef.current = buildCouponPreview(nextSummary, nextCoupon);
 
     setItems(nextItems);
     setSummary(nextSummary);
-    setCoupon((json?.data?.coupon ?? null) as CartCoupon);
+    setCoupon(nextCoupon);
   }, []);
 
   const reload = useCallback(
     async (opts?: ReloadOptions) => {
       const silent = Boolean(opts?.silent);
+      const force = Boolean(opts?.force);
       const requestId = ++reloadSeqRef.current;
 
       try {
@@ -308,6 +472,7 @@ export function useCart() {
 
         if (
           silent &&
+          !force &&
           (desiredQtyRef.current.size > 0 || qtyTimersRef.current.size > 0)
         ) {
           return;
@@ -327,17 +492,50 @@ export function useCart() {
     [applyCartResponse],
   );
 
-  const scheduleSilentReload = useCallback(
-    (delay = 1300) => {
-      if (syncTimer.current) clearTimeout(syncTimer.current);
+  const scheduleBackgroundReconcile = useCallback(
+    (delay = 3500) => {
+      if (reconcileTimer.current) {
+        clearTimeout(reconcileTimer.current);
+      }
 
-      syncTimer.current = setTimeout(() => {
+      reconcileTimer.current = setTimeout(() => {
+        reconcileTimer.current = null;
+
         if (!mountedRef.current) return;
-        void reload({ silent: true });
+        if (desiredQtyRef.current.size > 0 || qtyTimersRef.current.size > 0) {
+          scheduleBackgroundReconcile(delay);
+          return;
+        }
+
+        void reload({ silent: true, force: true });
       }, delay);
     },
     [reload],
   );
+
+  const setItemsFast = useCallback((nextItems: CartItemEnriched[]) => {
+    itemsRef.current = nextItems;
+    setItems(nextItems);
+
+    const nextSummary = recomputeSummaryFromItems(
+      nextItems,
+      summaryRef.current,
+      couponPreviewRef.current,
+    );
+
+    summaryRef.current = nextSummary;
+    setSummary(nextSummary);
+
+    if (couponRef.current) {
+      const nextCoupon = patchCouponDiscount(
+        couponRef.current,
+        toNumber((nextSummary as any)?.discount),
+      );
+
+      couponRef.current = nextCoupon;
+      setCoupon(nextCoupon);
+    }
+  }, []);
 
   const emitCartChangedWithoutSelfReload = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -404,8 +602,12 @@ export function useCart() {
           }
         }
 
+        desiredQtyRef.current.delete(cartItemId);
+        qtyTimersRef.current.delete(cartItemId);
+        markSyncing(cartItemId, false);
+
         emitCartChangedWithoutSelfReload();
-        scheduleSilentReload(1700);
+        scheduleBackgroundReconcile(3500);
       } catch (e: any) {
         const latestVersion = versionRef.current.get(cartItemId);
         if (latestVersion !== version) return;
@@ -413,7 +615,7 @@ export function useCart() {
         shakeCartLine(cartItemId);
         flash(e?.message ?? "تعذر تحديث الكمية", "error");
 
-        await reload({ silent: true });
+        void reload({ silent: true, force: true });
       } finally {
         const latestVersion = versionRef.current.get(cartItemId);
 
@@ -428,7 +630,7 @@ export function useCart() {
       flash,
       markSyncing,
       reload,
-      scheduleSilentReload,
+      scheduleBackgroundReconcile,
       setItemsFast,
     ],
   );
@@ -444,7 +646,7 @@ export function useCart() {
         return;
       }
 
-      void reload({ silent: true });
+      void reload({ silent: true, force: true });
     };
 
     window.addEventListener("cart:changed", onChanged as EventListener);
@@ -456,7 +658,7 @@ export function useCart() {
       window.removeEventListener("cart:changed", onChanged as EventListener);
 
       if (toastTimer.current) clearTimeout(toastTimer.current);
-      if (syncTimer.current) clearTimeout(syncTimer.current);
+      if (reconcileTimer.current) clearTimeout(reconcileTimer.current);
 
       syncingIdsRef.current.clear();
 
@@ -546,13 +748,13 @@ export function useCart() {
         flash(msg || "تم حذف المنتج من السلة", "info");
 
         emitCartChangedWithoutSelfReload();
-        scheduleSilentReload(900);
+        scheduleBackgroundReconcile(2500);
       } catch (e: any) {
         setItemsFast(before);
         emitCartCountDelta(removedQty);
 
         flash(e?.message ?? "تعذر حذف المنتج", "error");
-        await reload({ silent: true });
+        void reload({ silent: true, force: true });
       } finally {
         markSyncing(id, false);
       }
@@ -562,7 +764,7 @@ export function useCart() {
       flash,
       markSyncing,
       reload,
-      scheduleSilentReload,
+      scheduleBackgroundReconcile,
       setItemsFast,
     ],
   );
@@ -576,7 +778,7 @@ export function useCart() {
 
         flash("تم تطبيق الكوبون", "info");
 
-        await reload({ silent: true });
+        await reload({ silent: true, force: true });
         emitCartChangedWithoutSelfReload();
       } catch (e: any) {
         flash(e?.message ?? "تعذر تطبيق الكوبون", "error");
@@ -593,16 +795,21 @@ export function useCart() {
 
       await apiRemoveCoupon();
 
+      couponRef.current = null;
+      couponPreviewRef.current = null;
+      setCoupon(null);
+      setItemsFast(itemsRef.current);
+
       flash("تم إزالة الكوبون", "info");
 
-      await reload({ silent: true });
+      void reload({ silent: true, force: true });
       emitCartChangedWithoutSelfReload();
     } catch (e: any) {
       flash(e?.message ?? "تعذر إزالة الكوبون", "error");
     } finally {
       if (mountedRef.current) setOperationBusy(false);
     }
-  }, [emitCartChangedWithoutSelfReload, flash, reload]);
+  }, [emitCartChangedWithoutSelfReload, flash, reload, setItemsFast]);
 
   return {
     loading,

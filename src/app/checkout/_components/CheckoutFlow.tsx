@@ -381,7 +381,7 @@ export default function CheckoutFlow({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...patch,
-        include_summary: false,
+        include_summary: true,
       }),
       cache: "no-store",
       credentials: "same-origin",

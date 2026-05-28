@@ -66,17 +66,6 @@ function dispatchCheckoutEvent(name: string, detail?: any) {
   }, 0);
 }
 
-function pushSummary(summary: any) {
-  if (summary) {
-    dispatchCheckoutEvent("checkout:summaryPatch", {
-      summary,
-      reconcile: false,
-    });
-  } else {
-    dispatchCheckoutEvent("checkout:refresh");
-  }
-}
-
 function setSubmitEnabled(enabled: boolean) {
   dispatchCheckoutEvent("checkout:submitEnabled", { enabled });
 }
@@ -604,8 +593,7 @@ export default function AddressStep(props: {
         setConfirming(true);
 
         try {
-          const result = await onConfirm(updatedId);
-          pushSummary((result as ConfirmResult | null)?.summary ?? null);
+          await onConfirm(updatedId);
         } finally {
           if (mountedRef.current) setConfirming(false);
         }
@@ -625,8 +613,7 @@ export default function AddressStep(props: {
     setSubmitEnabled(false);
 
     try {
-      const result = await onConfirm(value);
-      pushSummary((result as ConfirmResult | null)?.summary ?? null);
+      await onConfirm(value);
     } catch (e: any) {
       setConfirmError(e?.message || "تعذر تأكيد العنوان. حاول مرة أخرى.");
     } finally {

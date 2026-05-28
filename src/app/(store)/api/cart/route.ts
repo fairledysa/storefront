@@ -32,6 +32,16 @@ type CurrencyRuntimeRow = {
   name_en?: string | null;
 };
 
+const CART_TAX_CONTEXT_CACHE_TTL_MS = 30_000;
+
+const cartTaxContextCache = new Map<
+  string,
+  {
+    expiresAt: number;
+    value: any;
+  }
+>();
+
 function uniq<T>(arr: T[]) {
   return Array.from(new Set(arr));
 }
@@ -43,6 +53,10 @@ function s(x: any) {
 function toNumber(x: any): number {
   const n = Number(x ?? 0);
   return Number.isFinite(n) ? n : 0;
+}
+
+function round2(x: number) {
+  return Math.round(Number(x || 0) * 100) / 100;
 }
 
 function cleanCurrencyCode(value: any, fallback = "") {
@@ -104,6 +118,7 @@ function readBoolMaybe(value: any): boolean | null {
 function readBool(value: any, fallback = false) {
   return readBoolMaybe(value) ?? fallback;
 }
+
 function readProductUnlimitedFromMetadata(metadata: any) {
   const meta =
     metadata && typeof metadata === "object" && !Array.isArray(metadata)
@@ -129,6 +144,7 @@ function readProductUnlimitedFromMetadata(metadata: any) {
     false,
   );
 }
+
 function clampTaxRate(value: any) {
   const n = Number(value ?? 0);
   if (!Number.isFinite(n)) return 0;
@@ -136,7 +152,18 @@ function clampTaxRate(value: any) {
   return Math.max(0, Math.min(100, n));
 }
 
-async function getCartTaxContext(seoMode: any) {
+async function getCartTaxContext(args: { store_id: string; seoMode: any }) {
+  const cacheKey = String(args.store_id || "");
+  const now = Date.now();
+
+  if (cacheKey) {
+    const cached = cartTaxContextCache.get(cacheKey);
+
+    if (cached && cached.expiresAt > now) {
+      return cached.value;
+    }
+  }
+
   try {
     const ctx = await resolveStoreContext();
     const store = ctx?.store;
@@ -151,21 +178,27 @@ async function getCartTaxContext(seoMode: any) {
         logo_url: store.logo_url ?? null,
         favicon_url: store.favicon_url ?? null,
       },
-      seoMode,
+      seoMode: args.seoMode,
       themeOptions: ctx?.theme?.options ?? null,
       version_id: ctx?.theme?.version_id ?? "published",
     });
 
-    return (bootstrap as any)?.tax ?? null;
+    const value = (bootstrap as any)?.tax ?? null;
+
+    if (cacheKey) {
+      cartTaxContextCache.set(cacheKey, {
+        value,
+        expiresAt: Date.now() + CART_TAX_CONTEXT_CACHE_TTL_MS,
+      });
+    }
+
+    return value;
   } catch {
     return null;
   }
 }
 
-function normalizeCartLineTax(args: {
-  tax: any;
-  pricingRow: any;
-}) {
+function normalizeCartLineTax(args: { tax: any; pricingRow: any }) {
   const tax = args.tax ?? null;
   const pricingRow = args.pricingRow ?? null;
 
@@ -660,7 +693,7 @@ function coerceOptionsFromMetadata(metadata: any): any[] {
     );
 }
 
- function coerceVariantsFromMetadata(metadata: any): any[] {
+function coerceVariantsFromMetadata(metadata: any): any[] {
   const raw = Array.isArray(metadata?.variants) ? metadata.variants : [];
   if (!raw.length) return [];
 
@@ -867,7 +900,7 @@ function getProductStockInfo(args: { metadata: any; stockRow: any }) {
   };
 }
 
- function getVariantStockInfo(args: {
+function getVariantStockInfo(args: {
   metadata: any;
   variant_id: string;
   dbVariantById: Map<string, any>;
@@ -927,6 +960,7 @@ function getProductStockInfo(args: { metadata: any; stockRow: any }) {
 
   return { exists: false, unlimited: false, available_qty: 0 };
 }
+
 function computeHardMax(args: {
   desiredQty: number;
   unlimited: boolean;
@@ -1284,7 +1318,7 @@ async function normalizeCartLines(args: {
     activeByLineKey.set(line_key, { id: itemId, qty: finalQty });
   }
 
-   if (changed) {
+  if (changed) {
     const countR = await sb
       .from("cart_items")
       .select("qty")
@@ -1301,9 +1335,7 @@ async function normalizeCartLines(args: {
     const item_count = rows.reduce((sum: number, row) => {
       const qty = Number(row?.qty ?? 0);
 
-      return (
-        sum + (Number.isFinite(qty) ? Math.max(0, Math.floor(qty)) : 0)
-      );
+      return sum + (Number.isFinite(qty) ? Math.max(0, Math.floor(qty)) : 0);
     }, 0);
 
     const upCart = await sb
@@ -1320,6 +1352,7 @@ async function normalizeCartLines(args: {
 
   return { changed, removedIds };
 }
+
 function normalizeCurrencyInfo(currency: string, info: any) {
   const code = String(currency || info?.code || "SAR").trim().toUpperCase();
   const symbol = s(info?.symbol) || code;
@@ -1373,6 +1406,7 @@ function jsonWithCartCookie(args: {
   });
 
   const c = cartSessionCookie(args.sid);
+
   res.cookies.set(c.name, c.value, {
     httpOnly: c.httpOnly,
     sameSite: c.sameSite,
@@ -1475,7 +1509,7 @@ function buildMaps(args: {
   };
 }
 
- function resolveConvertedItemPrices(args: {
+function resolveConvertedItemPrices(args: {
   pricingRow: any;
   variantRow: any | null;
   selectedOptionValueIds: string[];
@@ -1492,8 +1526,7 @@ function buildMaps(args: {
     const rawVariantPrice = toNumber(args.variantRow?.price);
     const rawVariantSalePrice = toNumber(args.variantRow?.sale_price);
 
-    const variantHasOwnPrice =
-      rawVariantPrice > 0 || rawVariantSalePrice > 0;
+    const variantHasOwnPrice = rawVariantPrice > 0 || rawVariantSalePrice > 0;
 
     if (variantHasOwnPrice) {
       return {
@@ -1564,17 +1597,22 @@ export async function GET() {
         fetchStoreDefaultCurrencyCode(sb, store_id, "SAR"),
       ]);
 
-    const cartTaxContext = await getCartTaxContext(seoMode);
+    const cartTaxContextPromise = getCartTaxContext({
+      store_id,
+      seoMode,
+    });
 
     const baseCurrency = cleanCurrencyCode(
       storeDefaultCurrency || storeCurrencyInfo?.code || cart?.currency,
       "SAR",
     );
 
-    const [selectedCookieCurrency, currencyRows] = await Promise.all([
-      readSelectedCurrencyCodeFromCookies(),
-      fetchStoreCurrenciesForRuntime(sb, store_id),
-    ]);
+    const [selectedCookieCurrency, currencyRows, cartTaxContext] =
+      await Promise.all([
+        readSelectedCurrencyCodeFromCookies(),
+        fetchStoreCurrenciesForRuntime(sb, store_id),
+        cartTaxContextPromise,
+      ]);
 
     const currencyRuntime = buildCurrencyRuntime(currencyRows, baseCurrency);
 
@@ -1595,11 +1633,12 @@ export async function GET() {
     const [cartCouponR, initialItems] = await Promise.all([
       sb
         .from("cart_coupons")
-        .select("id,code,discount_amount")
+        .select("id,code,discount_amount,coupon_id")
         .eq("store_id", store_id)
         .eq("cart_id", cart.id)
         .limit(1)
         .maybeSingle(),
+
       fetchCartItems(sb, cart.id),
     ]);
 
@@ -1608,6 +1647,9 @@ export async function GET() {
     const couponRaw = cartCouponR.data?.id
       ? {
           id: String(cartCouponR.data.id),
+          coupon_id: cartCouponR.data.coupon_id
+            ? String(cartCouponR.data.coupon_id)
+            : "",
           code: String(cartCouponR.data.code ?? ""),
           discount_amount: Number(cartCouponR.data.discount_amount ?? 0),
         }
@@ -1970,11 +2012,17 @@ export async function GET() {
         unit_price: unitPrice,
         unitPrice,
 
+        unit_price_before_tax: unitPriceBeforeTax,
+        unitPriceBeforeTax: unitPriceBeforeTax,
+
         compare_at_price: compareAtPrice,
         compareAtPrice,
 
         total_price: lineTotal,
         totalPrice: lineTotal,
+
+        line_subtotal: lineSubtotal,
+        lineSubtotal: lineSubtotal,
 
         line_total: lineTotal,
         lineTotal,
@@ -2047,27 +2095,180 @@ export async function GET() {
       };
     });
 
-    const couponDiscountConverted = couponRaw
-      ? convertMoney({
-          amount: couponRaw.discount_amount,
-          sourceCode: storeBaseCurrencyCode,
-          targetCode: currencyInfo.code,
-          runtime: currencyRuntime,
-        })
-      : 0;
+    let discountFromCoupon = 0;
+    let coupon: any = null;
+    let couponFreeShipping = false;
 
-    const totalBeforeDiscount = subtotal + taxTotal;
+    if (couponRaw?.coupon_id) {
+      const couponR = await sb
+        .from("coupons")
+        .select(
+          "id,store_id,code,discount_type,amount,maximum_amount,start_at,end_at,status,minimum_amount,exclude_sale_products,free_shipping",
+        )
+        .eq("id", String(couponRaw.coupon_id))
+        .eq("store_id", store_id)
+        .limit(1)
+        .maybeSingle();
 
-    const discountFromCoupon = couponRaw
-      ? Math.max(0, Math.min(couponDiscountConverted, totalBeforeDiscount))
-      : 0;
+      if (!couponR.error && couponR.data?.id) {
+        const couponRow = couponR.data;
+        const now = Date.now();
 
-    const coupon = couponRaw
-      ? {
-          ...couponRaw,
-          discount_amount: discountFromCoupon,
+        const minimumAmountRaw =
+          couponRow.minimum_amount == null
+            ? null
+            : Math.max(0, toNumber(couponRow.minimum_amount));
+
+        const minimumAmount =
+          minimumAmountRaw != null && minimumAmountRaw > 0
+            ? convertMoney({
+                amount: minimumAmountRaw,
+                sourceCode: storeBaseCurrencyCode,
+                targetCode: currencyInfo.code,
+                runtime: currencyRuntime,
+              })
+            : null;
+
+        const couponIsValid =
+          String(couponRow.status) === "active" &&
+          (!couponRow.start_at ||
+            Date.parse(String(couponRow.start_at)) <= now) &&
+          (!couponRow.end_at || Date.parse(String(couponRow.end_at)) >= now) &&
+          (minimumAmount == null || subtotal >= minimumAmount);
+
+        if (couponIsValid) {
+          let eligibleSubtotal = subtotal;
+
+          if (couponRow.exclude_sale_products === true) {
+            eligibleSubtotal = enriched.reduce((sum: number, item: any) => {
+              const qty = Math.max(1, Math.floor(toNumber(item?.qty)));
+
+              const unitBeforeTax = toNumber(
+                item?.unit_price_before_tax ?? item?.unitPriceBeforeTax,
+              );
+
+              const lineBeforeTax =
+                toNumber(item?.line_subtotal ?? item?.lineSubtotal) ||
+                unitBeforeTax * qty;
+
+              const compareAt = toNumber(
+                item?.compare_at_price ?? item?.compareAtPrice,
+              );
+
+              const unitPrice = toNumber(item?.unit_price ?? item?.unitPrice);
+
+              const isSaleLine =
+                compareAt > 0 && unitPrice > 0 && compareAt > unitPrice;
+
+              if (isSaleLine) return sum;
+
+              return sum + Math.max(0, lineBeforeTax);
+            }, 0);
+          }
+
+          if (eligibleSubtotal > 0) {
+            if (String(couponRow.discount_type) === "P") {
+              const pct = Math.max(0, toNumber(couponRow.amount));
+              discountFromCoupon = eligibleSubtotal * (pct / 100);
+
+              const maxRaw =
+                couponRow.maximum_amount == null
+                  ? null
+                  : Math.max(0, toNumber(couponRow.maximum_amount));
+
+              const maxAmount =
+                maxRaw != null && maxRaw > 0
+                  ? convertMoney({
+                      amount: maxRaw,
+                      sourceCode: storeBaseCurrencyCode,
+                      targetCode: currencyInfo.code,
+                      runtime: currencyRuntime,
+                    })
+                  : null;
+
+              if (maxAmount != null && maxAmount > 0) {
+                discountFromCoupon = Math.min(discountFromCoupon, maxAmount);
+              }
+            } else {
+              discountFromCoupon = convertMoney({
+                amount: Math.max(0, toNumber(couponRow.amount)),
+                sourceCode: storeBaseCurrencyCode,
+                targetCode: currencyInfo.code,
+                runtime: currencyRuntime,
+              });
+            }
+          }
+
+          discountFromCoupon = Math.max(
+            0,
+            Math.min(discountFromCoupon, eligibleSubtotal),
+          );
+
+          discountFromCoupon = round2(discountFromCoupon);
+
+          couponFreeShipping = couponRow.free_shipping === true;
+
+          coupon = {
+            id: String(couponRaw.id),
+            coupon_id: String(couponRow.id),
+            code: String(couponRaw.code || couponRow.code || ""),
+            discount_amount: discountFromCoupon,
+
+            discount_type: couponRow.discount_type,
+            discountType: couponRow.discount_type,
+            amount: toNumber(couponRow.amount),
+            maximum_amount:
+              couponRow.maximum_amount == null
+                ? null
+                : toNumber(couponRow.maximum_amount),
+            maximumAmount:
+              couponRow.maximum_amount == null
+                ? null
+                : toNumber(couponRow.maximum_amount),
+            exclude_sale_products: couponRow.exclude_sale_products === true,
+            excludeSaleProducts: couponRow.exclude_sale_products === true,
+            free_shipping: couponRow.free_shipping === true,
+            freeShipping: couponRow.free_shipping === true,
+          };
         }
-      : null;
+      }
+    }
+
+    const storedDiscountInBase = discountFromCoupon
+      ? round2(
+          convertMoney({
+            amount: discountFromCoupon,
+            sourceCode: currencyInfo.code,
+            targetCode: storeBaseCurrencyCode,
+            runtime: currencyRuntime,
+          }),
+        )
+      : 0;
+
+    if (
+      couponRaw?.id &&
+      Math.abs(toNumber(couponRaw.discount_amount) - storedDiscountInBase) > 0.01
+    ) {
+      void Promise.all([
+        sb
+          .from("cart_coupons")
+          .update({
+            discount_amount: storedDiscountInBase,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("store_id", store_id)
+          .eq("cart_id", cart.id),
+
+        sb
+          .from("carts")
+          .update({
+            coupon_discount: storedDiscountInBase,
+            last_activity_at: new Date().toISOString(),
+          })
+          .eq("id", cart.id)
+          .eq("store_id", store_id),
+      ]).catch(() => undefined);
+    }
 
     const freeShippingProductIds: string[] = Array.from(
       new Set<string>(
@@ -2098,7 +2299,9 @@ export async function GET() {
     const freeShippingThreshold = Number(freeShippingRule.minimumSubtotal ?? 0);
     const freeShippingRemaining = Number(freeShippingRule.remaining ?? 0);
     const freeShippingAvailable = Boolean(freeShippingRule.available);
-    const freeShippingApplied = Boolean(freeShippingRule.applied);
+    const freeShippingApplied = Boolean(
+      couponFreeShipping || freeShippingRule.applied,
+    );
 
     const summary = {
       subtotal,
@@ -2116,11 +2319,19 @@ export async function GET() {
       free_shipping_threshold: freeShippingThreshold,
       freeShippingThreshold: freeShippingThreshold,
 
-      free_shipping_remaining: freeShippingRemaining,
-      freeShippingRemaining: freeShippingRemaining,
+      free_shipping_remaining: couponFreeShipping ? 0 : freeShippingRemaining,
+      freeShippingRemaining: couponFreeShipping ? 0 : freeShippingRemaining,
 
-      free_shipping_source: freeShippingApplied ? "rule" : null,
-      freeShippingSource: freeShippingApplied ? "rule" : null,
+      free_shipping_source: couponFreeShipping
+        ? "coupon"
+        : freeShippingRule.applied
+          ? "rule"
+          : null,
+      freeShippingSource: couponFreeShipping
+        ? "coupon"
+        : freeShippingRule.applied
+          ? "rule"
+          : null,
 
       free_shipping_rule_id: freeShippingRule.ruleId,
       freeShippingRuleId: freeShippingRule.ruleId,

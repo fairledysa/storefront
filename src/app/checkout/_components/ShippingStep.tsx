@@ -113,17 +113,6 @@ function patchShippingSummary(option: Shipping) {
   });
 }
 
-function pushSummary(summary: any) {
-  if (summary) {
-    dispatchCheckoutEvent("checkout:summaryPatch", {
-      summary,
-      reconcile: false,
-    });
-  } else {
-    dispatchCheckoutEvent("checkout:refresh");
-  }
-}
-
 function setSubmitEnabled(enabled: boolean) {
   dispatchCheckoutEvent("checkout:submitEnabled", { enabled });
 }
@@ -375,8 +364,6 @@ export default function ShippingStep(props: {
         setErrorMsg("تعذر اعتماد شركة الشحن. حاول مرة أخرى.");
         return;
       }
-
-      pushSummary(result.summary ?? null);
     } catch (e: any) {
       setErrorMsg(e?.message || "تعذر اعتماد شركة الشحن. حاول مرة أخرى.");
     } finally {
