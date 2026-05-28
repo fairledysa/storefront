@@ -14,6 +14,7 @@ import {
   generateUniqueOrderPublicToken,
 } from "../lib/summary";
 import { copyCartOrderOptionsToOrder } from "../lib/order-options";
+import { evaluateCodRestrictions } from "../lib/cod-restrictions";
 
 export const dynamic = "force-dynamic";
 
@@ -73,6 +74,25 @@ function isUniqueConstraintError(error: any) {
   );
 }
 
+function isDuplicateCartOrderError(error: any) {
+  const code = toStr(error?.code);
+  const text = [
+    error?.message,
+    error?.details,
+    error?.hint,
+    error?.constraint,
+  ]
+    .map((x) => toStr(x).toLowerCase())
+    .join(" ");
+
+  return (
+    code === "23505" &&
+    (text.includes("orders_unique_store_cart") ||
+      text.includes("store_cart") ||
+      text.includes("cart_id"))
+  );
+}
+
 function stockFlag(value: any) {
   if (typeof value === "boolean") return value;
   if (typeof value === "number") return value === 1;
@@ -90,6 +110,484 @@ function stockFlag(value: any) {
   }
 
   return false;
+}
+
+function buildOrderPayload(order: any) {
+  return {
+    id: order.id,
+    order_number: order.order_number,
+    public_token: order.public_token,
+    invoice_no: order.invoice_no,
+    invoice_no_fmt: String(order.invoice_no ?? 0).padStart(7, "0"),
+  };
+}
+
+function buildOrderSuccessResponse(args: {
+  order: any;
+  session_id: string;
+  duplicate?: boolean;
+}) {
+  const res = NextResponse.json({
+    ok: true,
+    duplicate: Boolean(args.duplicate),
+    order: buildOrderPayload(args.order),
+  });
+
+  res.cookies.set(cartSessionCookie(args.session_id));
+
+  return res;
+}
+
+function buildOrderProcessingResponse(order: any) {
+  return NextResponse.json(
+    {
+      ok: false,
+      error: "ORDER_ALREADY_PROCESSING",
+      message_ar:
+        "طلبك قيد المعالجة الآن. انتظر لحظات ولا تضغط تأكيد الطلب مرة أخرى.",
+      order: order ? buildOrderPayload(order) : null,
+    },
+    { status: 409 },
+  );
+}
+
+function paymentValidationError(args: {
+  error: string;
+  message_ar: string;
+  status?: number;
+  extra?: Record<string, any>;
+}) {
+  return NextResponse.json(
+    {
+      ok: false,
+      error: args.error,
+      message_ar: args.message_ar,
+      ...(args.extra ? { extra: args.extra } : {}),
+    },
+    { status: args.status ?? 400 },
+  );
+}
+
+function normalizePaymentMethodId(value: any) {
+  return toStr(value).toLowerCase();
+}
+
+function isProviderPaymentMethod(method: string) {
+  return method.startsWith("provider:");
+}
+
+function readProviderCode(method: string) {
+  if (!isProviderPaymentMethod(method)) return "";
+  return toStr(method.slice("provider:".length)).toLowerCase();
+}
+
+async function readExistingOrderForCart(args: {
+  sb: any;
+  store_id: string;
+  cart_id: string;
+}) {
+  const { sb, store_id, cart_id } = args;
+
+  const r = await sb
+    .from("orders")
+    .select(
+      `
+      id,
+      order_number,
+      public_token,
+      invoice_no,
+      stock_decremented_at,
+      status,
+      payment_status,
+      created_at
+    `,
+    )
+    .eq("store_id", store_id)
+    .eq("cart_id", cart_id)
+    .order("created_at", { ascending: false })
+    .limit(10);
+
+  if (r.error) {
+    throw new Error(r.error.message);
+  }
+
+  const rows = Array.isArray(r.data) ? r.data : [];
+  if (!rows.length) return null;
+
+  rows.sort((a: any, b: any) => {
+    const aDone = a?.stock_decremented_at ? 1 : 0;
+    const bDone = b?.stock_decremented_at ? 1 : 0;
+
+    if (aDone !== bDone) return bDone - aDone;
+
+    const at = new Date(a?.created_at ?? 0).getTime();
+    const bt = new Date(b?.created_at ?? 0).getTime();
+
+    return bt - at;
+  });
+
+  return rows[0] ?? null;
+}
+
+async function loadCartProductsSubtotal(args: {
+  sb: any;
+  storeId: string;
+  cartId: string;
+}) {
+  const { data, error } = await args.sb
+    .from("cart_items")
+    .select("qty,unit_price")
+    .eq("store_id", args.storeId)
+    .eq("cart_id", args.cartId);
+
+  if (error) throw new Error(error.message);
+
+  let subtotal = 0;
+
+  for (const item of data ?? []) {
+    const qtyValue = Number(item?.qty ?? 1);
+    const unitPriceValue = Number(item?.unit_price ?? 0);
+
+    const qty = Math.max(
+      1,
+      Math.floor(Number.isFinite(qtyValue) ? qtyValue : 1),
+    );
+
+    const unitPrice = Math.max(
+      0,
+      Number.isFinite(unitPriceValue) ? unitPriceValue : 0,
+    );
+
+    subtotal += unitPrice * qty;
+  }
+
+  return round2(Math.max(0, subtotal));
+}
+
+function isDbEnabled(value: any) {
+  if (value === true) return true;
+  if (value === 1) return true;
+
+  if (typeof value === "string") {
+    const v = value.trim().toLowerCase();
+    return ["true", "1", "yes", "on", "active", "enabled"].includes(v);
+  }
+
+  return false;
+}
+
+async function validateCodPayment(args: {
+  sb: any;
+  store_id: string;
+  cart: any;
+}) {
+  const { sb, store_id, cart } = args;
+
+  const cartId = toStr(cart?.id);
+  const shippingId = toStr(cart?.shipping_id);
+  const customerId = toStr(cart?.user_id) || null;
+
+  if (!shippingId) {
+    return {
+      ok: false as const,
+      error: "PAYMENT_COD_NEEDS_SHIPPING",
+      message_ar: "اختر شركة الشحن قبل الدفع عند الاستلام.",
+      status: 400,
+    };
+  }
+
+  if (!isUuid(shippingId)) {
+    return {
+      ok: false as const,
+      error: "PAYMENT_INVALID_SHIPPING",
+      message_ar: "طريقة الشحن غير صحيحة. اختر شركة الشحن مرة أخرى.",
+      status: 400,
+    };
+  }
+
+  const rateR = await sb
+    .from("store_shipping_rates")
+    .select(
+      `
+      id,
+      store_id,
+      store_shipping_carrier_id,
+      cod_enabled,
+      cod_fee_customer,
+      currency,
+      enabled,
+      status
+    `,
+    )
+    .eq("store_id", store_id)
+    .eq("id", shippingId)
+    .limit(1)
+    .maybeSingle();
+
+  if (rateR.error) {
+    return {
+      ok: false as const,
+      error: "PAYMENT_SHIPPING_RATE_FAILED",
+      message_ar: "تعذر التحقق من طريقة الشحن.",
+      status: 500,
+      debug: rateR.error.message,
+    };
+  }
+
+  const rate = rateR.data;
+
+  if (!rate?.id) {
+    return {
+      ok: false as const,
+      error: "PAYMENT_SHIPPING_RATE_NOT_FOUND",
+      message_ar: "طريقة الشحن غير متاحة. اختر شركة الشحن مرة أخرى.",
+      status: 400,
+    };
+  }
+
+  if (rate.enabled === false || toStr(rate.status || "active") !== "active") {
+    return {
+      ok: false as const,
+      error: "PAYMENT_SHIPPING_RATE_DISABLED",
+      message_ar: "طريقة الشحن الحالية غير مفعلة.",
+      status: 400,
+    };
+  }
+
+  if (!rate.cod_enabled) {
+    return {
+      ok: false as const,
+      error: "PAYMENT_COD_DISABLED_FOR_RATE",
+      message_ar: "الدفع عند الاستلام غير مفعل لطريقة الشحن الحالية.",
+      status: 400,
+    };
+  }
+
+  const carrierR = await sb
+    .from("store_shipping_carriers")
+    .select("id,type,enabled,is_enabled,status")
+    .eq("store_id", store_id)
+    .eq("id", String(rate.store_shipping_carrier_id))
+    .limit(1)
+    .maybeSingle();
+
+  if (carrierR.error) {
+    return {
+      ok: false as const,
+      error: "PAYMENT_SHIPPING_CARRIER_FAILED",
+      message_ar: "تعذر التحقق من شركة الشحن.",
+      status: 500,
+      debug: carrierR.error.message,
+    };
+  }
+
+  const carrier = carrierR.data;
+
+  if (!carrier?.id) {
+    return {
+      ok: false as const,
+      error: "PAYMENT_SHIPPING_CARRIER_NOT_FOUND",
+      message_ar: "شركة الشحن غير متاحة. اختر شركة الشحن مرة أخرى.",
+      status: 400,
+    };
+  }
+
+  const carrierEnabled =
+    isDbEnabled(carrier.enabled) || isDbEnabled(carrier.is_enabled);
+
+  if (!carrierEnabled || toStr(carrier.status) !== "active") {
+    return {
+      ok: false as const,
+      error: "PAYMENT_SHIPPING_CARRIER_DISABLED",
+      message_ar: "شركة الشحن الحالية غير مفعلة.",
+      status: 400,
+    };
+  }
+
+  if (toStr(carrier.type) === "pickup") {
+    return {
+      ok: false as const,
+      error: "PAYMENT_COD_NOT_AVAILABLE_FOR_PICKUP",
+      message_ar: "الدفع عند الاستلام غير متاح مع الاستلام من الفرع.",
+      status: 400,
+    };
+  }
+
+  const cartSubtotal = await loadCartProductsSubtotal({
+    sb,
+    storeId: store_id,
+    cartId,
+  });
+
+  const codRestrictions = await evaluateCodRestrictions({
+    sb,
+    storeId: store_id,
+    cartId,
+    cartSubtotal,
+    customerId,
+    toCartCurrency: (amount) => round2(n(amount)),
+  });
+
+  if (!codRestrictions.allowed) {
+    return {
+      ok: false as const,
+      error: codRestrictions.reason || "PAYMENT_COD_RESTRICTED",
+      message_ar: "الدفع عند الاستلام غير متاح لهذا الطلب.",
+      status: 400,
+      extra: {
+        reason: codRestrictions.reason || null,
+      },
+    };
+  }
+
+  return {
+    ok: true as const,
+  };
+}
+
+async function validateBankTransferPayment(args: {
+  sb: any;
+  store_id: string;
+}) {
+  const r = await args.sb
+    .from("store_bank_accounts")
+    .select("id,status")
+    .eq("store_id", args.store_id)
+    .eq("status", "active")
+    .limit(1)
+    .maybeSingle();
+
+  if (r.error) {
+    return {
+      ok: false as const,
+      error: "PAYMENT_BANK_CHECK_FAILED",
+      message_ar: "تعذر التحقق من التحويل البنكي.",
+      status: 500,
+      debug: r.error.message,
+    };
+  }
+
+  if (!r.data?.id) {
+    return {
+      ok: false as const,
+      error: "PAYMENT_BANK_NOT_AVAILABLE",
+      message_ar: "التحويل البنكي غير متاح حاليًا.",
+      status: 400,
+    };
+  }
+
+  return {
+    ok: true as const,
+  };
+}
+
+async function validateProviderPayment(args: {
+  sb: any;
+  store_id: string;
+  method: string;
+}) {
+  const providerCode = readProviderCode(args.method);
+
+  if (!providerCode) {
+    return {
+      ok: false as const,
+      error: "PAYMENT_PROVIDER_INVALID",
+      message_ar: "طريقة الدفع الإلكتروني غير صحيحة.",
+      status: 400,
+    };
+  }
+
+  const r = await args.sb
+    .from("store_payment_methods")
+    .select("id,provider_code,enabled,status")
+    .eq("store_id", args.store_id)
+    .ilike("provider_code", providerCode)
+    .limit(1)
+    .maybeSingle();
+
+  if (r.error) {
+    return {
+      ok: false as const,
+      error: "PAYMENT_PROVIDER_CHECK_FAILED",
+      message_ar: "تعذر التحقق من طريقة الدفع الإلكتروني.",
+      status: 500,
+      debug: r.error.message,
+    };
+  }
+
+  const row = r.data;
+
+  if (!row?.id || !row.enabled || toStr(row.status) !== "active") {
+    return {
+      ok: false as const,
+      error: "PAYMENT_PROVIDER_NOT_AVAILABLE",
+      message_ar: "طريقة الدفع الإلكتروني غير متاحة حاليًا.",
+      status: 400,
+    };
+  }
+
+  return {
+    ok: true as const,
+  };
+}
+
+async function validateSelectedPaymentMethod(args: {
+  sb: any;
+  store_id: string;
+  cart: any;
+  body_payment_method: string;
+}) {
+  const cartPaymentMethod = normalizePaymentMethodId(args.cart?.payment_method);
+  const bodyPaymentMethod = normalizePaymentMethodId(args.body_payment_method);
+
+  if (!cartPaymentMethod) {
+    return {
+      ok: false as const,
+      error: "PAYMENT_METHOD_REQUIRED",
+      message_ar: "اختر طريقة الدفع قبل إتمام الطلب.",
+      status: 400,
+    };
+  }
+
+  if (bodyPaymentMethod && bodyPaymentMethod !== cartPaymentMethod) {
+    return {
+      ok: false as const,
+      error: "PAYMENT_METHOD_MISMATCH",
+      message_ar:
+        "طريقة الدفع المرسلة لا تطابق طريقة الدفع المعتمدة في الطلب. حدّث الصفحة وحاول مرة أخرى.",
+      status: 400,
+    };
+  }
+
+  if (cartPaymentMethod === "cod") {
+    return await validateCodPayment({
+      sb: args.sb,
+      store_id: args.store_id,
+      cart: args.cart,
+    });
+  }
+
+  if (cartPaymentMethod === "bank_transfer") {
+    return await validateBankTransferPayment({
+      sb: args.sb,
+      store_id: args.store_id,
+    });
+  }
+
+  if (isProviderPaymentMethod(cartPaymentMethod)) {
+    return await validateProviderPayment({
+      sb: args.sb,
+      store_id: args.store_id,
+      method: cartPaymentMethod,
+    });
+  }
+
+  return {
+    ok: false as const,
+    error: "PAYMENT_METHOD_NOT_ALLOWED",
+    message_ar: "طريقة الدفع غير متاحة أو غير صحيحة.",
+    status: 400,
+  };
 }
 
 async function getInvoiceNoCandidate(
@@ -133,16 +631,14 @@ async function insertOrderWithRetry(args: {
   store_id: string;
   cart: any;
   summary: any;
-  body: any;
   shipping_snapshot: any;
   shipping_address_final: any;
-}) {
+}): Promise<{ order: any; existing: boolean }> {
   const {
     sb,
     store_id,
     cart,
     summary,
-    body,
     shipping_snapshot,
     shipping_address_final,
   } = args;
@@ -183,7 +679,7 @@ async function insertOrderWithRetry(args: {
         total_amount: summary.total,
 
         payment_status: "unpaid",
-        payment_method: body?.payment_method ?? cart.payment_method ?? null,
+        payment_method: cart.payment_method ?? null,
 
         address_id: cart.address_id ?? null,
         shipping_id: cart.shipping_id ?? null,
@@ -192,14 +688,28 @@ async function insertOrderWithRetry(args: {
         shipping_address: shipping_address_final,
         shipping_snapshot,
       })
-      .select("id,order_number,public_token,invoice_no")
+      .select("id,order_number,public_token,invoice_no,stock_decremented_at")
       .single();
 
     if (!orderIns.error && orderIns.data?.id) {
-      return orderIns.data;
+      return { order: orderIns.data, existing: false };
     }
 
     lastError = orderIns.error;
+
+    if (isDuplicateCartOrderError(orderIns.error)) {
+      const existingOrder = await readExistingOrderForCart({
+        sb,
+        store_id,
+        cart_id: String(cart.id),
+      });
+
+      if (existingOrder?.id) {
+        return { order: existingOrder, existing: true };
+      }
+
+      throw new Error("ORDER_ALREADY_PROCESSING");
+    }
 
     if (isUniqueConstraintError(orderIns.error)) {
       continue;
@@ -924,7 +1434,9 @@ function normalizeSummaryOrderOptions(
         : [];
 
       const metadata =
-        row?.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+        row?.metadata &&
+        typeof row.metadata === "object" &&
+        !Array.isArray(row.metadata)
           ? row.metadata
           : {};
 
@@ -1266,8 +1778,12 @@ async function buildOrderItemStockModeMap(
 ): Promise<Map<string, OrderItemStockMode>> {
   const items = Array.isArray(summaryItems) ? summaryItems : [];
 
-  const productIds = items.map((it: any) => toStr(it?.product_id)).filter(Boolean);
-  const variantIds = items.map((it: any) => toStr(it?.variant_id)).filter(Boolean);
+  const productIds = items
+    .map((it: any) => toStr(it?.product_id))
+    .filter(Boolean);
+  const variantIds = items
+    .map((it: any) => toStr(it?.variant_id))
+    .filter(Boolean);
 
   const [productStockMap, variantStockMap] = await Promise.all([
     loadProductStockMap(sb, productIds),
@@ -1342,6 +1858,7 @@ export async function POST(req: Request) {
   const cart = await getOrCreateOpenCart({ store_id, session_id });
 
   const body = await req.json().catch(() => ({}));
+  const bodyPaymentMethod = normalizePaymentMethodId(body?.payment_method);
 
   if (String(cart.status) !== "open") {
     return NextResponse.json(
@@ -1354,35 +1871,34 @@ export async function POST(req: Request) {
     );
   }
 
-  const bodyPaymentMethod = toStr(body?.payment_method);
+  try {
+    const existingOrder = await readExistingOrderForCart({
+      sb,
+      store_id,
+      cart_id: String(cart.id),
+    });
 
-  if (bodyPaymentMethod && bodyPaymentMethod !== toStr(cart.payment_method)) {
-    const now = new Date().toISOString();
+    if (existingOrder?.id) {
+      if (existingOrder.stock_decremented_at) {
+        return buildOrderSuccessResponse({
+          order: existingOrder,
+          session_id,
+          duplicate: true,
+        });
+      }
 
-    const paymentUpdate = await sb
-      .from("carts")
-      .update({
-        payment_method: bodyPaymentMethod,
-        updated_at: now,
-        last_activity_at: now,
-      })
-      .eq("id", cart.id)
-      .eq("store_id", store_id)
-      .select("id,payment_method")
-      .maybeSingle();
-
-    if (paymentUpdate.error) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "PAYMENT_METHOD_UPDATE_FAILED",
-          debug: toStr(paymentUpdate.error.message),
-        },
-        { status: 500 },
-      );
+      return buildOrderProcessingResponse(existingOrder);
     }
-
-    cart.payment_method = bodyPaymentMethod;
+  } catch (e: any) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "ORDER_DUPLICATE_CHECK_FAILED",
+        message_ar: "تعذر التحقق من حالة الطلب. حاول مرة أخرى.",
+        debug: toStr(e?.message),
+      },
+      { status: 500 },
+    );
   }
 
   try {
@@ -1421,6 +1937,44 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
+
+ try {
+  const paymentCheck = await validateSelectedPaymentMethod({
+    sb,
+    store_id,
+    cart,
+    body_payment_method: bodyPaymentMethod,
+  });
+
+  if (!paymentCheck.ok) {
+    const paymentExtra: Record<string, any> = {};
+
+    if ("extra" in paymentCheck && paymentCheck.extra) {
+      Object.assign(paymentExtra, paymentCheck.extra);
+    }
+
+    if ("debug" in paymentCheck && paymentCheck.debug) {
+      paymentExtra.debug = paymentCheck.debug;
+    }
+
+    return paymentValidationError({
+      error: paymentCheck.error,
+      message_ar: paymentCheck.message_ar,
+      status: paymentCheck.status,
+      extra: Object.keys(paymentExtra).length > 0 ? paymentExtra : undefined,
+    });
+  }
+} catch (e: any) {
+  return NextResponse.json(
+    {
+      ok: false,
+      error: "PAYMENT_VALIDATION_FAILED",
+      message_ar: "تعذر التحقق من طريقة الدفع. حاول مرة أخرى.",
+      debug: toStr(e?.message),
+    },
+    { status: 500 },
+  );
+}
 
   const ccR = await sb
     .from("cart_coupons")
@@ -1502,22 +2056,41 @@ export async function POST(req: Request) {
   let order: any = null;
 
   try {
-    order = await insertOrderWithRetry({
+    const insertResult = await insertOrderWithRetry({
       sb,
       store_id,
       cart,
       summary,
-      body,
       shipping_snapshot,
       shipping_address_final,
     });
+
+    order = insertResult.order;
+
+    if (insertResult.existing) {
+      if (order?.stock_decremented_at) {
+        return buildOrderSuccessResponse({
+          order,
+          session_id,
+          duplicate: true,
+        });
+      }
+
+      return buildOrderProcessingResponse(order);
+    }
   } catch (e: any) {
+    const msg = toStr(e?.message);
+
+    if (msg === "ORDER_ALREADY_PROCESSING") {
+      return buildOrderProcessingResponse(null);
+    }
+
     return NextResponse.json(
       {
         ok: false,
         error: "ORDER_INSERT_FAILED",
         message_ar: "تعذر إنشاء الطلب. حاول مرة أخرى.",
-        debug: toStr(e?.message),
+        debug: msg,
       },
       { status: 500 },
     );
@@ -1764,18 +2337,8 @@ export async function POST(req: Request) {
     console.error("CHECKOUT_CART_CLEANUP_FAILED", cleanupError);
   }
 
-  const res = NextResponse.json({
-    ok: true,
-    order: {
-      id: order.id,
-      order_number: order.order_number,
-      public_token: order.public_token,
-      invoice_no: order.invoice_no,
-      invoice_no_fmt: String(order.invoice_no ?? 0).padStart(7, "0"),
-    },
+  return buildOrderSuccessResponse({
+    order,
+    session_id,
   });
-
-  res.cookies.set(cartSessionCookie(session_id));
-
-  return res;
 }

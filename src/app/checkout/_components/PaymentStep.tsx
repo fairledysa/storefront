@@ -128,6 +128,16 @@ function patchPaymentSummary(option: PaymentOption) {
   });
 }
 
+function clearPaymentSummaryPatch() {
+  dispatchCheckoutEvent("checkout:summaryPatch", {
+    patch: {
+      payment_fee: 0,
+      payment_method: null,
+    },
+    reconcile: false,
+  });
+}
+
 function fmtDate(value?: string | null) {
   if (!value) return "";
 
@@ -214,24 +224,6 @@ function getPaymentBadge(option: PaymentOption) {
   return "إلكتروني";
 }
 
-function pickDefaultMethod(args: {
-  current: string;
-  confirmedId?: string;
-  list: PaymentOption[];
-}) {
-  const enabled = args.list.filter((x) => !x.disabled);
-
-  if (args.confirmedId && enabled.some((x) => x.id === args.confirmedId)) {
-    return args.confirmedId;
-  }
-
-  if (args.current && enabled.some((x) => x.id === args.current)) {
-    return args.current;
-  }
-
-  return enabled.find((x) => x.recommended)?.id || enabled[0]?.id || "";
-}
-
 async function fetchPaymentOptionsFresh() {
   const r = await fetch("/api/checkout/payment/options", {
     method: "GET",
@@ -276,10 +268,12 @@ export default function PaymentStep({
   onConfirm,
   confirmedId,
 }: PaymentStepProps) {
+  const initialSyncedId = isDone && confirmedId ? confirmedId : "";
+
   const [loading, setLoading] = useState(false);
   const [options, setOptions] = useState<PaymentOption[]>([]);
 
-  const [method, setMethod] = useState<string>(confirmedId ?? "");
+  const [method, setMethod] = useState<string>(initialSyncedId);
   const [savingId, setSavingId] = useState("");
   const [submitSaving, setSubmitSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -288,9 +282,8 @@ export default function PaymentStep({
   const mountedRef = useRef(true);
   const loadSeqRef = useRef(0);
   const saveSeqRef = useRef(0);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveAbortRef = useRef<AbortController | null>(null);
-  const lastSyncedRef = useRef<string>(confirmedId ?? "");
+  const lastSyncedRef = useRef<string>(initialSyncedId);
   const lastPatchedRef = useRef("");
 
   useEffect(() => {
@@ -300,22 +293,21 @@ export default function PaymentStep({
       mountedRef.current = false;
       loadSeqRef.current += 1;
       saveSeqRef.current += 1;
-
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = null;
-      }
-
       saveAbortRef.current?.abort();
     };
   }, []);
 
   useEffect(() => {
-    if (!confirmedId) return;
+    if (isDone && confirmedId) {
+      setMethod(confirmedId);
+      lastSyncedRef.current = confirmedId;
+      return;
+    }
 
-    setMethod(confirmedId);
-    lastSyncedRef.current = confirmedId;
-  }, [confirmedId]);
+    if (!isDone) {
+      lastSyncedRef.current = "";
+    }
+  }, [confirmedId, isDone]);
 
   useEffect(() => {
     if (isLocked || !isActive) {
@@ -329,12 +321,21 @@ export default function PaymentStep({
 
   useEffect(() => {
     if (isLocked || !isActive || loading) return;
-    if (!method || !options.length) return;
+
+    if (!method || !options.length) {
+      setSubmitEnabled(false);
+      return;
+    }
 
     const selected = options.find((option) => option.id === method);
-    if (!selected || selected.disabled) return;
+
+    if (!selected || selected.disabled) {
+      setSubmitEnabled(false);
+      return;
+    }
 
     const patchKey = paymentPatchKey(selected);
+
     if (lastPatchedRef.current !== patchKey) {
       lastPatchedRef.current = patchKey;
       patchPaymentSummary(selected);
@@ -358,11 +359,20 @@ export default function PaymentStep({
 
       if (!mountedRef.current || seq !== loadSeqRef.current) return;
 
-      const nextMethod = pickDefaultMethod({
-        current: method,
-        confirmedId,
-        list,
-      });
+      const enabledIds = new Set(
+        list.filter((option) => !option.disabled).map((option) => option.id),
+      );
+
+      const currentMethod = s(method);
+      const confirmedMethod = isDone && confirmedId ? s(confirmedId) : "";
+
+      let nextMethod = "";
+
+      if (currentMethod && enabledIds.has(currentMethod)) {
+        nextMethod = currentMethod;
+      } else if (confirmedMethod && enabledIds.has(confirmedMethod)) {
+        nextMethod = confirmedMethod;
+      }
 
       setOptions(list);
       setMethod(nextMethod);
@@ -370,10 +380,13 @@ export default function PaymentStep({
       const selected = list.find((option) => option.id === nextMethod);
 
       if (selected && !selected.disabled) {
-        lastPatchedRef.current = paymentPatchKey(selected);
+        const patchKey = paymentPatchKey(selected);
+        lastPatchedRef.current = patchKey;
         patchPaymentSummary(selected);
         setSubmitEnabled(true);
       } else {
+        lastPatchedRef.current = "";
+        clearPaymentSummaryPatch();
         setSubmitEnabled(false);
       }
     } catch (e: any) {
@@ -381,8 +394,10 @@ export default function PaymentStep({
 
       setOptions([]);
       setMethod("");
+      lastPatchedRef.current = "";
       setErrorMsg(e?.message || "تعذر تحميل طرق الدفع.");
       setSubmitEnabled(false);
+      clearPaymentSummaryPatch();
     } finally {
       if (mountedRef.current && seq === loadSeqRef.current) {
         setLoading(false);
@@ -431,32 +446,23 @@ export default function PaymentStep({
   }
 
   function choosePayment(nextId: string) {
-    if (isLocked || !isActive || loading) return;
+    if (isLocked || !isActive || loading || submitSaving) return;
 
     const row = options.find((x) => x.id === nextId);
     if (!row || row.disabled) return;
 
-    saveSeqRef.current += 1;
     saveAbortRef.current?.abort();
-
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
 
     setMethod(nextId);
     setErrorMsg("");
-    setSavingId(nextId);
+    setSavingId("");
     setSubmitSaving(false);
 
-    lastPatchedRef.current = paymentPatchKey(row);
+    const patchKey = paymentPatchKey(row);
+    lastPatchedRef.current = patchKey;
+
     patchPaymentSummary(row);
     setSubmitEnabled(true);
-
-    saveTimerRef.current = setTimeout(() => {
-      saveTimerRef.current = null;
-      void saveSelectedPayment(nextId);
-    }, 70);
   }
 
   async function saveSelectedPayment(nextId: string, opts?: SaveOptions) {
@@ -479,7 +485,9 @@ export default function PaymentStep({
     setSubmitSaving(Boolean(opts?.submitAfter));
     setErrorMsg("");
 
-    lastPatchedRef.current = paymentPatchKey(row);
+    const patchKey = paymentPatchKey(row);
+    lastPatchedRef.current = patchKey;
+
     patchPaymentSummary(row);
     setSubmitEnabled(true);
 
@@ -515,9 +523,12 @@ export default function PaymentStep({
       setSubmitEnabled(false);
 
       if (rollbackOption && !rollbackOption.disabled) {
-        lastPatchedRef.current = paymentPatchKey(rollbackOption);
+        const rollbackPatchKey = paymentPatchKey(rollbackOption);
+        lastPatchedRef.current = rollbackPatchKey;
         patchPaymentSummary(rollbackOption);
       } else {
+        lastPatchedRef.current = "";
+        clearPaymentSummaryPatch();
         refreshSummary();
       }
     } finally {
@@ -540,14 +551,12 @@ export default function PaymentStep({
     }
 
     setErrorMsg("");
-    lastPatchedRef.current = paymentPatchKey(selected);
+
+    const patchKey = paymentPatchKey(selected);
+    lastPatchedRef.current = patchKey;
+
     patchPaymentSummary(selected);
     setSubmitEnabled(true);
-
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
 
     if (lastSyncedRef.current === method) {
       requestSubmitOrder();

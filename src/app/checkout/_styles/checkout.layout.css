@@ -151,8 +151,9 @@
   color: #4b5563;
 }
 
+/* الصفحة */
 .co-page {
-  padding: 26px 12px 42px;
+  padding: 34px 12px 48px;
 }
 
 .co-container {
@@ -163,6 +164,11 @@
 .co-checkout-area {
   display: grid;
   gap: 0;
+}
+
+/* يعطي أول كرت نفس هدوء سلة بدل الالتصاق بالأعلى */
+.co-checkout-area > :first-child {
+  margin-top: 0;
 }
 
 .co-footer {
@@ -239,4 +245,30 @@
 
 .co-note__list {
   margin-top: 6px;
+}
+
+/* Tablet */
+@media (max-width: 1023px) {
+  .co-page {
+    padding: 18px 8px 30px !important;
+  }
+
+  .co-header__inner {
+    height: 58px;
+  }
+
+  .co-container {
+    width: 100%;
+  }
+}
+
+/* Mobile */
+@media (max-width: 640px) {
+  .co-page {
+    padding: 14px 0 28px !important;
+  }
+
+  .co-checkout-area {
+    width: 100%;
+  }
 }
