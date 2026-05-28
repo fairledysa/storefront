@@ -335,10 +335,12 @@ export default function PaymentStep({
     if (!selected || selected.disabled) return;
 
     const patchKey = paymentPatchKey(selected);
-    if (lastPatchedRef.current === patchKey) return;
+    if (lastPatchedRef.current !== patchKey) {
+      lastPatchedRef.current = patchKey;
+      patchPaymentSummary(selected);
+    }
 
-    lastPatchedRef.current = patchKey;
-    patchPaymentSummary(selected);
+    setSubmitEnabled(true);
   }, [isLocked, isActive, loading, method, options]);
 
   async function loadOptions() {
@@ -356,15 +358,24 @@ export default function PaymentStep({
 
       if (!mountedRef.current || seq !== loadSeqRef.current) return;
 
-      setOptions(list);
+      const nextMethod = pickDefaultMethod({
+        current: method,
+        confirmedId,
+        list,
+      });
 
-      setMethod((current) =>
-        pickDefaultMethod({
-          current,
-          confirmedId,
-          list,
-        }),
-      );
+      setOptions(list);
+      setMethod(nextMethod);
+
+      const selected = list.find((option) => option.id === nextMethod);
+
+      if (selected && !selected.disabled) {
+        lastPatchedRef.current = paymentPatchKey(selected);
+        patchPaymentSummary(selected);
+        setSubmitEnabled(true);
+      } else {
+        setSubmitEnabled(false);
+      }
     } catch (e: any) {
       if (!mountedRef.current || seq !== loadSeqRef.current) return;
 
@@ -387,6 +398,7 @@ export default function PaymentStep({
 
     if (lastSyncedRef.current === nextId) {
       patchPaymentSummary(row);
+      setSubmitEnabled(true);
       return { ok: true, summary: null } as ConfirmResult;
     }
 
@@ -436,10 +448,10 @@ export default function PaymentStep({
     setErrorMsg("");
     setSavingId(nextId);
     setSubmitSaving(false);
-    setSubmitEnabled(false);
 
     lastPatchedRef.current = paymentPatchKey(row);
     patchPaymentSummary(row);
+    setSubmitEnabled(true);
 
     saveTimerRef.current = setTimeout(() => {
       saveTimerRef.current = null;
@@ -469,6 +481,7 @@ export default function PaymentStep({
 
     lastPatchedRef.current = paymentPatchKey(row);
     patchPaymentSummary(row);
+    setSubmitEnabled(true);
 
     try {
       const result = await persistPaymentMethod(nextId, ac.signal);
@@ -529,6 +542,7 @@ export default function PaymentStep({
     setErrorMsg("");
     lastPatchedRef.current = paymentPatchKey(selected);
     patchPaymentSummary(selected);
+    setSubmitEnabled(true);
 
     if (saveTimerRef.current) {
       clearTimeout(saveTimerRef.current);

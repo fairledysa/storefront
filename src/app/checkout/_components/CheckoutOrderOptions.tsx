@@ -57,6 +57,28 @@ export type CheckoutOrderOptionAnswer = {
 
 type AnswersState = Record<string, CheckoutOrderOptionAnswer>;
 
+type LocalOrderOptionSummaryLine = {
+  option_id: string;
+  optionId: string;
+  type: OrderOptionType;
+  name: string;
+  value: string | null;
+  choice_ids: string[];
+  choiceIds: string[];
+  choices: Array<{
+    id: string;
+    label: string;
+    price_customer: number;
+    priceCustomer: number;
+  }>;
+  metadata: Record<string, any>;
+  price_customer: number;
+  priceCustomer: number;
+  currency: string;
+};
+
+const SAVE_DEBOUNCE_MS = 180;
+
 const DAY_KEYS = [
   "sunday",
   "monday",
@@ -99,6 +121,10 @@ function s(x: any) {
 function n(x: any) {
   const v = Number(x ?? 0);
   return Number.isFinite(v) ? v : 0;
+}
+
+function round2(x: number) {
+  return Math.round(x * 100) / 100;
 }
 
 function safeObject(value: any): Record<string, any> {
@@ -425,12 +451,17 @@ function dispatchSummaryPatch(summary: any) {
   );
 }
 
-function dispatchSummaryRefreshSoon() {
+function dispatchLocalSummaryPatch(patch: Record<string, any>) {
   if (typeof window === "undefined") return;
 
-  window.setTimeout(() => {
-    window.dispatchEvent(new CustomEvent("checkout:refresh"));
-  }, 80);
+  window.dispatchEvent(
+    new CustomEvent("checkout:summaryPatch", {
+      detail: {
+        patch,
+        reconcile: false,
+      },
+    }),
+  );
 }
 
 function buildInitialAppointmentMonth(selectedDate: string) {
@@ -473,6 +504,115 @@ function buildSelectedChoiceMetadata(option: OrderOption, choiceIds: string[]) {
   };
 }
 
+function buildChoiceMap(option: OrderOption) {
+  const map = new Map<string, Choice>();
+
+  for (const choice of option.choices ?? []) {
+    const id = s(choice.id);
+    if (!id) continue;
+    map.set(id, choice);
+  }
+
+  return map;
+}
+
+function buildLocalOrderOptionsSummary(args: {
+  options: OrderOption[];
+  answers: AnswersState;
+  currency: CurrencyInfo | null;
+}) {
+  const currencyCode = readCurrencyCode(args.currency);
+  const lines: LocalOrderOptionSummaryLine[] = [];
+
+  for (const option of args.options) {
+    const answer = args.answers[option.id];
+
+    if (!answer) continue;
+
+    const metadata = safeObject(answer.metadata);
+    let value: string | null = null;
+    let choiceIds: string[] = [];
+    let choices: LocalOrderOptionSummaryLine["choices"] = [];
+    let price = 0;
+
+    if (option.type === "text" || option.type === "number") {
+      value = s(answer.value);
+
+      if (!value) continue;
+
+      price = Math.max(0, n(option.price_customer));
+    }
+
+    if (option.type === "choices") {
+      const choiceMap = buildChoiceMap(option);
+
+      choiceIds = uniq(Array.isArray(answer.choice_ids) ? answer.choice_ids : []);
+
+      choices = choiceIds
+        .map((id) => choiceMap.get(id))
+        .filter(Boolean)
+        .map((choice) => {
+          const choicePrice = round2(Math.max(0, n(choice?.price_customer)));
+
+          return {
+            id: s(choice?.id),
+            label: s(choice?.label),
+            price_customer: choicePrice,
+            priceCustomer: choicePrice,
+          };
+        });
+
+      if (!choices.length) continue;
+
+      value = choices.map((choice) => choice.label).join(", ");
+      price = round2(
+        choices.reduce((acc, choice) => acc + n(choice.price_customer), 0),
+      );
+    }
+
+    if (option.type === "appointment") {
+      const date = s(metadata.date);
+
+      if (!date) continue;
+
+      if (getAppointmentMode(option) === "days_times") {
+        const from = s(metadata.from);
+        const to = s(metadata.to);
+
+        if (!from || !to) continue;
+
+        value = `${date} ${from}-${to}`;
+      } else {
+        value = date;
+      }
+
+      price = Math.max(0, n(option.price_customer));
+    }
+
+    lines.push({
+      option_id: option.id,
+      optionId: option.id,
+      type: option.type,
+      name: option.name,
+      value,
+      choice_ids: choiceIds,
+      choiceIds,
+      choices,
+      metadata,
+      price_customer: round2(price),
+      priceCustomer: round2(price),
+      currency: currencyCode,
+    });
+  }
+
+  const fee = round2(lines.reduce((acc, line) => acc + n(line.price_customer), 0));
+
+  return {
+    lines,
+    fee,
+  };
+}
+
 export default function CheckoutOrderOptions({
   enabled,
 }: {
@@ -489,6 +629,7 @@ export default function CheckoutOrderOptions({
   const readyRef = useRef(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saveSeqRef = useRef(0);
+  const saveAbortRef = useRef<AbortController | null>(null);
 
   const requiredCount = useMemo(
     () => options.filter((option) => option.is_required).length,
@@ -506,16 +647,33 @@ export default function CheckoutOrderOptions({
     return options.every((option) => validateAnswer(option, answers[option.id]));
   }, [loading, options, answers]);
 
-  const valid = localValid && !loading && !saving && !saveError;
+  const valid = localValid && !loading && !saveError;
 
   useEffect(() => {
     dispatchOrderOptionsChange({
       valid,
-      loading: loading || saving,
+      loading,
       answers: answersList,
       requiredCount,
     });
-  }, [valid, loading, saving, answersList, requiredCount]);
+  }, [valid, loading, answersList, requiredCount]);
+
+  useEffect(() => {
+    if (!enabled || loading || !options.length) return;
+
+    const local = buildLocalOrderOptionsSummary({
+      options,
+      answers,
+      currency,
+    });
+
+    dispatchLocalSummaryPatch({
+      order_options_fee: local.fee,
+      orderOptionsFee: local.fee,
+      order_options: local.lines,
+      orderOptions: local.lines,
+    });
+  }, [enabled, loading, options, answers, currency]);
 
   useEffect(() => {
     if (!enabled) {
@@ -525,6 +683,10 @@ export default function CheckoutOrderOptions({
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
       }
+
+      saveSeqRef.current += 1;
+      saveAbortRef.current?.abort();
+      saveAbortRef.current = null;
 
       setLoading(false);
       setSaving(false);
@@ -618,6 +780,10 @@ export default function CheckoutOrderOptions({
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
       }
+
+      saveSeqRef.current += 1;
+      saveAbortRef.current?.abort();
+      saveAbortRef.current = null;
     };
   }, [enabled]);
 
@@ -632,7 +798,7 @@ export default function CheckoutOrderOptions({
     saveTimerRef.current = setTimeout(() => {
       saveTimerRef.current = null;
       void saveAnswers();
-    }, 350);
+    }, SAVE_DEBOUNCE_MS);
 
     return () => {
       if (saveTimerRef.current) {
@@ -646,15 +812,13 @@ export default function CheckoutOrderOptions({
   async function saveAnswers() {
     const seq = ++saveSeqRef.current;
 
+    saveAbortRef.current?.abort();
+
+    const ac = new AbortController();
+    saveAbortRef.current = ac;
+
     setSaving(true);
     setSaveError("");
-
-    dispatchOrderOptionsChange({
-      valid: false,
-      loading: true,
-      answers: answersList,
-      requiredCount,
-    });
 
     try {
       const r = await fetch("/api/checkout/order-options/answers", {
@@ -664,6 +828,7 @@ export default function CheckoutOrderOptions({
         },
         cache: "no-store",
         credentials: "same-origin",
+        signal: ac.signal,
         body: JSON.stringify({
           answers: answersList,
           include_summary: false,
@@ -680,10 +845,9 @@ export default function CheckoutOrderOptions({
 
       if (j.summary) {
         dispatchSummaryPatch(j.summary);
-      } else {
-        dispatchSummaryRefreshSoon();
       }
     } catch (e: any) {
+      if (e?.name === "AbortError") return;
       if (seq !== saveSeqRef.current) return;
 
       setSaveError(e?.message || "تعذر حفظ خيارات الطلب.");
@@ -775,15 +939,15 @@ export default function CheckoutOrderOptions({
           </div>
         </div>
 
-        {valid ? (
-          <span className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-[11px] font-black text-zinc-600">
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            مكتمل
-          </span>
-        ) : saving ? (
+        {saving ? (
           <span className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-[11px] font-black text-zinc-500">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
             حفظ
+          </span>
+        ) : valid ? (
+          <span className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-[11px] font-black text-zinc-600">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            مكتمل
           </span>
         ) : (
           <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-black text-amber-800">

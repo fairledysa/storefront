@@ -112,6 +112,7 @@ type ApiErrorResponse = {
 
 type PrepareOptions = {
   soft?: boolean;
+  force?: boolean;
 };
 
 type ActionLock = "coupon" | "submit" | null;
@@ -124,6 +125,8 @@ type MoneyFormatInfo = {
 
 const INCOMPLETE_CHECKOUT_MESSAGE =
   "أكمل بيانات العنوان والشحن والدفع لتأكيد الطلب.";
+
+const DRAWER_CLOSE_MS = 240;
 
 function n(x: any) {
   const v = Number(x ?? 0);
@@ -276,7 +279,8 @@ export default function OrderSummary({
   const [loading, setLoading] = useState(() => !initial);
   const [softLoading, setSoftLoading] = useState(false);
 
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerMounted, setDrawerMounted] = useState(false);
+  const [drawerClosing, setDrawerClosing] = useState(false);
 
   const [couponCode, setCouponCode] = useState(() =>
     initial?.coupon?.code ? String(initial.coupon.code) : "",
@@ -291,10 +295,13 @@ export default function OrderSummary({
   const abortRef = useRef<AbortController | null>(null);
   const seqRef = useRef(0);
   const prepareTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const drawerCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(false);
   const hasInitialSummaryRef = useRef(Boolean(initial));
   const actionLockRef = useRef<ActionLock>(null);
   const stockIssueRef = useRef<StockIssue | null>(null);
+
+  const drawerOpen = drawerMounted && !drawerClosing;
 
   function setStockIssueState(value: StockIssue | null) {
     stockIssueRef.current = value;
@@ -310,6 +317,35 @@ export default function OrderSummary({
     abortRef.current?.abort();
     abortRef.current = null;
   }
+
+  const clearDrawerCloseTimer = useCallback(() => {
+    if (drawerCloseTimerRef.current) {
+      clearTimeout(drawerCloseTimerRef.current);
+      drawerCloseTimerRef.current = null;
+    }
+  }, []);
+
+  const openDrawer = useCallback(() => {
+    clearDrawerCloseTimer();
+    setDrawerMounted(true);
+    setDrawerClosing(false);
+  }, [clearDrawerCloseTimer]);
+
+  const closeDrawer = useCallback(() => {
+    if (!drawerMounted || drawerClosing) return;
+
+    clearDrawerCloseTimer();
+    setDrawerClosing(true);
+
+    drawerCloseTimerRef.current = setTimeout(() => {
+      drawerCloseTimerRef.current = null;
+
+      if (!mountedRef.current) return;
+
+      setDrawerMounted(false);
+      setDrawerClosing(false);
+    }, DRAWER_CLOSE_MS);
+  }, [clearDrawerCloseTimer, drawerClosing, drawerMounted]);
 
   const money = useMemo(() => readMoneyFormat(summary), [summary]);
 
@@ -348,7 +384,9 @@ export default function OrderSummary({
 
   const fetchPrepare = useCallback(
     async (reason?: string, opts?: PrepareOptions) => {
-      if (actionLockRef.current) return;
+      const force = Boolean(opts?.force);
+
+      if (actionLockRef.current && !force) return;
 
       abortRef.current?.abort();
 
@@ -423,14 +461,16 @@ export default function OrderSummary({
 
   const schedulePrepare = useCallback(
     (reason?: string, opts?: PrepareOptions, delay = 120) => {
-      if (actionLockRef.current) return;
+      const force = Boolean(opts?.force);
+
+      if (actionLockRef.current && !force) return;
 
       if (prepareTimerRef.current) clearTimeout(prepareTimerRef.current);
 
       prepareTimerRef.current = setTimeout(() => {
         prepareTimerRef.current = null;
         if (!mountedRef.current) return;
-        if (actionLockRef.current) return;
+        if (actionLockRef.current && !force) return;
         void fetchPrepare(reason, opts);
       }, delay);
     },
@@ -513,8 +553,35 @@ export default function OrderSummary({
       );
 
       clearQueuedPrepare();
+      clearDrawerCloseTimer();
     };
-  }, [fetchPrepare, schedulePrepare]);
+  }, [clearDrawerCloseTimer, fetchPrepare, schedulePrepare]);
+
+  useEffect(() => {
+    if (!drawerMounted) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [drawerMounted]);
+
+  useEffect(() => {
+    if (!drawerMounted) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      closeDrawer();
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [closeDrawer, drawerMounted]);
 
   async function applyCoupon() {
     const code = couponCode.trim().toUpperCase();
@@ -545,6 +612,7 @@ export default function OrderSummary({
       }
 
       const nextSummary: Summary = j.summary as Summary;
+
       setSummary(nextSummary);
       setErrorMsg(null);
       setStockIssueState(null);
@@ -559,7 +627,7 @@ export default function OrderSummary({
     } catch (e: any) {
       setErrorMsg(e?.message || "تعذر تطبيق الكوبون.");
       setStockIssueState(null);
-      setDrawerOpen(true);
+      openDrawer();
     } finally {
       if (actionLockRef.current === "coupon") {
         actionLockRef.current = null;
@@ -596,6 +664,7 @@ export default function OrderSummary({
       }
 
       const nextSummary: Summary = j.summary as Summary;
+
       setSummary(nextSummary);
       setCouponCode("");
       setErrorMsg(null);
@@ -605,7 +674,7 @@ export default function OrderSummary({
     } catch (e: any) {
       setErrorMsg(e?.message || "تعذر إزالة الكوبون.");
       setStockIssueState(null);
-      setDrawerOpen(true);
+      openDrawer();
     } finally {
       if (actionLockRef.current === "coupon") {
         actionLockRef.current = null;
@@ -620,7 +689,6 @@ export default function OrderSummary({
   async function submitOrder() {
     if (
       couponBusy ||
-      softLoading ||
       actionLockRef.current === "coupon" ||
       actionLockRef.current === "submit"
     ) {
@@ -630,7 +698,7 @@ export default function OrderSummary({
     if (!canSubmit) {
       setErrorMsg(INCOMPLETE_CHECKOUT_MESSAGE);
       setStockIssueState(null);
-      setDrawerOpen(true);
+      openDrawer();
       return;
     }
 
@@ -640,6 +708,7 @@ export default function OrderSummary({
 
     actionLockRef.current = "submit";
     setSubmitBusy(true);
+    setSoftLoading(false);
     setErrorMsg(null);
     setStockIssueState(null);
 
@@ -658,8 +727,8 @@ export default function OrderSummary({
         if (j?.stock_issue) {
           setStockIssueState(j.stock_issue);
           setErrorMsg(buildReadableSubmitError(j));
-          setDrawerOpen(true);
-          schedulePrepare("stock-issue", { soft: true }, 120);
+          openDrawer();
+          schedulePrepare("stock-issue", { soft: true, force: true }, 120);
           return;
         }
 
@@ -676,7 +745,7 @@ export default function OrderSummary({
     } catch (e: any) {
       setErrorMsg(e?.message || "تعذر تأكيد الطلب.");
       setStockIssueState(null);
-      setDrawerOpen(true);
+      openDrawer();
     } finally {
       if (actionLockRef.current === "submit") {
         actionLockRef.current = null;
@@ -692,7 +761,6 @@ export default function OrderSummary({
     const onSubmitOrder = () => {
       if (
         couponBusy ||
-        softLoading ||
         actionLockRef.current === "coupon" ||
         actionLockRef.current === "submit"
       ) {
@@ -708,15 +776,7 @@ export default function OrderSummary({
       window.removeEventListener("checkout:submitOrder", onSubmitOrder);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    canSubmit,
-    loading,
-    softLoading,
-    submitBusy,
-    couponBusy,
-    hasTotals,
-    summary,
-  ]);
+  }, [canSubmit, loading, submitBusy, couponBusy, hasTotals, summary]);
 
   const isInitialLoading = loading && !summary;
   const showSkeleton = isInitialLoading;
@@ -725,98 +785,106 @@ export default function OrderSummary({
   const showTaxRow = !showSkeleton && tax != null && tax > 0;
   const isIncompleteNotice = errorMsg === INCOMPLETE_CHECKOUT_MESSAGE;
 
-  const paymentActionBusy = submitBusy || couponBusy || softLoading;
+  const paymentActionBusy = submitBusy || couponBusy;
 
   const submitButtonLabel = useMemo(() => {
     if (submitBusy) return "جاري تأكيد الطلب";
     if (couponBusy) {
       return hasCouponApplied ? "جاري إزالة الكوبون" : "جاري تطبيق الكوبون";
     }
-    if (softLoading) return "جاري تحديث الطلب";
     if (isInitialLoading || !hasTotals) return "جاري تجهيز الطلب";
     return "تأكيد الدفع";
-  }, [
-    submitBusy,
-    couponBusy,
-    hasCouponApplied,
-    softLoading,
-    isInitialLoading,
-    hasTotals,
-  ]);
+  }, [submitBusy, couponBusy, hasCouponApplied, isInitialLoading, hasTotals]);
 
   return (
     <>
       {submitBusy ? <SubmitFreezeOverlay /> : null}
 
-      <section className="co-summary">
-        <div className="co-summary__main">
-          <div className="co-summary__right">
-            <span className="co-summary__icon">
-              <ShoppingCart size={22} />
-            </span>
+      <section className="co-summary-wrapper">
+        <div className="co-summary">
+          <div className="co-summary__main">
+            <div className="co-summary__right">
+              <span className="co-summary__icon">
+                <ShoppingCart size={22} />
+              </span>
 
-            <div className="co-summary__title">
-              <h1>إجمالي الطلب</h1>
-              <p>
-                {itemCountText}
-                {softLoading ? <span>يتم التحديث...</span> : null}
-              </p>
+              <div className="co-summary__title">
+                <h1>إجمالي الطلب</h1>
+                <p>
+                  {itemCountText}
+                  {softLoading ? <span>يتم التحديث...</span> : null}
+                </p>
+              </div>
+
+              <div className="co-summary__thumbs" aria-hidden>
+                {items.slice(0, 3).map((item) => (
+                  <span key={item.id}>
+                    {item.image_url ? (
+                      <img src={item.image_url} alt="" />
+                    ) : (
+                      <Package size={15} />
+                    )}
+                  </span>
+                ))}
+              </div>
             </div>
 
-            <div className="co-summary__thumbs" aria-hidden>
-              {items.slice(0, 3).map((item) => (
-                <span key={item.id}>
-                  {item.image_url ? (
-                    <img src={item.image_url} alt="" />
-                  ) : (
-                    <Package size={15} />
-                  )}
-                </span>
-              ))}
+            <div className="co-summary__left">
+              {showSkeleton || total == null ? (
+                <span className="co-skeleton co-skeleton--total" />
+              ) : (
+                <strong dir="ltr">{formatMoney(money, total)}</strong>
+              )}
+
+              <button
+                type="button"
+                className={[
+                  "co-coupon-link",
+                  hasCouponApplied ? "is-applied" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                onClick={openDrawer}
+              >
+                {hasCouponApplied
+                  ? `تم تطبيق كوبون ${summary?.coupon?.code}`
+                  : "لديك كوبون تخفيض؟"}
+              </button>
             </div>
-          </div>
-
-          <div className="co-summary__left">
-            {showSkeleton || total == null ? (
-              <span className="co-skeleton co-skeleton--total" />
-            ) : (
-              <strong dir="ltr">{formatMoney(money, total)}</strong>
-            )}
-
-            <button
-              type="button"
-              className={[
-                "co-coupon-link",
-                hasCouponApplied ? "is-applied" : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-              onClick={() => setDrawerOpen(true)}
-            >
-              {hasCouponApplied
-                ? `تم تطبيق كوبون ${summary?.coupon?.code}`
-                : "لديك كوبون تخفيض؟"}
-            </button>
           </div>
         </div>
 
-        <button
-          type="button"
-          className="co-summary__details"
-          onClick={() => setDrawerOpen(true)}
-        >
-          تفاصيل الطلب
-          <ChevronDown size={15} />
-        </button>
+        <div className="co-summary__toggle-bg">
+          <div className="co-summary__toggle">
+            <button
+              type="button"
+              className="co-summary__details"
+              aria-expanded={drawerOpen}
+              onClick={openDrawer}
+            >
+              تفاصيل الطلب
+              <ChevronDown size={15} />
+            </button>
+          </div>
+        </div>
       </section>
 
-      {drawerOpen ? (
-        <div className="co-drawer-layer" role="dialog" aria-modal="true">
+      {drawerMounted ? (
+        <div
+          className={[
+            "co-drawer-layer",
+            drawerClosing ? "is-closing" : "is-open",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          role="dialog"
+          aria-modal="true"
+        >
           <button
             type="button"
             className="co-drawer-backdrop"
             aria-label="إغلاق تفاصيل الطلب"
-            onClick={() => setDrawerOpen(false)}
+            onClick={closeDrawer}
           />
 
           <aside className="co-drawer">
@@ -825,7 +893,7 @@ export default function OrderSummary({
                 type="button"
                 className="co-drawer__close"
                 aria-label="إغلاق"
-                onClick={() => setDrawerOpen(false)}
+                onClick={closeDrawer}
               >
                 <X size={20} />
               </button>
@@ -1015,7 +1083,7 @@ export default function OrderSummary({
                       setCouponCode(e.target.value);
                       if (isIncompleteNotice) setErrorMsg(null);
                     }}
-                    disabled={couponBusy || loading || submitBusy || softLoading}
+                    disabled={couponBusy || loading || submitBusy}
                   />
 
                   <button
@@ -1023,7 +1091,6 @@ export default function OrderSummary({
                     disabled={
                       loading ||
                       submitBusy ||
-                      softLoading ||
                       couponBusy ||
                       (!hasCouponApplied && !couponCode.trim())
                     }
@@ -1048,12 +1115,10 @@ export default function OrderSummary({
                 ]
                   .filter(Boolean)
                   .join(" ")}
-                disabled={
-                  loading || submitBusy || couponBusy || softLoading || !hasTotals
-                }
+                disabled={loading || submitBusy || couponBusy || !hasTotals}
                 onClick={submitOrder}
               >
-                {submitBusy || loading || couponBusy || softLoading ? (
+                {submitBusy || loading || couponBusy ? (
                   <Loader2 className="co-spin" size={16} />
                 ) : null}
                 {submitButtonLabel}

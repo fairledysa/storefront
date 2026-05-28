@@ -73,6 +73,25 @@ function isUniqueConstraintError(error: any) {
   );
 }
 
+function stockFlag(value: any) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1;
+
+  if (typeof value === "string") {
+    const v = value.trim().toLowerCase();
+
+    if (["true", "1", "yes", "on", "active", "enabled"].includes(v)) {
+      return true;
+    }
+
+    if (["false", "0", "no", "off", "inactive", "disabled"].includes(v)) {
+      return false;
+    }
+  }
+
+  return false;
+}
+
 async function getInvoiceNoCandidate(
   sb: any,
   args: { store_id: string; attempt: number },
@@ -364,7 +383,7 @@ async function buildStockIssuePayload(
       .limit(1)
       .maybeSingle();
 
-    const available_qty = Boolean(vR.data?.unlimited_quantity)
+    const available_qty = stockFlag(vR.data?.unlimited_quantity)
       ? 999999
       : Math.max(0, n(vR.data?.stock_quantity));
 
@@ -386,7 +405,7 @@ async function buildStockIssuePayload(
     .limit(1)
     .maybeSingle();
 
-  const available_qty = Boolean(stockR.data?.unlimited_quantity)
+  const available_qty = stockFlag(stockR.data?.unlimited_quantity)
     ? 999999
     : Math.max(0, n(stockR.data?.quantity));
 
@@ -439,39 +458,9 @@ async function resolveVariantIdFromOptions(
 
   if (selected.length === 0) return null;
 
-  const metaVariants = await getProductMetaVariants(sb, args.product_id);
-
-  if (metaVariants.length) {
-    const selectedSet = new Set(selected);
-
-    for (const mv of metaVariants) {
-      const selections = Array.isArray(mv?.selections) ? mv.selections : [];
-
-      const ids = selections
-        .map((s: any) => s?.valueId)
-        .filter(Boolean)
-        .map((x: any) => String(x));
-
-      const set = new Set(ids);
-
-      if (set.size !== selectedSet.size) continue;
-
-      let ok = true;
-
-      for (const oid of selectedSet) {
-        if (!set.has(String(oid))) {
-          ok = false;
-          break;
-        }
-      }
-
-      if (ok) return mv?.id ? String(mv.id) : null;
-    }
-
+  if (selected.some((x) => !isUuid(x))) {
     return null;
   }
-
-  if (selected.some((x) => !isUuid(x))) return null;
 
   const vR = await sb
     .from("product_variants")
@@ -539,14 +528,7 @@ async function resolveDefaultVariantId(sb: any, product_id: string) {
 
   if (vR.data?.id) return String(vR.data.id);
 
-  const metaVariants = await getProductMetaVariants(sb, product_id);
-  if (!metaVariants.length) return null;
-
-  const def =
-    metaVariants.find((x: any) => Boolean(x?.is_default ?? x?.isDefault)) ??
-    metaVariants[0];
-
-  return def?.id ? String(def.id) : null;
+  return null;
 }
 
 async function productHasVariants(sb: any, product_id: string) {
@@ -603,7 +585,7 @@ async function normalizeCartItemsVariants(sb: any, args: { cart_id: string }) {
     }
 
     if (!variant_id) {
-      throw new Error("CHECKOUT_VARIANT_REQUIRED");
+      continue;
     }
 
     const new_line_key = buildLineKey({
@@ -897,6 +879,7 @@ function normalizeSummaryOrderOptionChoices(value: any) {
     }))
     .filter((choice) => choice.label);
 }
+
 type SummaryOrderOptionSnapshotLine = {
   option_id: string;
   optionId: string;
@@ -912,7 +895,7 @@ type SummaryOrderOptionSnapshotLine = {
   currency: string;
 };
 
- function normalizeSummaryOrderOptions(
+function normalizeSummaryOrderOptions(
   summary: any,
 ): SummaryOrderOptionSnapshotLine[] {
   const lines = Array.isArray(summary?.order_options)
@@ -922,7 +905,7 @@ type SummaryOrderOptionSnapshotLine = {
       : [];
 
   return lines
-    .map((row: any, index: number): SummaryOrderOptionSnapshotLine | null => {
+    .map((row: any): SummaryOrderOptionSnapshotLine | null => {
       const optionId = toStr(row?.option_id ?? row?.optionId);
       const name = toStr(row?.name ?? row?.label ?? row?.option_name);
 
@@ -936,7 +919,9 @@ type SummaryOrderOptionSnapshotLine = {
           ? row.choiceIds.map(String).filter(Boolean)
           : [];
 
-      const choices = Array.isArray(row?.choices) ? row.choices : [];
+      const choices = Array.isArray(row?.choices)
+        ? normalizeSummaryOrderOptionChoices(row.choices)
+        : [];
 
       const metadata =
         row?.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
@@ -959,10 +944,12 @@ type SummaryOrderOptionSnapshotLine = {
       };
     })
     .filter(
-      (row: SummaryOrderOptionSnapshotLine | null): row is SummaryOrderOptionSnapshotLine =>
-        Boolean(row?.name),
+      (
+        row: SummaryOrderOptionSnapshotLine | null,
+      ): row is SummaryOrderOptionSnapshotLine => Boolean(row?.name),
     );
 }
+
 /* ------------------------- checkout financial snapshot ------------------------- */
 
 function buildCheckoutFinancialSnapshot(summary: any) {
@@ -1123,7 +1110,7 @@ async function loadVariantSkuMap(
   variantIds: string[],
 ): Promise<Map<string, string>> {
   const map = new Map<string, string>();
-  const ids = uniqStr(variantIds).filter(Boolean);
+  const ids = uniqStr(variantIds).filter(isUuid);
   if (!ids.length) return map;
 
   const r = await sb.from("product_variants").select("id,sku").in("id", ids);
@@ -1202,6 +1189,144 @@ async function loadProductMetaSkuMap(
     if (productId && sku) {
       map.set(productId, sku);
     }
+  }
+
+  return map;
+}
+
+/* ------------------------- stock mode for order items ------------------------- */
+
+type OrderItemStockMode = {
+  originalVariantId: string | null;
+  orderVariantId: string | null;
+  stockMode: "variant" | "product";
+};
+
+async function loadProductStockMap(
+  sb: any,
+  productIds: string[],
+): Promise<Map<string, any>> {
+  const map = new Map<string, any>();
+  const ids = uniqStr(productIds);
+  if (!ids.length) return map;
+
+  const r = await sb
+    .from("product_stock")
+    .select("product_id,quantity,unlimited_quantity")
+    .in("product_id", ids);
+
+  if (r.error) throw new Error(r.error.message);
+
+  for (const row of Array.isArray(r.data) ? r.data : []) {
+    const productId = toStr(row?.product_id);
+    if (productId) map.set(productId, row);
+  }
+
+  return map;
+}
+
+async function loadVariantStockMap(
+  sb: any,
+  variantIds: string[],
+): Promise<Map<string, any>> {
+  const map = new Map<string, any>();
+  const ids = uniqStr(variantIds).filter(isUuid);
+  if (!ids.length) return map;
+
+  const r = await sb
+    .from("product_variants")
+    .select("id,product_id,stock_quantity,unlimited_quantity")
+    .in("id", ids);
+
+  if (r.error) throw new Error(r.error.message);
+
+  for (const row of Array.isArray(r.data) ? r.data : []) {
+    const id = toStr(row?.id);
+    if (id) map.set(id, row);
+  }
+
+  return map;
+}
+
+function productStockHasAvailable(row: any) {
+  if (!row) return false;
+  if (stockFlag(row?.unlimited_quantity)) return true;
+  return n(row?.quantity) > 0;
+}
+
+function variantHasOwnAvailableStock(row: any) {
+  if (!row) return false;
+  if (stockFlag(row?.unlimited_quantity)) return true;
+  return n(row?.stock_quantity) > 0;
+}
+
+async function buildOrderItemStockModeMap(
+  sb: any,
+  summaryItems: any[],
+): Promise<Map<string, OrderItemStockMode>> {
+  const items = Array.isArray(summaryItems) ? summaryItems : [];
+
+  const productIds = items.map((it: any) => toStr(it?.product_id)).filter(Boolean);
+  const variantIds = items.map((it: any) => toStr(it?.variant_id)).filter(Boolean);
+
+  const [productStockMap, variantStockMap] = await Promise.all([
+    loadProductStockMap(sb, productIds),
+    loadVariantStockMap(sb, variantIds),
+  ]);
+
+  const map = new Map<string, OrderItemStockMode>();
+
+  for (const item of items) {
+    const itemId = toStr(item?.id);
+    const productId = toStr(item?.product_id);
+    const originalVariantId = toStr(item?.variant_id) || null;
+
+    if (!itemId) continue;
+
+    if (!originalVariantId) {
+      map.set(itemId, {
+        originalVariantId: null,
+        orderVariantId: null,
+        stockMode: "product",
+      });
+      continue;
+    }
+
+    if (!isUuid(originalVariantId)) {
+      map.set(itemId, {
+        originalVariantId,
+        orderVariantId: null,
+        stockMode: "product",
+      });
+      continue;
+    }
+
+    const variantStock = variantStockMap.get(originalVariantId);
+    const productStock = productStockMap.get(productId);
+
+    if (variantHasOwnAvailableStock(variantStock)) {
+      map.set(itemId, {
+        originalVariantId,
+        orderVariantId: originalVariantId,
+        stockMode: "variant",
+      });
+      continue;
+    }
+
+    if (productStockHasAvailable(productStock)) {
+      map.set(itemId, {
+        originalVariantId,
+        orderVariantId: null,
+        stockMode: "product",
+      });
+      continue;
+    }
+
+    map.set(itemId, {
+      originalVariantId,
+      orderVariantId: originalVariantId,
+      stockMode: "variant",
+    });
   }
 
   return map;
@@ -1450,6 +1575,8 @@ export async function POST(req: Request) {
     summaryItems.map((it: any) => toStr(it?.product_id)).filter(Boolean),
   );
 
+  const stockModeByItemId = await buildOrderItemStockModeMap(sb, summaryItems);
+
   function buildSnapshotFallback(ids: string[]) {
     const out: Array<{ name: string; value: string }> = [];
 
@@ -1469,12 +1596,20 @@ export async function POST(req: Request) {
       snap.length > 0 ? snap : buildSnapshotFallback(selectedIds);
 
     const productId = toStr(it?.product_id) || null;
-    const variantId = toStr(it?.variant_id) || null;
+    const stockMode = stockModeByItemId.get(toStr(it?.id));
+
+    const originalVariantId =
+      stockMode?.originalVariantId ?? (toStr(it?.variant_id) || null);
+
+    const orderVariantId =
+      stockMode?.orderVariantId === undefined
+        ? originalVariantId
+        : stockMode.orderVariantId;
 
     const sku =
-      (variantId ? variantSkuMap.get(variantId) ?? null : null) ||
-      (productId && variantId
-        ? metaVariantSkuMap.get(`${productId}::${variantId}`) ?? null
+      (originalVariantId ? variantSkuMap.get(originalVariantId) ?? null : null) ||
+      (productId && originalVariantId
+        ? metaVariantSkuMap.get(`${productId}::${originalVariantId}`) ?? null
         : null) ||
       (productId ? productMetaSkuMap.get(productId) ?? null : null);
 
@@ -1482,7 +1617,7 @@ export async function POST(req: Request) {
       order_id: order.id,
       store_id,
       product_id: it.product_id,
-      variant_id: it.variant_id,
+      variant_id: orderVariantId,
       name: it.title,
       sku,
       qty: it.qty,

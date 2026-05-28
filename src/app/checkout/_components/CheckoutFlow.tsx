@@ -110,6 +110,15 @@ function pushSummary(summary: any) {
   });
 }
 
+function pushSummaryIfPresent(summary: any) {
+  if (!summary) return;
+
+  dispatchCheckoutEvent("checkout:summaryPatch", {
+    summary,
+    reconcile: false,
+  });
+}
+
 function setSubmitEnabled(enabled: boolean) {
   dispatchCheckoutEvent("checkout:submitEnabled", { enabled });
 }
@@ -124,6 +133,14 @@ function readShippingId(result: ConfirmResult | null | undefined) {
 
 function readPaymentMethod(result: ConfirmResult | null | undefined) {
   return s(result?.state?.payment_method) || s(result?.cart?.payment_method);
+}
+
+function readPaymentReady(result: ConfirmResult | null | undefined) {
+  if (typeof result?.state?.payment_ready === "boolean") {
+    return result.state.payment_ready;
+  }
+
+  return Boolean(readPaymentMethod(result));
 }
 
 function buildInitialDone(state?: CheckoutInitialState): DoneState {
@@ -306,15 +323,23 @@ export default function CheckoutFlow({
       }>;
 
       const detail = e.detail || {};
-      const loading = Boolean(detail.loading);
-      const saving = Boolean(detail.saving);
-      const valid = Boolean(detail.valid) && !loading;
+      const answers = Array.isArray(detail.answers) ? detail.answers : [];
+
+      const rawLoading = Boolean(detail.loading);
+      const rawSaving = Boolean(detail.saving);
+
+      const inferredSaving =
+        !rawSaving && rawLoading && answers.length > 0 && detail.valid === false;
+
+      const saving = rawSaving || inferredSaving;
+      const loading = rawLoading && !saving;
+      const valid = Boolean(detail.valid) && !loading && !saving;
 
       setOrderOptions({
         valid,
         loading,
         saving,
-        answers: Array.isArray(detail.answers) ? detail.answers : [],
+        answers,
         requiredCount: Math.max(0, Math.floor(n(detail.requiredCount))),
       });
 
@@ -645,14 +670,23 @@ export default function CheckoutFlow({
                 throw new Error("ORDER_OPTIONS_REQUIRED");
               }
 
-              const paymentMethod =
-                readPaymentMethod(result as ConfirmResult | null) ||
-                confirmed.paymentMethod ||
-                "";
+              const resultObj = (result as ConfirmResult | null) ?? null;
+
+              const serverPaymentMethod = readPaymentMethod(resultObj);
+              const nextPaymentMethod =
+                serverPaymentMethod || confirmed.paymentMethod || "";
+
+              const paymentConfirmed =
+                Boolean(nextPaymentMethod) ||
+                Boolean(resultObj?.ok && readPaymentReady(resultObj));
+
+              if (!paymentConfirmed && !resultObj?.ok) {
+                throw new Error("PAYMENT_METHOD_INVALID");
+              }
 
               setConfirmed((c) => ({
                 ...c,
-                paymentMethod: paymentMethod || c.paymentMethod,
+                paymentMethod: nextPaymentMethod || c.paymentMethod,
               }));
 
               setDone((d) => ({
@@ -661,7 +695,9 @@ export default function CheckoutFlow({
               }));
 
               setActive("payment");
-              pushSummary((result as ConfirmResult | null)?.summary);
+
+              pushSummaryIfPresent(resultObj?.summary);
+
               setSubmitEnabled(Boolean(orderOptionsReadyForSubmit));
             } catch (e) {
               setFlowError(toFriendlyCheckoutError(e));

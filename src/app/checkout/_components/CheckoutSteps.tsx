@@ -68,13 +68,13 @@ function StepIcon({
   locked: boolean;
 }) {
   return (
-    <span className="co-steps__mark">
+    <span className="co-steps__mark" aria-hidden="true">
       {step.key === "cart" ? (
-        <ShoppingBag size={15} />
+        <ShoppingBag size={14} />
       ) : completed ? (
-        <Check size={15} />
+        <Check size={14} />
       ) : locked ? (
-        <Lock size={13} />
+        <Lock size={12} />
       ) : (
         step.id
       )}
@@ -130,6 +130,7 @@ export default function CheckoutSteps({
             disabled={!clickable}
             aria-current={current ? "step" : undefined}
             aria-disabled={!clickable ? "true" : "false"}
+            aria-label={step.title}
             onClick={() => {
               if (!clickable || !step.realKey) return;
               onStepClick?.(step.realKey);
@@ -138,7 +139,7 @@ export default function CheckoutSteps({
             <StepIcon step={step} completed={completed} locked={locked} />
 
             <span className="co-steps__title">{step.title}</span>
-            <span className="co-steps__line" aria-hidden />
+            <span className="co-steps__line" aria-hidden="true" />
           </button>
         );
       })}
