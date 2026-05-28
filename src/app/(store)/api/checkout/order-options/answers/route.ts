@@ -5,7 +5,6 @@ import {
   cartSessionCookie,
   getCartSessionId,
   getOrCreateOpenCart,
-  getStoreCurrency,
   getStoreIdOrThrow,
 } from "../../../_cart/cart.server";
 import { supabaseAdmin } from "@/data/store/supabase.server";
@@ -59,14 +58,22 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const answers = Array.isArray(body?.answers) ? body.answers : [];
 
-    const currency = await getStoreCurrency(store_id);
+    /**
+     * مهم للسرعة:
+     * لا نبني summary الثقيل إلا إذا طلبه العميل صراحة.
+     * CheckoutOrderOptions يرسل include_summary:false ويحدث الإجمالي محليًا فورًا.
+     */
+    const includeSummary =
+      body?.include_summary === true || body?.includeSummary === true;
+
+    const currency = s(cart?.currency) || "SAR";
 
     const saved = await saveCartOrderOptionsFromPayload({
       sb,
       storeId: store_id,
       cartId,
       answers,
-      currency: s(currency) || s(cart.currency) || "SAR",
+      currency,
     });
 
     if (!saved.ok) {
@@ -77,15 +84,18 @@ export async function POST(req: Request) {
       });
     }
 
-    const summary = await buildCartSummary({
-      store_id,
-      cart_id: cartId,
-    });
+    const summary = includeSummary
+      ? await buildCartSummary({
+          store_id,
+          cart_id: cartId,
+        })
+      : null;
 
     const res = NextResponse.json(
       {
         ok: true,
-        summary,
+        ...(summary ? { summary } : {}),
+        summary_pending: !includeSummary,
         saved_count: Array.isArray(saved.rows) ? saved.rows.length : 0,
       },
       {

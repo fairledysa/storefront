@@ -2,17 +2,18 @@
 
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+
 import { supabaseAdmin } from "@/data/store/supabase.server";
+import { verifySession } from "@/lib/auth/session";
 import {
   cartSessionCookie,
   getCartSessionId,
-  getOrCreateOpenCart,
-  getStoreCurrency,
-  getStoreCurrencyInfo,
   getStoreIdOrThrow,
 } from "../../_cart/cart.server";
 
 export const dynamic = "force-dynamic";
+
+const SESSION_COOKIE = "elyaia_session";
 
 type CurrencyRuntimeRow = {
   code: string;
@@ -90,6 +91,131 @@ function readCurrencyRateFromMetadata(metadata: any) {
       meta?.amount,
     1,
   );
+}
+
+function jsonError(error: string, status = 500) {
+  return NextResponse.json(
+    { ok: false, error },
+    {
+      status,
+      headers: { "Cache-Control": "no-store" },
+    },
+  );
+}
+
+function jsonOk(payload: Record<string, any>, sessionId: string) {
+  const res = NextResponse.json(payload, {
+    headers: { "Cache-Control": "no-store" },
+  });
+
+  if (sessionId) {
+    res.cookies.set(cartSessionCookie(sessionId));
+  }
+
+  return res;
+}
+
+async function getCheckoutCustomerId(args: { sb: any; store_id: string }) {
+  try {
+    const jar = await cookies();
+    const token = jar.get(SESSION_COOKIE)?.value || "";
+
+    if (!token) {
+      return {
+        ok: false as const,
+        status: 401,
+        error: "LOGIN_REQUIRED",
+      };
+    }
+
+    const payload: any = await Promise.resolve(verifySession(token) as any);
+    const customerId = payload?.customer_id ? String(payload.customer_id) : "";
+
+    if (!customerId) {
+      return {
+        ok: false as const,
+        status: 401,
+        error: "LOGIN_REQUIRED",
+      };
+    }
+
+    const linkR = await args.sb
+      .from("store_customers")
+      .select("store_id,customer_id")
+      .eq("store_id", args.store_id)
+      .eq("customer_id", customerId)
+      .limit(1)
+      .maybeSingle();
+
+    if (linkR.error) {
+      return {
+        ok: false as const,
+        status: 500,
+        error: linkR.error.message,
+      };
+    }
+
+    if (!linkR.data?.customer_id) {
+      return {
+        ok: false as const,
+        status: 401,
+        error: "LOGIN_REQUIRED",
+      };
+    }
+
+    return {
+      ok: true as const,
+      customer_id: customerId,
+    };
+  } catch {
+    return {
+      ok: false as const,
+      status: 401,
+      error: "LOGIN_REQUIRED",
+    };
+  }
+}
+
+async function getCheckoutCart(args: {
+  sb: any;
+  store_id: string;
+  customer_id: string;
+}) {
+  return await args.sb
+    .from("carts")
+    .select("id,currency,user_id,status")
+    .eq("store_id", args.store_id)
+    .eq("user_id", args.customer_id)
+    .eq("status", "open")
+    .order("last_activity_at", { ascending: false, nullsFirst: false })
+    .order("updated_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+}
+
+async function readSelectedCurrencyCodeFromCookies() {
+  try {
+    const jar = await cookies();
+
+    const names = [
+      "mk_selected_currency",
+      "mk_currency",
+      "malak_currency",
+      "currency",
+      "store_currency",
+      "selected_currency",
+    ];
+
+    for (const name of names) {
+      const code = cleanCurrencyCode(jar.get(name)?.value, "");
+      if (code) return code;
+    }
+
+    return "";
+  } catch {
+    return "";
+  }
 }
 
 async function fetchStoreCurrenciesForRuntime(sb: any, storeId: string) {
@@ -227,7 +353,6 @@ function convertMoney(args: {
 function currencyInfoFromRuntime(args: {
   code: string;
   runtime: ReturnType<typeof buildCurrencyRuntime>;
-  fallbackInfo?: any;
 }) {
   const code = cleanCurrencyCode(args.code, args.runtime.defaultCode);
   const row = args.runtime.map.get(code);
@@ -240,51 +365,11 @@ function currencyInfoFromRuntime(args: {
     };
   }
 
-  const fallback = safeObject(args.fallbackInfo);
-
   return {
     code,
-    symbol: s(fallback.symbol) || code,
-    decimal_digits: clampDecimals(
-      fallback.decimal_digits ?? fallback.decimalDigits,
-      2,
-    ),
+    symbol: code,
+    decimal_digits: 2,
   };
-}
-
-async function readSelectedCurrencyCodeFromCookies() {
-  try {
-    const jar = await cookies();
-
-    const names = [
-      "mk_selected_currency",
-      "mk_currency",
-      "malak_currency",
-      "currency",
-      "store_currency",
-      "selected_currency",
-    ];
-
-    for (const name of names) {
-      const code = cleanCurrencyCode(jar.get(name)?.value, "");
-      if (code) return code;
-    }
-
-    return "";
-  } catch {
-    return "";
-  }
-}
-
-function readCurrencyCodeFromInfo(info: any) {
-  return cleanCurrencyCode(
-    info?.code ??
-      info?.currency_code ??
-      info?.currencyCode ??
-      info?.currency ??
-      "",
-    "",
-  );
 }
 
 function resolveTargetCurrencyCode(args: {
@@ -309,52 +394,99 @@ function resolveTargetCurrencyCode(args: {
   return args.runtime.defaultCode;
 }
 
-function jsonError(error: string, status = 500) {
-  return NextResponse.json(
-    { ok: false, error },
-    {
-      status,
-      headers: { "Cache-Control": "no-store" },
-    },
-  );
-}
-
 export async function GET() {
   try {
     const sb: any = supabaseAdmin();
 
     const store_id = await getStoreIdOrThrow();
     const session_id = await getCartSessionId();
-    const cart = await getOrCreateOpenCart({ store_id, session_id });
 
-    const cartId = s(cart?.id);
+    const customer = await getCheckoutCustomerId({
+      sb,
+      store_id,
+    });
+
+    if (!customer.ok) {
+      return jsonError(customer.error, customer.status);
+    }
+
+    const cartR = await getCheckoutCart({
+      sb,
+      store_id,
+      customer_id: customer.customer_id,
+    });
+
+    if (cartR.error) throw new Error(cartR.error.message);
+
+    const cartId = s(cartR.data?.id);
 
     if (!cartId) {
       return jsonError("CART_NOT_FOUND", 404);
     }
 
-    const [storeCurrencyRaw, currencyInfoRaw, currencyRows] = await Promise.all([
-      getStoreCurrency(store_id),
-      getStoreCurrencyInfo(store_id),
+    const [storeR, currencyRows, itemsR, optionsR] = await Promise.all([
+      sb
+        .from("stores")
+        .select("default_currency")
+        .eq("id", store_id)
+        .limit(1)
+        .maybeSingle(),
+
       fetchStoreCurrenciesForRuntime(sb, store_id),
+
+      sb
+        .from("cart_items")
+        .select("product_id")
+        .eq("cart_id", cartId)
+        .eq("store_id", store_id),
+
+      sb
+        .from("store_order_options")
+        .select(
+          [
+            "id",
+            "store_id",
+            "type",
+            "name",
+            "description",
+            "status",
+            "is_required",
+            "applies_to",
+            "text_size",
+            "allow_multiple",
+            "price_customer",
+            "metadata",
+            "sort_order",
+            "created_at",
+          ].join(","),
+        )
+        .eq("store_id", store_id)
+        .eq("status", "active")
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true }),
     ]);
 
-    const storeCurrencyFallback = cleanCurrencyCode(storeCurrencyRaw, "SAR");
-    const runtime = buildCurrencyRuntime(currencyRows, storeCurrencyFallback);
-    const storeBaseCurrency = runtime.defaultCode;
+    if (storeR.error) throw new Error(storeR.error.message);
+    if (itemsR.error) throw new Error(itemsR.error.message);
+    if (optionsR.error) throw new Error(optionsR.error.message);
 
+    const storeCurrencyFallback = cleanCurrencyCode(
+      storeR.data?.default_currency,
+      "SAR",
+    );
+
+    const runtime = buildCurrencyRuntime(currencyRows, storeCurrencyFallback);
     const selectedCookieCurrency = await readSelectedCurrencyCodeFromCookies();
 
     const targetCurrencyCode = resolveTargetCurrencyCode({
       selectedCode: selectedCookieCurrency,
-      fallbackCode: readCurrencyCodeFromInfo(currencyInfoRaw) || storeBaseCurrency,
+      fallbackCode: cartR.data?.currency || storeCurrencyFallback,
       runtime,
     });
 
     const currency = currencyInfoFromRuntime({
       code: targetCurrencyCode,
       runtime,
-      fallbackInfo: currencyInfoRaw,
     });
 
     function convertStorePrice(value: any) {
@@ -364,59 +496,83 @@ export async function GET() {
       return round2(
         convertMoney({
           amount,
-          sourceCode: storeBaseCurrency,
+          sourceCode: runtime.defaultCode,
           targetCode: currency.code,
           runtime,
         }),
       );
     }
 
-    const itemsR = await sb
-      .from("cart_items")
-      .select("product_id")
-      .eq("cart_id", cartId)
-      .eq("store_id", store_id);
-
-    if (itemsR.error) throw new Error(itemsR.error.message);
-
     const productIds = unique(
       (itemsR.data ?? []).map((item: any) => s(item.product_id)),
     );
 
     if (productIds.length === 0) {
-      const res = NextResponse.json(
+      return jsonOk(
         {
           ok: true,
           data: [],
           currency,
         },
-        { headers: { "Cache-Control": "no-store" } },
+        session_id,
       );
-
-      res.cookies.set(cartSessionCookie(session_id));
-      return res;
     }
 
-    const [productCategoriesR, categoryProductsR, optionsR] =
-      await Promise.all([
-        sb
-          .from("product_categories")
-          .select("product_id,category_id")
-          .in("product_id", productIds),
+    const options = Array.isArray(optionsR.data) ? optionsR.data : [];
+    const optionIds = options.map((option: any) => s(option.id)).filter(Boolean);
 
-        sb
-          .from("category_products")
-          .select("product_id,category_id")
-          .in("product_id", productIds),
+    if (optionIds.length === 0) {
+      return jsonOk(
+        {
+          ok: true,
+          data: [],
+          currency,
+        },
+        session_id,
+      );
+    }
 
-        sb
-          .from("store_order_options")
-          .select("*")
-          .eq("store_id", store_id)
-          .eq("status", "active")
-          .order("sort_order", { ascending: true })
-          .order("created_at", { ascending: true }),
-      ]);
+    const [
+      productCategoriesR,
+      categoryProductsR,
+      optionCategoriesR,
+      choicesR,
+    ] = await Promise.all([
+      sb
+        .from("product_categories")
+        .select("product_id,category_id")
+        .in("product_id", productIds),
+
+      sb
+        .from("category_products")
+        .select("product_id,category_id")
+        .in("product_id", productIds),
+
+      sb
+        .from("store_order_option_categories")
+        .select("option_id,category_id")
+        .eq("store_id", store_id)
+        .in("option_id", optionIds),
+
+      sb
+        .from("store_order_option_choices")
+        .select(
+          [
+            "id",
+            "option_id",
+            "label",
+            "price_customer",
+            "cost",
+            "weight_kg",
+            "sort_order",
+            "created_at",
+          ].join(","),
+        )
+        .eq("store_id", store_id)
+        .in("option_id", optionIds)
+        .order("sort_order", { ascending: true })
+        .order("created_at", { ascending: true }),
+    ]);
 
     if (productCategoriesR.error) {
       throw new Error(productCategoriesR.error.message);
@@ -426,48 +582,6 @@ export async function GET() {
       throw new Error(categoryProductsR.error.message);
     }
 
-    if (optionsR.error) {
-      throw new Error(optionsR.error.message);
-    }
-
-    const cartCategoryIds = unique([
-      ...(productCategoriesR.data ?? []).map((row: any) => s(row.category_id)),
-      ...(categoryProductsR.data ?? []).map((row: any) => s(row.category_id)),
-    ]);
-
-    const options = Array.isArray(optionsR.data) ? optionsR.data : [];
-    const optionIds = options.map((option: any) => s(option.id)).filter(Boolean);
-
-    if (optionIds.length === 0) {
-      const res = NextResponse.json(
-        {
-          ok: true,
-          data: [],
-          currency,
-        },
-        { headers: { "Cache-Control": "no-store" } },
-      );
-
-      res.cookies.set(cartSessionCookie(session_id));
-      return res;
-    }
-
-    const [optionCategoriesR, choicesR] = await Promise.all([
-      sb
-        .from("store_order_option_categories")
-        .select("option_id,category_id")
-        .eq("store_id", store_id)
-        .in("option_id", optionIds),
-
-      sb
-        .from("store_order_option_choices")
-        .select("*")
-        .eq("store_id", store_id)
-        .in("option_id", optionIds)
-        .order("sort_order", { ascending: true })
-        .order("created_at", { ascending: true }),
-    ]);
-
     if (optionCategoriesR.error) {
       throw new Error(optionCategoriesR.error.message);
     }
@@ -475,6 +589,11 @@ export async function GET() {
     if (choicesR.error) {
       throw new Error(choicesR.error.message);
     }
+
+    const cartCategoryIds = unique([
+      ...(productCategoriesR.data ?? []).map((row: any) => s(row.category_id)),
+      ...(categoryProductsR.data ?? []).map((row: any) => s(row.category_id)),
+    ]);
 
     const categoryMap = new Map<string, string[]>();
 
@@ -531,17 +650,14 @@ export async function GET() {
       })
       .filter(Boolean);
 
-    const res = NextResponse.json(
+    return jsonOk(
       {
         ok: true,
         data,
         currency,
       },
-      { headers: { "Cache-Control": "no-store" } },
+      session_id,
     );
-
-    res.cookies.set(cartSessionCookie(session_id));
-    return res;
   } catch (e: any) {
     return jsonError(e?.message || "ORDER_OPTIONS_FAILED", 500);
   }

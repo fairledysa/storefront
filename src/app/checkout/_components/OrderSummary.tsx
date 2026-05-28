@@ -1,21 +1,19 @@
 // FILE: apps/storefront/src/app/checkout/_components/OrderSummary.tsx
+
 "use client";
 
 import Link from "next/link";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   AlertTriangle,
   ArrowLeft,
+  ChevronDown,
   Loader2,
-  Lock,
-  LockKeyhole,
   Package,
   ShieldCheck,
   ShoppingCart,
   Ticket,
+  X,
 } from "lucide-react";
 
 type SummaryItem = {
@@ -103,7 +101,10 @@ type PrepareOptions = {
   soft?: boolean;
 };
 
-const INCOMPLETE_CHECKOUT_MESSAGE = "أكمل العنوان والشحن وطريقة الدفع أولًا.";
+type ActionLock = "coupon" | "submit" | null;
+
+const INCOMPLETE_CHECKOUT_MESSAGE =
+  "أكمل بيانات العنوان والشحن والدفع لتأكيد الطلب.";
 
 function n(x: any) {
   const v = Number(x ?? 0);
@@ -133,19 +134,19 @@ function applyPatch(base: Summary, patch: Partial<Summary>): Summary {
 
   const subtotal = n(next.subtotal);
   const shipping = n(next.shipping);
-  const payment_fee = n(next.payment_fee);
-  const order_options_fee = readOrderOptionsFee(next);
+  const paymentFee = n(next.payment_fee);
+  const orderOptionsFee = readOrderOptionsFee(next);
   const discount = n(next.discount);
   const tax = n(next.tax);
 
-  next.order_options_fee = order_options_fee;
-  next.orderOptionsFee = order_options_fee;
+  next.order_options_fee = orderOptionsFee;
+  next.orderOptionsFee = orderOptionsFee;
 
   next.total = round2(
     Math.max(0, subtotal - discount) +
       shipping +
-      payment_fee +
-      order_options_fee +
+      paymentFee +
+      orderOptionsFee +
       tax,
   );
 
@@ -163,101 +164,55 @@ function isCartEmptyError(message: string | null | undefined) {
   );
 }
 
-function buildReadablePrepareError(raw: string | null | undefined) {
-  if (isCartEmptyError(raw)) {
-    return "بعض المنتجات في هذه السلة لم تعد متاحة، أو تم إخفاؤها من المتجر، لذلك لا يمكن إكمال الطلب حالياً.";
-  }
-
-  return raw || "تعذر تحديث ملخص الطلب حالياً.";
-}
-
 function buildReadableSubmitError(j: ApiErrorResponse) {
   if (j?.stock_issue) {
     const issue = j.stock_issue;
 
     if (n(issue.available_qty) <= 0) {
-      return `المنتج "${issue.product_name}" نفدت كميته. حدّث حقيبة التسوق للمتابعة.`;
+      return `المنتج "${issue.product_name}" نفدت كميته. حدّث السلة للمتابعة.`;
     }
 
-    return `المنتج "${issue.product_name}" لم تعد كميته المتاحة كافية. المطلوب ${issue.requested_qty} والمتاح الآن ${issue.available_qty}.`;
+    return `المنتج "${issue.product_name}" لم تعد كميته كافية. المطلوب ${issue.requested_qty} والمتاح الآن ${issue.available_qty}.`;
   }
 
   if (isCartEmptyError(j?.message_ar || j?.error)) {
-    return "بعض المنتجات في طلبك لم تعد متاحة أو لم تعد قابلة للشراء، لذلك يلزم مراجعة السلة أولاً.";
+    return "بعض المنتجات في طلبك لم تعد متاحة، لذلك يلزم مراجعة السلة أولًا.";
   }
 
   if (j?.error === "ORDER_OPTION_REQUIRED") {
     return j.message_ar || "يرجى تعبئة خيارات الطلب المطلوبة قبل تأكيد الطلب.";
   }
 
-  return j?.message_ar || j?.error || "SUBMIT_FAILED";
+  return j?.message_ar || j?.error || "تعذر تأكيد الطلب.";
 }
 
 function SubmitFreezeOverlay() {
   return (
-    <div className="fixed inset-0 z-[100] flex cursor-wait items-center justify-center bg-white/45 backdrop-blur-[1px]">
-      <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-4 py-2.5 text-[12px] font-black text-zinc-600 shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
-        <Loader2 className="h-4 w-4 animate-spin text-zinc-950" />
+    <div className="co-busy-overlay co-busy-overlay--top">
+      <div className="co-busy-pill">
+        <Loader2 className="co-spin" size={16} />
         جاري تأكيد الطلب...
       </div>
     </div>
   );
 }
 
-function CheckoutUnavailableCard({ message }: { message: string }) {
-  return (
-    <div className="rounded-[24px] border border-amber-300/70 bg-amber-50/85 p-4 text-right">
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-amber-100 text-amber-800">
-          <AlertTriangle className="h-4 w-4" />
-        </div>
+export default function OrderSummary({
+  initialSummary = null,
+}: {
+  initialSummary?: Summary | null;
+}) {
+  const initial = initialSummary?.cart_id ? initialSummary : null;
 
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-black text-amber-950">
-            تعذر متابعة إتمام الطلب
-          </div>
-
-          <div className="mt-1 text-[13px] leading-6 text-amber-900">
-            {message}
-          </div>
-
-          <div className="mt-3 rounded-2xl border border-amber-200 bg-white/75 px-3 py-3 text-[12px] leading-6 text-amber-950">
-            قد يكون السبب أن المنتج:
-            <div className="mt-1 space-y-1">
-              <div>• تم إخفاؤه من الإدارة.</div>
-              <div>• لم يعد ظاهرًا في الويب.</div>
-              <div>• نفدت كميته أثناء وجودك في صفحة الدفع.</div>
-            </div>
-          </div>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Link
-              href="/cart"
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-2xl bg-zinc-950 px-4 text-sm font-black text-white transition hover:bg-zinc-800"
-            >
-              <ShoppingCart className="h-4 w-4" />
-              الانتقال إلى سلة التسوق
-            </Link>
-
-            <Link
-              href="/"
-              className="inline-flex h-10 items-center justify-center rounded-2xl border border-zinc-200 bg-white px-4 text-sm font-bold text-zinc-700 transition hover:bg-zinc-50"
-            >
-              متابعة التسوق
-            </Link>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export default function OrderSummary() {
-  const [summary, setSummary] = useState<Summary | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState<Summary | null>(() => initial);
+  const [loading, setLoading] = useState(() => !initial);
   const [softLoading, setSoftLoading] = useState(false);
 
-  const [couponCode, setCouponCode] = useState("");
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const [couponCode, setCouponCode] = useState(() =>
+    initial?.coupon?.code ? String(initial.coupon.code) : "",
+  );
   const [couponBusy, setCouponBusy] = useState(false);
 
   const [submitBusy, setSubmitBusy] = useState(false);
@@ -269,6 +224,24 @@ export default function OrderSummary() {
   const seqRef = useRef(0);
   const prepareTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(false);
+  const hasInitialSummaryRef = useRef(Boolean(initial));
+  const actionLockRef = useRef<ActionLock>(null);
+  const stockIssueRef = useRef<StockIssue | null>(null);
+
+  function setStockIssueState(value: StockIssue | null) {
+    stockIssueRef.current = value;
+    setStockIssue(value);
+  }
+
+  function clearQueuedPrepare() {
+    if (prepareTimerRef.current) {
+      clearTimeout(prepareTimerRef.current);
+      prepareTimerRef.current = null;
+    }
+
+    abortRef.current?.abort();
+    abortRef.current = null;
+  }
 
   const items = useMemo(
     () => (Array.isArray(summary?.items) ? summary.items : []),
@@ -286,22 +259,28 @@ export default function OrderSummary() {
     [items],
   );
 
+  const itemCountText = useMemo(() => {
+    if (loading && !summary) return "جاري التجهيز...";
+    if (itemCount === 1) return "منتج واحد";
+    if (itemCount === 2) return "منتجان";
+    return `${itemCount} منتجات`;
+  }, [itemCount, loading, summary]);
+
   const hasTotals = Boolean(summary);
   const subtotal = hasTotals ? summary!.subtotal : null;
   const tax = hasTotals ? summary!.tax : null;
   const shipping = hasTotals ? summary!.shipping : null;
-  const payment_fee = hasTotals ? n(summary!.payment_fee) : null;
-  const order_options_fee = hasTotals ? readOrderOptionsFee(summary!) : null;
+  const paymentFee = hasTotals ? n(summary!.payment_fee) : null;
+  const orderOptionsFee = hasTotals ? readOrderOptionsFee(summary!) : null;
   const discount = hasTotals ? summary!.discount : null;
   const total = hasTotals ? summary!.total : null;
   const currency = summary?.currency ?? "SAR";
   const hasCouponApplied = Boolean(summary?.coupon?.code);
 
-  const isUnavailableState =
-    !loading && !summary && (isCartEmptyError(errorMsg) || Boolean(errorMsg));
-
   const fetchPrepare = useCallback(
     async (reason?: string, opts?: PrepareOptions) => {
+      if (actionLockRef.current) return;
+
       abortRef.current?.abort();
 
       const ac = new AbortController();
@@ -313,12 +292,16 @@ export default function OrderSummary() {
       if (soft) setSoftLoading(true);
       else setLoading(true);
 
-      if (!soft) setErrorMsg(null);
+      if (!soft && !stockIssueRef.current) {
+        setErrorMsg(null);
+      }
 
       try {
         const r = await fetch("/api/checkout/prepare", {
           method: "GET",
           signal: ac.signal,
+          cache: "no-store",
+          credentials: "same-origin",
           headers: { "Cache-Control": "no-store" },
         });
 
@@ -338,8 +321,11 @@ export default function OrderSummary() {
         const nextSummary: Summary = j.summary;
 
         setSummary(nextSummary);
-        setStockIssue(null);
-        setErrorMsg(null);
+
+        if (!stockIssueRef.current) {
+          setStockIssueState(null);
+          setErrorMsg(null);
+        }
 
         if (nextSummary?.coupon?.code) {
           setCouponCode(String(nextSummary.coupon.code));
@@ -350,7 +336,10 @@ export default function OrderSummary() {
         if (e?.name === "AbortError") return;
 
         const raw = e?.message || "PREPARE_FAILED";
-        setErrorMsg(raw);
+
+        if (!stockIssueRef.current) {
+          setErrorMsg(raw);
+        }
 
         if (!soft) setSummary(null);
       } finally {
@@ -365,11 +354,14 @@ export default function OrderSummary() {
 
   const schedulePrepare = useCallback(
     (reason?: string, opts?: PrepareOptions, delay = 120) => {
+      if (actionLockRef.current) return;
+
       if (prepareTimerRef.current) clearTimeout(prepareTimerRef.current);
 
       prepareTimerRef.current = setTimeout(() => {
         prepareTimerRef.current = null;
         if (!mountedRef.current) return;
+        if (actionLockRef.current) return;
         void fetchPrepare(reason, opts);
       }, delay);
     },
@@ -379,9 +371,14 @@ export default function OrderSummary() {
   useEffect(() => {
     mountedRef.current = true;
 
-    void fetchPrepare("mount");
+    if (!hasInitialSummaryRef.current) {
+      void fetchPrepare("mount");
+    } else {
+      setLoading(false);
+    }
 
     const onRefresh = () => {
+      if (actionLockRef.current) return;
       schedulePrepare("refresh", { soft: true }, 120);
     };
 
@@ -391,8 +388,11 @@ export default function OrderSummary() {
 
       if (detail.summary) {
         setSummary(detail.summary);
-        setErrorMsg(null);
-        setStockIssue(null);
+
+        if (!stockIssueRef.current) {
+          setErrorMsg(null);
+          setStockIssueState(null);
+        }
 
         if (detail.summary?.coupon?.code) {
           setCouponCode(String(detail.summary.coupon.code));
@@ -410,7 +410,7 @@ export default function OrderSummary() {
 
       const reconcile = detail.reconcile !== false;
 
-      if (reconcile) {
+      if (reconcile && !actionLockRef.current) {
         schedulePrepare("reconcile", { soft: true }, 260);
       }
     };
@@ -443,27 +443,29 @@ export default function OrderSummary() {
         onSubmitEnabled as EventListener,
       );
 
-      if (prepareTimerRef.current) {
-        clearTimeout(prepareTimerRef.current);
-        prepareTimerRef.current = null;
-      }
-
-      abortRef.current?.abort();
+      clearQueuedPrepare();
     };
   }, [fetchPrepare, schedulePrepare]);
 
   async function applyCoupon() {
     const code = couponCode.trim().toUpperCase();
-    if (!code) return;
 
+    if (!code || couponBusy || submitBusy || actionLockRef.current) return;
+
+    clearQueuedPrepare();
+
+    actionLockRef.current = "coupon";
     setCouponBusy(true);
+    setSoftLoading(false);
     setErrorMsg(null);
-    setStockIssue(null);
+    setStockIssueState(null);
 
     try {
       const r = await fetch("/api/checkout/apply-coupon", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        credentials: "same-origin",
         body: JSON.stringify({ code }),
       });
 
@@ -475,26 +477,49 @@ export default function OrderSummary() {
 
       const nextSummary: Summary = j.summary as Summary;
       setSummary(nextSummary);
+      setErrorMsg(null);
+      setStockIssueState(null);
 
       if (nextSummary?.coupon?.code) {
         setCouponCode(String(nextSummary.coupon.code));
       } else {
         setCouponCode("");
       }
+
+      window.dispatchEvent(new CustomEvent("checkout:couponChanged"));
     } catch (e: any) {
-      setErrorMsg(e?.message || "APPLY_COUPON_FAILED");
+      setErrorMsg(e?.message || "تعذر تطبيق الكوبون.");
+      setStockIssueState(null);
+      setDrawerOpen(true);
     } finally {
-      setCouponBusy(false);
+      if (actionLockRef.current === "coupon") {
+        actionLockRef.current = null;
+      }
+
+      if (mountedRef.current) {
+        setCouponBusy(false);
+      }
     }
   }
 
   async function removeCoupon() {
+    if (couponBusy || submitBusy || actionLockRef.current) return;
+
+    clearQueuedPrepare();
+
+    actionLockRef.current = "coupon";
     setCouponBusy(true);
+    setSoftLoading(false);
     setErrorMsg(null);
-    setStockIssue(null);
+    setStockIssueState(null);
 
     try {
-      const r = await fetch("/api/checkout/remove-coupon", { method: "POST" });
+      const r = await fetch("/api/checkout/remove-coupon", {
+        method: "POST",
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+
       const j = (await r.json().catch(() => ({}))) as ApiErrorResponse;
 
       if (!r.ok || !j?.ok) {
@@ -504,27 +529,57 @@ export default function OrderSummary() {
       const nextSummary: Summary = j.summary as Summary;
       setSummary(nextSummary);
       setCouponCode("");
+      setErrorMsg(null);
+      setStockIssueState(null);
+
+      window.dispatchEvent(new CustomEvent("checkout:couponChanged"));
     } catch (e: any) {
-      setErrorMsg(e?.message || "REMOVE_COUPON_FAILED");
+      setErrorMsg(e?.message || "تعذر إزالة الكوبون.");
+      setStockIssueState(null);
+      setDrawerOpen(true);
     } finally {
-      setCouponBusy(false);
+      if (actionLockRef.current === "coupon") {
+        actionLockRef.current = null;
+      }
+
+      if (mountedRef.current) {
+        setCouponBusy(false);
+      }
     }
   }
 
   async function submitOrder() {
-    if (!canSubmit) {
-      setErrorMsg(INCOMPLETE_CHECKOUT_MESSAGE);
+    if (
+      couponBusy ||
+      softLoading ||
+      actionLockRef.current === "coupon" ||
+      actionLockRef.current === "submit"
+    ) {
       return;
     }
 
+    if (!canSubmit) {
+      setErrorMsg(INCOMPLETE_CHECKOUT_MESSAGE);
+      setStockIssueState(null);
+      setDrawerOpen(true);
+      return;
+    }
+
+    if (submitBusy || loading || !hasTotals) return;
+
+    clearQueuedPrepare();
+
+    actionLockRef.current = "submit";
     setSubmitBusy(true);
     setErrorMsg(null);
-    setStockIssue(null);
+    setStockIssueState(null);
 
     try {
       const r = await fetch("/api/checkout/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        credentials: "same-origin",
         body: JSON.stringify({}),
       });
 
@@ -532,8 +587,9 @@ export default function OrderSummary() {
 
       if (!r.ok || !j?.ok) {
         if (j?.stock_issue) {
-          setStockIssue(j.stock_issue);
+          setStockIssueState(j.stock_issue);
           setErrorMsg(buildReadableSubmitError(j));
+          setDrawerOpen(true);
           schedulePrepare("stock-issue", { soft: true }, 120);
           return;
         }
@@ -549,193 +605,244 @@ export default function OrderSummary() {
 
       window.location.href = `/thankyou/${encodeURIComponent(token)}`;
     } catch (e: any) {
-      setErrorMsg(e?.message || "SUBMIT_FAILED");
+      setErrorMsg(e?.message || "تعذر تأكيد الطلب.");
+      setStockIssueState(null);
+      setDrawerOpen(true);
     } finally {
-      setSubmitBusy(false);
+      if (actionLockRef.current === "submit") {
+        actionLockRef.current = null;
+      }
+
+      if (mountedRef.current) {
+        setSubmitBusy(false);
+      }
     }
   }
 
-  const couponButtonLabel = useMemo(() => {
-    if (hasCouponApplied) return "إزالة";
-    return "تطبيق";
-  }, [hasCouponApplied]);
+  useEffect(() => {
+    const onSubmitOrder = () => {
+      if (
+        couponBusy ||
+        softLoading ||
+        actionLockRef.current === "coupon" ||
+        actionLockRef.current === "submit"
+      ) {
+        return;
+      }
+
+      void submitOrder();
+    };
+
+    window.addEventListener("checkout:submitOrder", onSubmitOrder);
+
+    return () => {
+      window.removeEventListener("checkout:submitOrder", onSubmitOrder);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    canSubmit,
+    loading,
+    softLoading,
+    submitBusy,
+    couponBusy,
+    hasTotals,
+    summary,
+  ]);
 
   const isInitialLoading = loading && !summary;
   const showSkeleton = isInitialLoading;
-  const showPaymentFee = payment_fee != null && payment_fee > 0;
-  const showOrderOptionsFee = order_options_fee != null && order_options_fee > 0;
+  const showPaymentFee = paymentFee != null && paymentFee > 0;
+  const showOrderOptionsFee = orderOptionsFee != null && orderOptionsFee > 0;
   const showTaxRow = !showSkeleton && tax != null && tax > 0;
   const isIncompleteNotice = errorMsg === INCOMPLETE_CHECKOUT_MESSAGE;
 
+  const paymentActionBusy = submitBusy || couponBusy || softLoading;
+
   const submitButtonLabel = useMemo(() => {
-    if (submitBusy) return "جاري تأكيد الطلب...";
-    if (isInitialLoading || !hasTotals) return "جاري التجهيز...";
-    if (!canSubmit) return "أكمل الخطوات أولًا";
+    if (submitBusy) return "جاري تأكيد الطلب";
+    if (couponBusy) return hasCouponApplied ? "جاري إزالة الكوبون" : "جاري تطبيق الكوبون";
+    if (softLoading) return "جاري تحديث الطلب";
+    if (isInitialLoading || !hasTotals) return "جاري تجهيز الطلب";
     return "تأكيد الدفع";
-  }, [submitBusy, isInitialLoading, hasTotals, canSubmit]);
+  }, [
+    submitBusy,
+    couponBusy,
+    hasCouponApplied,
+    softLoading,
+    isInitialLoading,
+    hasTotals,
+  ]);
 
   return (
     <>
       {submitBusy ? <SubmitFreezeOverlay /> : null}
 
-      <Card className="relative overflow-hidden rounded-[32px] border border-zinc-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
-        <CardContent className="p-5">
-          <div className="rounded-[26px] border border-zinc-200 bg-zinc-50/70 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-[18px] font-black tracking-tight text-zinc-950">
-                  ملخص الطلب
-                </div>
+      <section className="co-summary">
+        <div className="co-summary__main">
+          <div className="co-summary__right">
+            <span className="co-summary__icon">
+              <ShoppingCart size={22} />
+            </span>
 
-                <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[13px] leading-5 text-zinc-500">
-                  <span>
-                    {showSkeleton ? "جاري تجهيز الملخص..." : `${itemCount} منتجات`}
-                  </span>
+            <div className="co-summary__title">
+              <h1>إجمالي الطلب</h1>
+              <p>
+                {itemCountText}
+                {softLoading ? <span>يتم التحديث...</span> : null}
+              </p>
+            </div>
 
-                  {softLoading && summary ? (
-                    <>
-                      <span className="text-zinc-300">•</span>
-                      <span
-                        className="inline-flex items-center gap-1 text-[12px] font-bold text-zinc-500"
-                        aria-live="polite"
-                      >
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        تحديث الملخص
-                      </span>
-                    </>
-                  ) : null}
-                </div>
-              </div>
-
-              {!isUnavailableState ? (
-                <div className="flex shrink-0 items-center gap-2">
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-[12px] font-bold text-zinc-500 shadow-sm">
-                    <Lock className="h-3.5 w-3.5 text-zinc-700" />
-                    آمن
-                  </span>
-
-                  <span className="inline-flex items-center rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-[12px] font-bold text-zinc-500 shadow-sm">
-                    {currency}
-                  </span>
-                </div>
-              ) : null}
+            <div className="co-summary__thumbs" aria-hidden>
+              {items.slice(0, 3).map((item) => (
+                <span key={item.id}>
+                  {item.image_url ? (
+                    <img src={item.image_url} alt="" />
+                  ) : (
+                    <Package size={15} />
+                  )}
+                </span>
+              ))}
             </div>
           </div>
 
-          <div className="my-4 h-px w-full bg-gradient-to-r from-transparent via-zinc-200 to-transparent" />
+          <div className="co-summary__left">
+            {showSkeleton || total == null ? (
+              <span className="co-skeleton co-skeleton--total" />
+            ) : (
+              <strong dir="ltr">{formatMoney(currency, total)}</strong>
+            )}
 
-          {isUnavailableState ? (
-            <CheckoutUnavailableCard
-              message={buildReadablePrepareError(errorMsg)}
-            />
-          ) : (
-            <>
+            <button
+              type="button"
+              className={[
+                "co-coupon-link",
+                hasCouponApplied ? "is-applied" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              onClick={() => setDrawerOpen(true)}
+            >
+              {hasCouponApplied
+                ? `تم تطبيق كوبون ${summary?.coupon?.code}`
+                : "لديك كوبون تخفيض؟"}
+            </button>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          className="co-summary__details"
+          onClick={() => setDrawerOpen(true)}
+        >
+          تفاصيل الطلب
+          <ChevronDown size={15} />
+        </button>
+      </section>
+
+      {drawerOpen ? (
+        <div className="co-drawer-layer" role="dialog" aria-modal="true">
+          <button
+            type="button"
+            className="co-drawer-backdrop"
+            aria-label="إغلاق تفاصيل الطلب"
+            onClick={() => setDrawerOpen(false)}
+          />
+
+          <aside className="co-drawer">
+            <div className="co-drawer__head">
+              <button
+                type="button"
+                className="co-drawer__close"
+                aria-label="إغلاق"
+                onClick={() => setDrawerOpen(false)}
+              >
+                <X size={20} />
+              </button>
+
+              <div>
+                <h2>تفاصيل الطلب</h2>
+                <p>راجع المنتجات والإجمالي قبل التأكيد</p>
+              </div>
+            </div>
+
+            <div className="co-drawer__body">
+              {errorMsg && !stockIssue ? (
+                <div
+                  className={[
+                    "co-submit-error",
+                    isIncompleteNotice ? "co-submit-error--warning" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                >
+                  {errorMsg}
+                </div>
+              ) : null}
+
               {stockIssue ? (
-                <div className="mb-4 rounded-[24px] border border-amber-300/70 bg-amber-50/85 p-4 text-right">
-                  <div className="flex items-start gap-3">
-                    <div className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-amber-100 text-amber-800">
-                      <AlertTriangle className="h-4 w-4" />
+                <div className="co-stock-alert">
+                  <AlertTriangle size={18} />
+                  <div>
+                    <strong>تغير المخزون قبل إتمام الطلب</strong>
+                    <p>{errorMsg}</p>
+
+                    <div className="co-stock-alert__box">
+                      <div>المنتج: {stockIssue.product_name}</div>
+                      <div>الكمية المطلوبة: {stockIssue.requested_qty}</div>
+                      <div>المتاح الآن: {stockIssue.available_qty}</div>
                     </div>
 
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-black text-amber-950">
-                        تغير المخزون قبل إتمام الطلب
-                      </div>
-
-                      <div className="mt-1 text-[13px] leading-6 text-amber-900">
-                        {errorMsg}
-                      </div>
-
-                      <div className="mt-3 space-y-1 rounded-2xl border border-amber-200 bg-white/70 px-3 py-2 text-[12px] leading-6 text-amber-950">
-                        <div>
-                          <span className="font-bold">المنتج:</span>{" "}
-                          {stockIssue.product_name}
-                        </div>
-                        <div>
-                          <span className="font-bold">الكمية المطلوبة:</span>{" "}
-                          {stockIssue.requested_qty}
-                        </div>
-                        <div>
-                          <span className="font-bold">المتاح الآن:</span>{" "}
-                          {stockIssue.available_qty}
-                        </div>
-                      </div>
-
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="rounded-2xl border-amber-300 bg-white font-black text-amber-950 hover:bg-amber-50"
-                          onClick={() => {
-                            window.dispatchEvent(new CustomEvent("cart:changed"));
-                            window.location.href = stockIssue.action_url || "/cart";
-                          }}
-                        >
-                          تحديث حقيبة التسوق
-                        </Button>
-
-                        <Link
-                          href={stockIssue.action_url || "/cart"}
-                          className="inline-flex h-10 items-center justify-center rounded-2xl border border-amber-200 bg-white px-4 text-sm font-bold text-amber-950 transition hover:bg-amber-50"
-                        >
-                          العودة إلى السلة
-                        </Link>
-                      </div>
-                    </div>
+                    <button
+                      type="button"
+                      className="co-btn co-btn--dark co-btn--full"
+                      onClick={() => {
+                        window.dispatchEvent(new CustomEvent("cart:changed"));
+                        window.location.href = stockIssue.action_url || "/cart";
+                      }}
+                    >
+                      تحديث السلة
+                    </button>
                   </div>
                 </div>
               ) : null}
 
-              <div className="rounded-[24px] border border-zinc-200 bg-white p-3 shadow-[0_10px_26px_rgba(15,23,42,0.035)]">
-                <div className="mb-3 flex items-center justify-between gap-3 px-1">
-                  <div>
-                    <div className="text-sm font-black text-zinc-950">المنتجات</div>
-                    <div className="mt-0.5 text-[11px] text-zinc-500">
-                      راجع المنتجات والكميات قبل التأكيد
-                    </div>
-                  </div>
-
-                  <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-[11px] font-black text-zinc-500">
-                    {showSkeleton ? "..." : itemCount}
-                  </span>
-                </div>
+              <section className="co-drawer-section">
+                <h3>المنتجات</h3>
 
                 {showSkeleton ? (
-                  <div className="space-y-2.5">
-                    <SummaryItemSkeleton />
-                    <SummaryItemSkeleton />
-                    <SummaryItemSkeleton />
+                  <div className="co-drawer-loading">
+                    <Loader2 className="co-spin" size={15} />
+                    جاري تحميل المنتجات...
                   </div>
                 ) : items.length > 0 ? (
-                  <div className="max-h-[244px] space-y-2 overflow-y-auto pe-1">
+                  <div className="co-summary-items">
                     {items.map((item) => (
-                      <SummaryItemRow key={item.id} item={item} currency={currency} />
+                      <SummaryItemRow
+                        key={item.id}
+                        item={item}
+                        currency={currency}
+                      />
                     ))}
                   </div>
                 ) : (
-                  <div className="rounded-[22px] border border-dashed border-zinc-200 bg-zinc-50 px-4 py-5 text-center">
-                    <Package className="mx-auto h-5 w-5 text-zinc-400" />
-                    <div className="mt-2 text-sm font-black text-zinc-700">
-                      لا توجد منتجات في الملخص
-                    </div>
-                  </div>
+                  <div className="co-empty-small">لا توجد منتجات في الملخص</div>
                 )}
-              </div>
+              </section>
 
-              <div className="mt-4 rounded-[24px] border border-zinc-200 bg-zinc-50/70 p-4">
-                <div className="space-y-2.5 text-[13px]">
+              <section className="co-drawer-section">
+                <h3>ملخص السلة</h3>
+
+                <div className="co-totals">
                   <Row
                     label={
                       showTaxRow
-                        ? "مجموع المنتجات (بدون ضريبة)"
+                        ? "مجموع المنتجات بدون ضريبة"
                         : "مجموع المنتجات"
                     }
                     value={
-                      showSkeleton
+                      showSkeleton || subtotal == null
                         ? null
-                        : subtotal == null
-                          ? null
-                          : formatMoney(currency, subtotal)
+                        : formatMoney(currency, subtotal)
                     }
                   />
 
@@ -747,241 +854,149 @@ export default function OrderSummary() {
                   ) : null}
 
                   {!showSkeleton && discount != null && discount > 0 ? (
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="text-zinc-500">الخصم</div>
-                      <div dir="ltr" className="font-black text-amber-800">
+                    <div className="co-total-row is-discount">
+                      <span>الخصم</span>
+                      <strong dir="ltr">
                         - {formatMoney(currency, discount)}
-                      </div>
+                      </strong>
                     </div>
                   ) : null}
 
                   <Row
                     label="الشحن"
                     value={
-                      showSkeleton
+                      showSkeleton || shipping == null
                         ? null
-                        : shipping == null
-                          ? null
-                          : formatMoney(currency, shipping)
+                        : formatMoney(currency, shipping)
                     }
                   />
 
-                  {showSkeleton ? (
-                    <Row label="رسوم الدفع عند الاستلام" value={null} />
-                  ) : showPaymentFee ? (
+                  {showPaymentFee ? (
                     <Row
                       label="رسوم الدفع عند الاستلام"
-                      value={formatMoney(currency, payment_fee ?? 0)}
+                      value={formatMoney(currency, paymentFee ?? 0)}
                     />
                   ) : null}
 
-                  {showSkeleton ? (
-                    <Row label="خيارات الطلب" value={null} />
-                  ) : showOrderOptionsFee ? (
-                    <div className="rounded-2xl border border-zinc-200 bg-white px-3 py-2">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="font-bold text-zinc-600">خيارات الطلب</div>
-                        <div dir="ltr" className="font-black text-zinc-950">
-                          {formatMoney(currency, order_options_fee ?? 0)}
-                        </div>
-                      </div>
+                  {showOrderOptionsFee ? (
+                    <>
+                      <Row
+                        label="خيارات الطلب"
+                        value={formatMoney(currency, orderOptionsFee ?? 0)}
+                      />
 
                       {orderOptions.length > 0 ? (
-                        <div className="mt-2 space-y-1 border-t border-zinc-100 pt-2">
+                        <div className="co-order-options-mini">
                           {orderOptions
-                            .filter((item) => n(item.price_customer ?? item.priceCustomer) > 0)
+                            .filter(
+                              (item) =>
+                                n(item.price_customer ?? item.priceCustomer) >
+                                0,
+                            )
                             .map((item) => (
                               <div
                                 key={item.option_id ?? item.optionId ?? item.name}
-                                className="flex items-center justify-between gap-2 text-[11px] leading-5"
                               >
-                                <span className="truncate text-zinc-500">
-                                  {item.name || "خيار الطلب"}
-                                </span>
-                                <span dir="ltr" className="font-black text-zinc-600">
+                                <span>{item.name || "خيار الطلب"}</span>
+                                <strong dir="ltr">
                                   +{" "}
                                   {formatMoney(
                                     currency,
-                                    n(item.price_customer ?? item.priceCustomer),
+                                    n(
+                                      item.price_customer ??
+                                        item.priceCustomer,
+                                    ),
                                   )}
-                                </span>
+                                </strong>
                               </div>
                             ))}
                         </div>
                       ) : null}
-                    </div>
+                    </>
                   ) : null}
-                </div>
-              </div>
 
-              <div className="mt-3 rounded-[26px] bg-zinc-950 p-4 text-white shadow-[0_18px_48px_rgba(15,23,42,0.24)]">
-                <div className="flex items-end justify-between gap-3">
-                  <div>
-                    <div className="text-[13px] font-bold text-white/70">
-                      الإجمالي
-                    </div>
-                    <div className="mt-0.5 text-[11px] leading-5 text-white/45">
-                      {showTaxRow ? "شامل الضريبة والشحن" : "شامل الشحن"}
-                      {showPaymentFee ? " ورسوم الدفع" : ""}
-                      {showOrderOptionsFee ? " وخيارات الطلب" : ""}
-                    </div>
-                  </div>
+                  <div className="co-total-line">
+                    <span>إجمالي الطلب</span>
 
-                  {showSkeleton || total == null ? (
-                    <div className="h-8 w-28 animate-pulse rounded-full bg-white/15" />
-                  ) : (
-                    <div
-                      dir="ltr"
-                      className="text-[30px] font-black tracking-tight text-white"
-                    >
-                      {formatMoney(currency, total)}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {showTaxRow ? (
-                <div className="mt-2 text-center text-[11px] font-bold leading-5 text-zinc-500">
-                  * الأسعار شاملة للضريبة
-                </div>
-              ) : null}
-
-              {!canSubmit && hasTotals ? (
-                <div className="mt-3 rounded-[22px] border border-amber-200 bg-amber-50 px-3.5 py-3 text-right">
-                  <div className="flex items-start gap-2.5">
-                    <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl bg-white text-amber-800 shadow-sm">
-                      <LockKeyhole className="h-4 w-4" />
-                    </span>
-
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-black text-amber-950">
-                        بقيت خطوات بسيطة
-                      </div>
-                      <div className="mt-0.5 text-[12px] leading-6 text-amber-800">
-                        أكمل العنوان، ثم الشحن، ثم طريقة الدفع وخيارات الطلب المطلوبة لتفعيل تأكيد الطلب.
-                      </div>
-                    </div>
+                    {showSkeleton || total == null ? (
+                      <span className="co-skeleton co-skeleton--money" />
+                    ) : (
+                      <strong dir="ltr">{formatMoney(currency, total)}</strong>
+                    )}
                   </div>
                 </div>
-              ) : null}
+              </section>
 
-              <div className="mt-3 rounded-[22px] border border-zinc-200 bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.035)]">
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex h-9 w-9 items-center justify-center rounded-2xl border border-zinc-200 bg-zinc-50 text-zinc-700">
-                      <Ticket className="h-4 w-4" />
-                    </span>
-
-                    <div>
-                      <div className="text-sm font-black text-zinc-950">
-                        كوبون خصم
-                      </div>
-                      <div className="mt-0.5 text-[11px] leading-4 text-zinc-500">
-                        يُطبّق مباشرة على الإجمالي
-                      </div>
-                    </div>
-                  </div>
-
-                  <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[11px] font-bold text-zinc-500">
-                    اختياري
-                  </span>
+              <section className="co-drawer-section">
+                <div className="co-coupon-head">
+                  <Ticket size={17} />
+                  <h3>كوبون خصم</h3>
+                  <span>اختياري</span>
                 </div>
 
-                <div className="flex gap-2">
-                  <Input
+                <div className="co-coupon-form">
+                  <input
                     placeholder="أدخل رمز الكوبون"
                     value={couponCode}
                     onChange={(e) => {
                       setCouponCode(e.target.value);
                       if (isIncompleteNotice) setErrorMsg(null);
                     }}
-                    className="h-10 rounded-2xl border-zinc-200 bg-white text-[13px] focus-visible:ring-2 focus-visible:ring-zinc-950/10"
-                    disabled={couponBusy || loading || submitBusy}
+                    disabled={couponBusy || loading || submitBusy || softLoading}
                   />
 
-                  <Button
-                    variant="outline"
-                    className="h-10 rounded-2xl border-zinc-200 bg-white px-4 text-[13px] font-black text-zinc-800 shadow-sm transition hover:bg-zinc-50 active:scale-[0.99]"
+                  <button
+                    type="button"
                     disabled={
                       loading ||
                       submitBusy ||
+                      softLoading ||
                       couponBusy ||
                       (!hasCouponApplied && !couponCode.trim())
                     }
                     onClick={hasCouponApplied ? removeCoupon : applyCoupon}
                   >
                     {couponBusy ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Loader2 className="co-spin" size={15} />
+                    ) : hasCouponApplied ? (
+                      "إزالة"
                     ) : (
-                      couponButtonLabel
+                      "تطبيق"
                     )}
-                  </Button>
+                  </button>
                 </div>
-              </div>
+              </section>
 
-              <div className="mt-4">
-                <Button
-                  className={[
-                    "h-12 w-full rounded-[22px] text-[16px] font-black",
-                    "text-white shadow-[0_16px_42px_rgba(15,23,42,0.22)]",
-                    "transition hover:bg-zinc-800 active:scale-[0.99]",
-                    canSubmit ? "bg-zinc-950" : "border border-zinc-800 bg-zinc-900",
-                    "disabled:bg-zinc-300 disabled:text-white disabled:shadow-none",
-                  ].join(" ")}
-                  disabled={loading || submitBusy || !hasTotals}
-                  onClick={submitOrder}
-                >
-                  <span className="inline-flex items-center justify-center gap-2">
-                    {submitBusy || loading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : canSubmit ? (
-                      <ShieldCheck className="h-4 w-4" />
-                    ) : (
-                      <LockKeyhole className="h-4 w-4" />
-                    )}
-
-                    {submitButtonLabel}
-                  </span>
-                </Button>
-
-                <div className="mt-2 text-center text-[11px] leading-relaxed text-zinc-500">
-                  بالضغط على “تأكيد الدفع” سيتم إنشاء الطلب ومتابعته حسب بياناتك
-                  المختارة.
-                </div>
-
-                {errorMsg && !stockIssue ? (
-                  <div
-                    className={[
-                      "mt-2 rounded-2xl px-3 py-2 text-center text-[11px] font-bold leading-5",
-                      isIncompleteNotice
-                        ? "border border-amber-200 bg-amber-50 text-amber-800"
-                        : "border border-red-500/15 bg-red-500/5 text-red-700",
-                    ].join(" ")}
-                  >
-                    {isCartEmptyError(errorMsg)
-                      ? "تعذر إكمال الدفع لأن بعض المنتجات لم تعد متاحة."
-                      : errorMsg}
-                  </div>
+              <button
+                type="button"
+                className={[
+                  "co-pay-btn co-pay-btn--drawer",
+                  canSubmit && !paymentActionBusy ? "is-ready" : "is-disabled",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                disabled={loading || submitBusy || couponBusy || softLoading || !hasTotals}
+                onClick={submitOrder}
+              >
+                {submitBusy || loading || couponBusy || softLoading ? (
+                  <Loader2 className="co-spin" size={16} />
                 ) : null}
-              </div>
+                {submitButtonLabel}
+              </button>
 
-              <div className="mt-4 flex items-center justify-between text-[11px] text-zinc-500">
-                <span className="inline-flex items-center gap-1.5">
-                  <ShieldCheck className="h-4 w-4" />
-                  دفع آمن ومشفّر
-                </span>
+              <Link href="/cart" className="co-back-cart">
+                رجوع للسلة
+                <ArrowLeft size={14} />
+              </Link>
 
-                <Link
-                  href="/cart"
-                  className="inline-flex items-center gap-1 font-bold transition hover:text-zinc-950"
-                >
-                  رجوع للسلة <ArrowLeft className="h-3.5 w-3.5" />
-                </Link>
+              <div className="co-secure-note">
+                <ShieldCheck size={15} />
+                دفع آمن ومشفّر
               </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
+            </div>
+          </aside>
+        </div>
+      ) : null}
     </>
   );
 }
@@ -997,93 +1012,45 @@ const SummaryItemRow = memo(function SummaryItemRow({
   const lineTotal = round2(n(item.unit_price) * qty);
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-[20px] border border-zinc-200 bg-white p-2.5 shadow-[0_8px_22px_rgba(15,23,42,0.035)] transition hover:border-zinc-300">
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50">
-          {item.image_url ? (
-            <img
-              src={item.image_url}
-              alt={item.title}
-              className="h-full w-full object-cover"
-              loading="lazy"
-              decoding="async"
-            />
-          ) : (
-            <div className="grid h-full w-full place-items-center text-zinc-400">
-              <Package className="h-5 w-5" />
-            </div>
-          )}
+    <div className="co-summary-item">
+      <div className="co-summary-item__image">
+        {item.image_url ? (
+          <img
+            src={item.image_url}
+            alt={item.title}
+            loading="lazy"
+            decoding="async"
+          />
+        ) : (
+          <Package size={18} />
+        )}
 
-          <span className="absolute right-1 top-1 grid h-5 min-w-[20px] place-items-center rounded-full bg-zinc-950 px-1 text-[10px] font-black leading-none text-white">
-            {qty}
-          </span>
-        </div>
-
-        <div className="min-w-0">
-          <div className="line-clamp-2 text-[13px] font-black leading-5 text-zinc-950">
-            {item.title}
-          </div>
-
-          <div className="mt-0.5 text-[11px] leading-4 text-zinc-500">
-            الكمية: {qty}
-          </div>
-        </div>
+        <span>{qty}</span>
       </div>
 
-      <div dir="ltr" className="shrink-0 text-[13px] font-black text-zinc-950">
+      <div className="co-summary-item__info">
+        <strong>{item.title}</strong>
+        <p>الكمية: {qty}</p>
+      </div>
+
+      <div dir="ltr" className="co-summary-item__price">
         {formatMoney(currency, lineTotal)}
       </div>
     </div>
   );
 });
 
-function SummaryItemSkeleton() {
-  return (
-    <div className="flex items-center gap-3 rounded-[20px] border border-zinc-200 bg-white p-2.5">
-      <div className="h-14 w-14 animate-pulse rounded-2xl bg-zinc-100" />
-
-      <div className="min-w-0 flex-1">
-        <div className="h-4 w-32 animate-pulse rounded-full bg-zinc-100" />
-        <div className="mt-2 h-3 w-20 animate-pulse rounded-full bg-zinc-100" />
-      </div>
-
-      <div className="h-4 w-16 animate-pulse rounded-full bg-zinc-100" />
-    </div>
-  );
-}
-
 function Row({ label, value }: { label: string; value: string | null }) {
   return (
-    <div className="flex items-center justify-between gap-3">
-      <div className="text-zinc-500">{label}</div>
+    <div className="co-total-row">
+      <span>{label}</span>
 
       {value == null ? (
-        <SkeletonText widthClass="w-16" heightClass="h-4" />
+        <span className="co-skeleton co-skeleton--money" />
       ) : (
-        <div dir="ltr" className="font-black text-zinc-950">
-          {value}
-        </div>
+        <strong dir="ltr">{value}</strong>
       )}
     </div>
-  );
-}
-
-function SkeletonText({
-  widthClass,
-  heightClass,
-}: {
-  widthClass: string;
-  heightClass: string;
-}) {
-  return (
-    <div
-      className={[
-        "animate-pulse rounded-full bg-zinc-200",
-        widthClass,
-        heightClass,
-      ].join(" ")}
-      aria-hidden
-    />
   );
 }
 

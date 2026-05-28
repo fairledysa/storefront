@@ -1,19 +1,32 @@
 // FILE: apps/storefront/src/app/(store)/api/checkout/confirm/route.ts
 
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+
 import { supabaseAdmin } from "@/data/store/supabase.server";
+import { verifySession } from "@/lib/auth/session";
 import {
   cartSessionCookie,
   getCartSessionId,
-  getOrCreateOpenCart,
   getStoreIdOrThrow,
 } from "../../_cart/cart.server";
-import { buildCartSummary } from "../lib/summary";
+import { evaluateCodRestrictions } from "../lib/cod-restrictions";
 
 export const dynamic = "force-dynamic";
 
+const SESSION_COOKIE = "elyaia_session";
+
 function s(x: any) {
   return String(x ?? "").trim();
+}
+
+function n(x: any) {
+  const v = Number(x ?? 0);
+  return Number.isFinite(v) ? v : 0;
+}
+
+function round2(x: number) {
+  return Math.round(x * 100) / 100;
 }
 
 function jsonError(error: string, status = 400, extra?: any) {
@@ -44,38 +57,209 @@ function isUuidLike(x: string) {
   );
 }
 
+async function getCheckoutCustomerId(args: { sb: any; store_id: string }) {
+  try {
+    const jar = await cookies();
+    const token = jar.get(SESSION_COOKIE)?.value || "";
+
+    if (!token) {
+      return {
+        ok: false as const,
+        status: 401,
+        error: "LOGIN_REQUIRED",
+      };
+    }
+
+    const payload: any = await Promise.resolve(verifySession(token) as any);
+    const customerId = payload?.customer_id ? String(payload.customer_id) : "";
+
+    if (!customerId) {
+      return {
+        ok: false as const,
+        status: 401,
+        error: "LOGIN_REQUIRED",
+      };
+    }
+
+    const linkR = await args.sb
+      .from("store_customers")
+      .select("store_id,customer_id")
+      .eq("store_id", args.store_id)
+      .eq("customer_id", customerId)
+      .limit(1)
+      .maybeSingle();
+
+    if (linkR.error) {
+      return {
+        ok: false as const,
+        status: 500,
+        error: linkR.error.message,
+      };
+    }
+
+    if (!linkR.data?.customer_id) {
+      return {
+        ok: false as const,
+        status: 401,
+        error: "LOGIN_REQUIRED",
+      };
+    }
+
+    return {
+      ok: true as const,
+      customer_id: customerId,
+    };
+  } catch {
+    return {
+      ok: false as const,
+      status: 401,
+      error: "LOGIN_REQUIRED",
+    };
+  }
+}
+
+async function getCheckoutCart(args: {
+  sb: any;
+  store_id: string;
+  customer_id: string;
+  session_id: string;
+}) {
+  const customerCartR = await args.sb
+    .from("carts")
+    .select("id,store_id,status,address_id,shipping_id,payment_method,user_id")
+    .eq("store_id", args.store_id)
+    .eq("user_id", args.customer_id)
+    .eq("status", "open")
+    .order("last_activity_at", { ascending: false, nullsFirst: false })
+    .order("updated_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (customerCartR.error) {
+    return {
+      ok: false as const,
+      status: 500,
+      error: customerCartR.error.message,
+      cart: null,
+    };
+  }
+
+  if (customerCartR.data?.id) {
+    return {
+      ok: true as const,
+      cart: customerCartR.data,
+    };
+  }
+
+  const sessionId = s(args.session_id);
+
+  if (!sessionId) {
+    return {
+      ok: false as const,
+      status: 404,
+      error: "CART_NOT_FOUND",
+      cart: null,
+    };
+  }
+
+  const sessionCartR = await args.sb
+    .from("carts")
+    .select("id,store_id,status,address_id,shipping_id,payment_method,user_id")
+    .eq("store_id", args.store_id)
+    .eq("session_id", sessionId)
+    .eq("status", "open")
+    .order("last_activity_at", { ascending: false, nullsFirst: false })
+    .order("updated_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (sessionCartR.error) {
+    return {
+      ok: false as const,
+      status: 500,
+      error: sessionCartR.error.message,
+      cart: null,
+    };
+  }
+
+  if (!sessionCartR.data?.id) {
+    return {
+      ok: false as const,
+      status: 404,
+      error: "CART_NOT_FOUND",
+      cart: null,
+    };
+  }
+
+  const claimR = await args.sb
+    .from("carts")
+    .update({
+      user_id: args.customer_id,
+      session_id: null,
+      last_activity_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", String(sessionCartR.data.id))
+    .eq("store_id", args.store_id)
+    .eq("status", "open")
+    .select("id,store_id,status,address_id,shipping_id,payment_method,user_id")
+    .maybeSingle();
+
+  if (claimR.error) {
+    return {
+      ok: false as const,
+      status: 500,
+      error: claimR.error.message,
+      cart: null,
+    };
+  }
+
+  if (!claimR.data?.id) {
+    return {
+      ok: false as const,
+      status: 404,
+      error: "CART_NOT_FOUND",
+      cart: null,
+    };
+  }
+
+  return {
+    ok: true as const,
+    cart: claimR.data,
+  };
+}
+
 function pickByCityScope(rate: any, cityId: string) {
   const scope = s(rate?.scope);
+
   const included: string[] = Array.isArray(rate?.included_city_ids)
     ? rate.included_city_ids.map((x: any) => String(x))
     : [];
+
   const excluded: string[] = Array.isArray(rate?.excluded_city_ids)
     ? rate.excluded_city_ids.map((x: any) => String(x))
     : [];
 
   if (!cityId) return false;
   if (excluded.includes(cityId)) return false;
+
   if (scope === "include_cities") return included.includes(cityId);
 
   return true;
 }
 
-async function getCurrentCart(sb: any, args: { store_id: string; cart_id: string }) {
-  const r = await sb
-    .from("carts")
-    .select("id,store_id,status,address_id,shipping_id,payment_method,user_id")
-    .eq("id", args.cart_id)
-    .eq("store_id", args.store_id)
-    .maybeSingle();
-
-  return r;
-}
-
-async function getAddressCity(sb: any, address_id: string) {
-  const r = await sb
+async function getAddressCity(args: {
+  sb: any;
+  address_id: string;
+  customer_id: string;
+}) {
+  const r = await args.sb
     .from("customer_addresses")
-    .select("id,city_id")
-    .eq("id", address_id)
+    .select("id,city_id,customer_id")
+    .eq("id", args.address_id)
+    .eq("customer_id", args.customer_id)
     .limit(1)
     .maybeSingle();
 
@@ -117,6 +301,7 @@ async function validateShippingRate(args: {
     )
     .eq("id", shipping_id)
     .eq("store_id", store_id)
+    .limit(1)
     .maybeSingle();
 
   if (rateR.error) return { ok: false as const, error: rateR.error.message };
@@ -137,6 +322,7 @@ async function validateShippingRate(args: {
     .select("id,store_id,enabled,is_enabled,status")
     .eq("id", String(rateR.data.store_shipping_carrier_id))
     .eq("store_id", store_id)
+    .limit(1)
     .maybeSingle();
 
   if (carrierR.error) return { ok: false as const, error: carrierR.error.message };
@@ -162,14 +348,50 @@ function providerCode(pm: string) {
   return pm.replace("provider:", "").trim();
 }
 
+async function loadCartProductsSubtotal(args: {
+  sb: any;
+  store_id: string;
+  cart_id: string;
+}) {
+  const r = await args.sb
+    .from("cart_items")
+    .select("qty,unit_price")
+    .eq("store_id", args.store_id)
+    .eq("cart_id", args.cart_id);
+
+  if (r.error) throw new Error(r.error.message);
+
+  let subtotal = 0;
+
+  for (const item of Array.isArray(r.data) ? r.data : []) {
+    const qty = Math.max(1, Math.floor(n(item?.qty) || 1));
+    const unitPrice = Math.max(0, n(item?.unit_price));
+
+    subtotal += qty * unitPrice;
+  }
+
+  return round2(Math.max(0, subtotal));
+}
+
 async function validatePaymentMethod(args: {
   sb: any;
   store_id: string;
+  cart_id: string;
+  customer_id: string;
   payment_method: string;
   shipping_id: string;
   city_id: string;
 }) {
-  const { sb, store_id, payment_method, shipping_id, city_id } = args;
+  const {
+    sb,
+    store_id,
+    cart_id,
+    customer_id,
+    payment_method,
+    shipping_id,
+    city_id,
+  } = args;
+
   const pm = s(payment_method);
 
   if (!pm) return { ok: false as const, error: "PAYMENT_METHOD_REQUIRED" };
@@ -193,6 +415,7 @@ async function validatePaymentMethod(args: {
       )
       .eq("id", shipping_id)
       .eq("store_id", store_id)
+      .limit(1)
       .maybeSingle();
 
     if (rateR.error) return { ok: false as const, error: rateR.error.message };
@@ -207,6 +430,7 @@ async function validatePaymentMethod(args: {
       .select("id,type,enabled,is_enabled,status")
       .eq("id", String(rateR.data.store_shipping_carrier_id))
       .eq("store_id", store_id)
+      .limit(1)
       .maybeSingle();
 
     if (carrierR.error) {
@@ -228,6 +452,28 @@ async function validatePaymentMethod(args: {
 
     if (s(carrierR.data.type) === "pickup") {
       return { ok: false as const, error: "COD_NOT_AVAILABLE_FOR_PICKUP" };
+    }
+
+    const cartSubtotal = await loadCartProductsSubtotal({
+      sb,
+      store_id,
+      cart_id,
+    });
+
+    const codRestrictions = await evaluateCodRestrictions({
+      sb,
+      storeId: store_id,
+      cartId: cart_id,
+      cartSubtotal,
+      customerId: customer_id || null,
+      toCartCurrency: (amount) => round2(Math.max(0, n(amount))),
+    });
+
+    if (!codRestrictions.allowed) {
+      return {
+        ok: false as const,
+        error: codRestrictions.reason || "COD_RESTRICTED",
+      };
     }
 
     return { ok: true as const };
@@ -294,7 +540,15 @@ export async function POST(req: Request) {
     const sb: any = supabaseAdmin();
     const store_id = await getStoreIdOrThrow();
     const session_id = await getCartSessionId();
-    const cart: any = await getOrCreateOpenCart({ store_id, session_id });
+
+    const customer = await getCheckoutCustomerId({
+      sb,
+      store_id,
+    });
+
+    if (!customer.ok) {
+      return jsonError(customer.error, customer.status);
+    }
 
     const body = await req.json().catch(() => ({}));
 
@@ -306,34 +560,32 @@ export async function POST(req: Request) {
       return jsonError("PATCH_REQUIRED", 400);
     }
 
-    const cart_id = s(cart?.id) || s(cart?.cart_id) || "";
+    const cartResult = await getCheckoutCart({
+      sb,
+      store_id,
+      customer_id: customer.customer_id,
+      session_id,
+    });
+
+    if (!cartResult.ok) {
+      return jsonError(cartResult.error, cartResult.status);
+    }
+
+    const cart = cartResult.cart;
+    const cart_id = s(cart?.id) || "";
 
     if (!cart_id) {
       return jsonError("CART_NOT_FOUND", 404);
     }
 
-    const curR = await getCurrentCart(sb, { store_id, cart_id });
-
-    if (curR.error) {
-      return jsonError(curR.error.message, 500);
-    }
-
-    if (!curR.data?.id) {
-      return jsonError("CART_NOT_FOUND", 404);
-    }
-
-    if (s(curR.data.status) !== "open") {
+    if (s(cart.status) !== "open") {
       return jsonError("CART_NOT_OPEN", 400);
     }
 
-    const currentAddressId = curR.data.address_id
-      ? String(curR.data.address_id)
-      : null;
-    const currentShippingId = curR.data.shipping_id
-      ? String(curR.data.shipping_id)
-      : null;
-    const currentPaymentMethod = curR.data.payment_method
-      ? String(curR.data.payment_method)
+    const currentAddressId = cart.address_id ? String(cart.address_id) : null;
+    const currentShippingId = cart.shipping_id ? String(cart.shipping_id) : null;
+    const currentPaymentMethod = cart.payment_method
+      ? String(cart.payment_method)
       : null;
 
     const addressChanged = Boolean(
@@ -354,7 +606,11 @@ export async function POST(req: Request) {
     let city_id: string | null = null;
 
     if (finalAddressId) {
-      const addr = await getAddressCity(sb, finalAddressId);
+      const addr = await getAddressCity({
+        sb,
+        address_id: finalAddressId,
+        customer_id: customer.customer_id,
+      });
 
       if (!addr.ok) {
         return jsonError(addr.error || "ADDRESS_NOT_FOUND", 400);
@@ -388,6 +644,8 @@ export async function POST(req: Request) {
       const v = await validatePaymentMethod({
         sb,
         store_id,
+        cart_id,
+        customer_id: customer.customer_id,
         payment_method: payment_method_in,
         shipping_id: finalShippingId,
         city_id,
@@ -428,6 +686,7 @@ export async function POST(req: Request) {
       .update(patch)
       .eq("id", cart_id)
       .eq("store_id", store_id)
+      .eq("user_id", customer.customer_id)
       .eq("status", "open")
       .select("id,address_id,shipping_id,payment_method")
       .maybeSingle();
@@ -444,17 +703,13 @@ export async function POST(req: Request) {
       return jsonError("CART_NOT_FOUND", 404);
     }
 
-    const summary = await buildCartSummary({
-      store_id,
-      cart_id: String(uR.data.id),
-    });
-
     return jsonOkWithCartCookie({
       session_id,
       payload: {
         ok: true,
         cart: uR.data,
-        summary,
+        summary: null,
+        summary_pending: true,
         state: {
           address_id: uR.data.address_id ?? null,
           shipping_id: uR.data.shipping_id ?? null,

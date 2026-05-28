@@ -4,7 +4,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import StepShell from "./StepShell";
-import { Button } from "@/components/ui/button";
 import { CreditCard, Loader2 } from "lucide-react";
 
 type PaymentDisabledHelp =
@@ -27,10 +26,17 @@ type PaymentOption = {
   title: string;
   subtitle?: string | null;
   fee_text?: string | null;
+  fee_amount?: number | null;
   recommended?: boolean;
   disabled?: boolean;
   disabled_reason?: string | null;
   disabled_help?: PaymentDisabledHelp;
+  bank_details?: {
+    bank_name: string;
+    account_holder: string;
+    iban: string;
+    note: string;
+  } | null;
 };
 
 type ConfirmResult = {
@@ -40,6 +46,28 @@ type ConfirmResult = {
   order?: any;
   state?: any;
 };
+
+export type PaymentStepProps = {
+  isActive: boolean;
+  isDone: boolean;
+  isLocked: boolean;
+  onEdit: () => void;
+  onConfirm: (result?: ConfirmResult | null) => void | Promise<void>;
+  confirmedId?: string;
+};
+
+type SaveOptions = {
+  submitAfter?: boolean;
+};
+
+function s(x: any) {
+  return String(x ?? "").trim();
+}
+
+function n(x: any) {
+  const v = Number(x ?? 0);
+  return Number.isFinite(v) ? v : 0;
+}
 
 async function safeJson(r: Response) {
   try {
@@ -58,18 +86,46 @@ function dispatchCheckoutEvent(name: string, detail?: any) {
 }
 
 function pushSummary(summary: any) {
-  if (summary) {
-    dispatchCheckoutEvent("checkout:summaryPatch", {
-      summary,
-      reconcile: false,
-    });
-  } else {
-    dispatchCheckoutEvent("checkout:refresh");
-  }
+  if (!summary) return;
+
+  dispatchCheckoutEvent("checkout:summaryPatch", {
+    summary,
+    reconcile: false,
+  });
+}
+
+function refreshSummary() {
+  dispatchCheckoutEvent("checkout:refresh");
 }
 
 function setSubmitEnabled(enabled: boolean) {
   dispatchCheckoutEvent("checkout:submitEnabled", { enabled });
+}
+
+function requestSubmitOrder() {
+  dispatchCheckoutEvent("checkout:submitOrder");
+}
+
+function readPaymentFee(option?: PaymentOption | null) {
+  if (!option || option.disabled) return 0;
+
+  const fee = n(option.fee_amount);
+  return fee > 0 ? fee : 0;
+}
+
+function paymentPatchKey(option?: PaymentOption | null) {
+  if (!option) return "";
+  return `${option.id}:${readPaymentFee(option)}`;
+}
+
+function patchPaymentSummary(option: PaymentOption) {
+  dispatchCheckoutEvent("checkout:summaryPatch", {
+    patch: {
+      payment_fee: readPaymentFee(option),
+      payment_method: option.id,
+    },
+    reconcile: false,
+  });
 }
 
 function fmtDate(value?: string | null) {
@@ -86,56 +142,94 @@ function fmtDate(value?: string | null) {
 }
 
 function humanizePaymentDisabledReason(reason?: string | null) {
-  const value = String(reason ?? "").trim();
+  const value = s(reason);
 
   if (!value) return "الدفع عند الاستلام غير متاح حاليًا.";
 
   const map: Record<string, string> = {
     NEED_SHIPPING: "اختر شركة الشحن أولًا لتأكيد توفر الدفع عند الاستلام.",
     COD_NOT_AVAILABLE: "الدفع عند الاستلام غير متاح مع طريقة الشحن المختارة.",
-
     COD_NOT_ENABLED_FOR_SHIPPING_RATE:
       "الدفع عند الاستلام غير مفعل لطريقة الشحن الحالية.",
     SHIPPING_RATE_NOT_FOUND: "طريقة الشحن الحالية غير متاحة.",
     SHIPPING_CARRIER_DISABLED: "طريقة الشحن الحالية غير مفعلة.",
     COD_NOT_AVAILABLE_FOR_PICKUP:
       "الدفع عند الاستلام غير متاح مع الاستلام من الفرع.",
-
     COD_MINIMUM_SUBTOTAL:
       "الدفع عند الاستلام غير متاح لأن إجمالي المشتريات أقل من الحد الأدنى.",
     COD_MIN_SUBTOTAL:
       "الدفع عند الاستلام غير متاح لأن إجمالي المشتريات أقل من الحد الأدنى.",
-
     COD_MAXIMUM_SUBTOTAL:
       "الدفع عند الاستلام غير متاح لأن إجمالي المشتريات أعلى من الحد الأعلى.",
     COD_MAX_SUBTOTAL:
       "الدفع عند الاستلام غير متاح لأن إجمالي المشتريات أعلى من الحد الأعلى.",
-
     COD_MAXIMUM_WEIGHT:
       "الدفع عند الاستلام غير متاح لأن وزن المنتجات في السلة أعلى من الحد المسموح.",
     COD_MAXIMUM_WEIGHT_KG:
       "الدفع عند الاستلام غير متاح لأن وزن المنتجات في السلة أعلى من الحد المسموح.",
     COD_MAX_WEIGHT:
       "الدفع عند الاستلام غير متاح لأن وزن المنتجات في السلة أعلى من الحد المسموح.",
-
     COD_PRODUCT_EXCLUDED:
       "الدفع عند الاستلام غير متاح لأن السلة تحتوي على منتج مستثنى.",
     COD_EXCLUDED_PRODUCT:
       "الدفع عند الاستلام غير متاح لأن السلة تحتوي على منتج مستثنى.",
-
     COD_CATEGORY_EXCLUDED:
       "الدفع عند الاستلام غير متاح لأن السلة تحتوي على منتج من تصنيف مستثنى.",
     COD_EXCLUDED_CATEGORY:
       "الدفع عند الاستلام غير متاح لأن السلة تحتوي على منتج من تصنيف مستثنى.",
-
     COD_UNTRUSTED_CUSTOMER: "الدفع عند الاستلام غير متاح لك مؤقتًا.",
     COD_BLOCKED_CUSTOMER: "الدفع عند الاستلام غير متاح لك مؤقتًا.",
-
     COD_RESTRICTED: "الدفع عند الاستلام غير متاح حسب قيود المتجر.",
     COD_RESTRICTION_FAILED: "الدفع عند الاستلام غير متاح حسب قيود المتجر.",
   };
 
   return map[value] || "الدفع عند الاستلام غير متاح حسب قيود المتجر.";
+}
+
+function fallbackPaymentTitle(id?: string) {
+  const value = s(id);
+
+  if (value === "cod") return "الدفع عند الاستلام";
+  if (value === "bank_transfer") return "تحويل بنكي";
+
+  if (value.startsWith("provider:")) {
+    const code = value.replace("provider:", "").trim();
+    return code ? `الدفع الإلكتروني (${code})` : "الدفع الإلكتروني";
+  }
+
+  return "طريقة دفع محفوظة";
+}
+
+function maskIban(value?: string | null) {
+  const iban = s(value).replace(/\s+/g, "");
+  if (!iban) return "";
+  if (iban.length <= 10) return iban;
+
+  return `${iban.slice(0, 6)}…${iban.slice(-4)}`;
+}
+
+function getPaymentBadge(option: PaymentOption) {
+  if (option.type === "cod") return "عند الاستلام";
+  if (option.type === "bank_transfer") return "تحويل";
+  return "إلكتروني";
+}
+
+function pickDefaultMethod(args: {
+  current: string;
+  confirmedId?: string;
+  list: PaymentOption[];
+}) {
+  const enabled = args.list.filter((x) => !x.disabled);
+
+  if (args.confirmedId && enabled.some((x) => x.id === args.confirmedId)) {
+    return args.confirmedId;
+  }
+
+  if (args.current && enabled.some((x) => x.id === args.current)) {
+    return args.current;
+  }
+
+  return enabled.find((x) => x.recommended)?.id || enabled[0]?.id || "";
 }
 
 async function fetchPaymentOptionsFresh() {
@@ -157,29 +251,17 @@ async function fetchPaymentOptionsFresh() {
   return Array.isArray(j?.options) ? (j.options as PaymentOption[]) : [];
 }
 
-export type PaymentStepProps = {
-  isActive: boolean;
-  isDone: boolean;
-  isLocked: boolean;
-  onEdit: () => void;
-  onConfirm: (result?: ConfirmResult | null) => void | Promise<void>;
-  confirmedId?: string;
-};
-
 function PaymentSkeleton() {
   return (
-    <div className="grid gap-1.5 sm:grid-cols-2 sm:gap-2.5">
+    <div className="co-payment-list">
       {Array.from({ length: 2 }).map((_, i) => (
-        <div
-          key={i}
-          className={[
-            "rounded-[18px] px-3 py-3 sm:rounded-[20px] sm:border sm:border-zinc-200 sm:bg-white sm:p-3.5",
-            "border border-transparent bg-transparent",
-          ].join(" ")}
-        >
-          <div className="h-4 w-36 animate-pulse rounded-full bg-zinc-100" />
-          <div className="mt-2 h-3 w-44 animate-pulse rounded-full bg-zinc-100" />
-          <div className="mt-2 h-3 w-24 animate-pulse rounded-full bg-zinc-100" />
+        <div key={i} className="co-payment-option is-skeleton">
+          <span className="co-payment-radio" />
+
+          <div className="co-payment-main">
+            <span className="co-skeleton co-skeleton--title" />
+            <span className="co-skeleton co-skeleton--line" />
+          </div>
         </div>
       ))}
     </div>
@@ -196,39 +278,78 @@ export default function PaymentStep({
 }: PaymentStepProps) {
   const [loading, setLoading] = useState(false);
   const [options, setOptions] = useState<PaymentOption[]>([]);
-  const [method, setMethod] = useState<string>(confirmedId ?? "");
-  const [syncedMethod, setSyncedMethod] = useState<string>(confirmedId ?? "");
 
-  const [busy, setBusy] = useState(false);
+  const [method, setMethod] = useState<string>(confirmedId ?? "");
   const [savingId, setSavingId] = useState("");
+  const [submitSaving, setSubmitSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [helpModal, setHelpModal] = useState<PaymentDisabledHelp>(null);
 
   const mountedRef = useRef(true);
   const loadSeqRef = useRef(0);
-  const syncSeqRef = useRef(0);
-  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveSeqRef = useRef(0);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveAbortRef = useRef<AbortController | null>(null);
   const lastSyncedRef = useRef<string>(confirmedId ?? "");
+  const lastPatchedRef = useRef("");
 
-  function pickDefaultMethod(list: PaymentOption[], current?: string) {
-    if (current && list.some((x) => x.id === current && !x.disabled)) {
-      return current;
+  useEffect(() => {
+    mountedRef.current = true;
+
+    return () => {
+      mountedRef.current = false;
+      loadSeqRef.current += 1;
+      saveSeqRef.current += 1;
+
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+
+      saveAbortRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!confirmedId) return;
+
+    setMethod(confirmedId);
+    lastSyncedRef.current = confirmedId;
+  }, [confirmedId]);
+
+  useEffect(() => {
+    if (isLocked || !isActive) {
+      if (!isDone) setSubmitEnabled(false);
+      return;
     }
 
-    const rec = list.find((x) => x.recommended && !x.disabled);
-    const first = list.find((x) => !x.disabled);
+    void loadOptions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLocked, isActive]);
 
-    return (rec ?? first)?.id ?? "";
-  }
+  useEffect(() => {
+    if (isLocked || !isActive || loading) return;
+    if (!method || !options.length) return;
+
+    const selected = options.find((option) => option.id === method);
+    if (!selected || selected.disabled) return;
+
+    const patchKey = paymentPatchKey(selected);
+    if (lastPatchedRef.current === patchKey) return;
+
+    lastPatchedRef.current = patchKey;
+    patchPaymentSummary(selected);
+  }, [isLocked, isActive, loading, method, options]);
 
   async function loadOptions() {
-    if (isLocked || !isActive) return;
-
     const seq = ++loadSeqRef.current;
 
     setLoading(true);
     setErrorMsg("");
-    setSubmitEnabled(false);
+
+    if (!isDone) {
+      setSubmitEnabled(false);
+    }
 
     try {
       const list = await fetchPaymentOptionsFresh();
@@ -237,23 +358,18 @@ export default function PaymentStep({
 
       setOptions(list);
 
-      setMethod((current) => {
-        if (confirmedId) return confirmedId;
-
-        const next = pickDefaultMethod(list, current);
-
-        if (next && lastSyncedRef.current !== next) {
-          setSyncedMethod("");
-        }
-
-        return next;
-      });
+      setMethod((current) =>
+        pickDefaultMethod({
+          current,
+          confirmedId,
+          list,
+        }),
+      );
     } catch (e: any) {
       if (!mountedRef.current || seq !== loadSeqRef.current) return;
 
       setOptions([]);
       setMethod("");
-      setSyncedMethod("");
       setErrorMsg(e?.message || "تعذر تحميل طرق الدفع.");
       setSubmitEnabled(false);
     } finally {
@@ -263,525 +379,452 @@ export default function PaymentStep({
     }
   }
 
-  async function syncPaymentMethod(nextId: string, opts?: { force?: boolean }) {
-    if (isLocked || !isActive) return null;
+  async function persistPaymentMethod(nextId: string, signal: AbortSignal) {
     if (!nextId) return null;
 
     const row = options.find((x) => x.id === nextId);
     if (!row || row.disabled) return null;
 
-    if (!opts?.force && lastSyncedRef.current === nextId) {
-      setSyncedMethod(nextId);
+    if (lastSyncedRef.current === nextId) {
+      patchPaymentSummary(row);
       return { ok: true, summary: null } as ConfirmResult;
     }
 
-    const seq = ++syncSeqRef.current;
+    const r = await fetch("/api/checkout/confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      cache: "no-store",
+      signal,
+      body: JSON.stringify({
+        payment_method: nextId,
+        include_summary: false,
+      }),
+    });
 
-    setSavingId(nextId);
-    setSubmitEnabled(false);
-    setErrorMsg("");
+    const j = (await safeJson(r)) as ConfirmResult | any;
 
-    try {
-      const r = await fetch("/api/checkout/confirm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
-        cache: "no-store",
-        body: JSON.stringify({ payment_method: nextId }),
-      });
-
-      const j = (await safeJson(r)) as ConfirmResult | any;
-
-      if (!mountedRef.current || seq !== syncSeqRef.current) return null;
-
-      if (!r.ok || !j?.ok) {
-        setErrorMsg(j?.message_ar || j?.error || "تعذر اعتماد طريقة الدفع.");
-        setSyncedMethod("");
-        setSubmitEnabled(false);
-        return null;
-      }
-
-      lastSyncedRef.current = nextId;
-      setSyncedMethod(nextId);
-      setErrorMsg("");
-      pushSummary(j?.summary ?? null);
-
-      return j as ConfirmResult;
-    } finally {
-      if (mountedRef.current && seq === syncSeqRef.current) {
-        setSavingId("");
-      }
+    if (!r.ok || !j?.ok) {
+      const msg = j?.message_ar || j?.error || "تعذر حفظ طريقة الدفع.";
+      throw new Error(msg);
     }
+
+    lastSyncedRef.current = nextId;
+
+    if (j?.summary) {
+      pushSummary(j.summary);
+    }
+
+    return j as ConfirmResult;
   }
 
-  useEffect(() => {
-    mountedRef.current = true;
+  function choosePayment(nextId: string) {
+    if (isLocked || !isActive || loading) return;
 
-    return () => {
-      mountedRef.current = false;
-      loadSeqRef.current += 1;
-      syncSeqRef.current += 1;
+    const row = options.find((x) => x.id === nextId);
+    if (!row || row.disabled) return;
 
-      if (syncTimerRef.current) {
-        clearTimeout(syncTimerRef.current);
-        syncTimerRef.current = null;
-      }
-    };
-  }, []);
+    saveSeqRef.current += 1;
+    saveAbortRef.current?.abort();
 
-  useEffect(() => {
-    if (confirmedId) {
-      setMethod(confirmedId);
-      setSyncedMethod(confirmedId);
-      lastSyncedRef.current = confirmedId;
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
     }
-  }, [confirmedId]);
 
-  useEffect(() => {
-    if (isLocked || !isActive) {
+    setMethod(nextId);
+    setErrorMsg("");
+    setSavingId(nextId);
+    setSubmitSaving(false);
+    setSubmitEnabled(false);
+
+    lastPatchedRef.current = paymentPatchKey(row);
+    patchPaymentSummary(row);
+
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      void saveSelectedPayment(nextId);
+    }, 70);
+  }
+
+  async function saveSelectedPayment(nextId: string, opts?: SaveOptions) {
+    const row = options.find((x) => x.id === nextId);
+
+    if (!row || row.disabled) {
+      setSavingId("");
+      setSubmitSaving(false);
       setSubmitEnabled(false);
       return;
     }
 
-    void loadOptions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLocked, isActive]);
+    const seq = ++saveSeqRef.current;
+    const ac = new AbortController();
 
-  useEffect(() => {
-    const enabled = Boolean(
-      isDone &&
-        isActive &&
-        !isLocked &&
-        method &&
-        syncedMethod === method &&
-        !loading &&
-        !busy &&
-        !savingId,
-    );
+    saveAbortRef.current?.abort();
+    saveAbortRef.current = ac;
 
-    setSubmitEnabled(enabled);
-  }, [isDone, isActive, isLocked, method, syncedMethod, loading, busy, savingId]);
+    setSavingId(nextId);
+    setSubmitSaving(Boolean(opts?.submitAfter));
+    setErrorMsg("");
 
-  useEffect(() => {
-    if (!isActive || isLocked || isDone || loading || busy || savingId) return;
-    if (!method || syncedMethod === method || options.length === 0) return;
+    lastPatchedRef.current = paymentPatchKey(row);
+    patchPaymentSummary(row);
 
-    const row = options.find((x) => x.id === method);
-    if (!row || row.disabled) return;
+    try {
+      const result = await persistPaymentMethod(nextId, ac.signal);
 
-    setSubmitEnabled(false);
+      if (!mountedRef.current || seq !== saveSeqRef.current) return;
 
-    if (syncTimerRef.current) {
-      clearTimeout(syncTimerRef.current);
+      if (!result?.ok) {
+        setErrorMsg("تعذر حفظ طريقة الدفع. حاول مرة أخرى.");
+        setSubmitEnabled(false);
+        refreshSummary();
+        return;
+      }
+
+      await onConfirm(result);
+      setSubmitEnabled(true);
+
+      if (opts?.submitAfter) {
+        window.setTimeout(() => {
+          requestSubmitOrder();
+        }, 80);
+      }
+    } catch (e: any) {
+      if (e?.name === "AbortError") return;
+      if (!mountedRef.current || seq !== saveSeqRef.current) return;
+
+      const rollbackId = lastSyncedRef.current || "";
+      const rollbackOption = options.find((x) => x.id === rollbackId);
+
+      setMethod(rollbackId);
+      setErrorMsg(e?.message || "تعذر حفظ طريقة الدفع. حاول مرة أخرى.");
+      setSubmitEnabled(false);
+
+      if (rollbackOption && !rollbackOption.disabled) {
+        lastPatchedRef.current = paymentPatchKey(rollbackOption);
+        patchPaymentSummary(rollbackOption);
+      } else {
+        refreshSummary();
+      }
+    } finally {
+      if (mountedRef.current && seq === saveSeqRef.current) {
+        setSavingId("");
+        setSubmitSaving(false);
+      }
+    }
+  }
+
+  async function confirmPaymentAndSubmit() {
+    if (isLocked || !isActive || loading || submitSaving) return;
+
+    const selected = options.find((x) => x.id === method);
+
+    if (!selected || selected.disabled) {
+      setErrorMsg("اختر طريقة دفع صحيحة أولًا.");
+      setSubmitEnabled(false);
+      return;
     }
 
-    syncTimerRef.current = setTimeout(() => {
-      syncTimerRef.current = null;
+    setErrorMsg("");
+    lastPatchedRef.current = paymentPatchKey(selected);
+    patchPaymentSummary(selected);
 
-      void syncPaymentMethod(method).then((result) => {
-        if (!mountedRef.current) return;
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
 
-        if (!result?.ok) {
-          setSyncedMethod("");
-          return;
-        }
+    if (lastSyncedRef.current === method) {
+      requestSubmitOrder();
+      return;
+    }
 
-        if (result.summary) {
-          pushSummary(result.summary);
-        }
-      });
-    }, 80);
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [method, options, isActive, isLocked, isDone, loading, busy]);
+    await saveSelectedPayment(method, { submitAfter: true });
+  }
 
   const picked = useMemo(() => {
     const id = confirmedId ?? method;
     return options.find((m) => m.id === id);
   }, [confirmedId, method, options]);
 
-  function onPick(nextId: string) {
-    if (isLocked || !isActive || isDone || busy || loading || savingId) return;
+  const selectedOption = useMemo(() => {
+    return options.find((m) => m.id === method) ?? null;
+  }, [method, options]);
 
-    const row = options.find((x) => x.id === nextId);
-    if (!nextId || !row || row.disabled) return;
+  const selectedBankDetails =
+    selectedOption?.type === "bank_transfer" ? selectedOption.bank_details : null;
 
-    setMethod(nextId);
-    setSyncedMethod("");
-    setErrorMsg("");
-    setSubmitEnabled(false);
-  }
+  const selectedBankMaskedIban = maskIban(selectedBankDetails?.iban);
 
-  async function confirmPayment() {
-    const id = method;
-    if (!id) return;
+  const submitDisabled =
+    isLocked ||
+    !isActive ||
+    loading ||
+    submitSaving ||
+    !method ||
+    !selectedOption ||
+    Boolean(selectedOption.disabled);
 
-    const row = options.find((x) => x.id === id);
-    if (!row || row.disabled) return;
-
-    if (syncTimerRef.current) {
-      clearTimeout(syncTimerRef.current);
-      syncTimerRef.current = null;
-    }
-
-    setBusy(true);
-    setSubmitEnabled(false);
-    setErrorMsg("");
-
-    try {
-      const result =
-        syncedMethod === id && lastSyncedRef.current === id
-          ? ({ ok: true, summary: null } as ConfirmResult)
-          : await syncPaymentMethod(id, {
-              force: lastSyncedRef.current !== id,
-            });
-
-      if (!result?.ok) {
-        setSyncedMethod("");
-        return;
-      }
-
-      if (result.summary) {
-        pushSummary(result.summary);
-      }
-
-      await onConfirm(result);
-    } finally {
-      if (mountedRef.current) {
-        setBusy(false);
-      }
-    }
-  }
-
-  if (isDone && picked) {
+  if (isDone && !isActive) {
     return (
       <StepShell
         title="الدفع"
-        subtitle="تم اختيار طريقة الدفع — يمكنك تعديلها قبل التأكيد"
-        icon={<CreditCard className="h-5 w-5 text-zinc-800" />}
+        subtitle="تم اختيار طريقة الدفع"
+        icon={<CreditCard size={18} />}
         isActive={isActive}
         isDone
         isLocked={false}
-        onEdit={busy || Boolean(savingId) ? undefined : onEdit}
+        onEdit={onEdit}
       >
-        <div className="rounded-[18px] border border-amber-700/25 bg-[#fffaf1] px-3 py-3 sm:rounded-[22px] sm:p-4">
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-            <div className="text-sm font-black text-zinc-950">
-              {picked.title}
-            </div>
+        <div className="co-saved-row co-saved-row--payment">
+          <span className="co-saved-row__icon">
+            <CreditCard size={18} />
+          </span>
 
-            <span className="rounded-full border border-amber-900/15 bg-white px-2 py-0.5 text-[11px] font-black text-stone-700 sm:text-[12px]">
-              محدد
-            </span>
+          <div className="co-saved-row__main">
+            <strong>
+              {picked?.title || fallbackPaymentTitle(confirmedId || method)}
+            </strong>
 
-            {picked.recommended ? (
-              <span className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[11px] text-zinc-500 sm:text-[12px]">
-                موصى به
-              </span>
-            ) : null}
+            {picked?.subtitle ? <p>{picked.subtitle}</p> : null}
+
+            {picked?.fee_text ? <p>{picked.fee_text}</p> : null}
           </div>
-
-          {picked.subtitle ? (
-            <div className="mt-1 text-[12px] leading-6 text-zinc-500 sm:text-[13px]">
-              {picked.subtitle}
-            </div>
-          ) : null}
-
-          {picked.fee_text ? (
-            <div className="mt-2 inline-flex max-w-full rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-[11px] leading-5 text-zinc-500 sm:text-[12px]">
-              {picked.fee_text}
-            </div>
-          ) : null}
         </div>
       </StepShell>
     );
   }
 
-  const disabledUI = isLocked || !isActive || busy || Boolean(savingId);
-  const isWorking = busy || Boolean(savingId);
-  const canConfirmPayment = Boolean(
-    method && syncedMethod === method && !isWorking && !loading,
-  );
-
   return (
     <StepShell
       title="الدفع"
       subtitle={isLocked ? "أكمل الشحن أولًا" : "اختر طريقة الدفع المناسبة"}
-      icon={<CreditCard className="h-5 w-5 text-zinc-800" />}
+      icon={<CreditCard size={18} />}
       isActive={isActive}
       isDone={false}
       isLocked={isLocked}
-      rightChip={<span>الخطوة 3</span>}
+      onEdit={isDone ? onEdit : undefined}
+      rightChip={<span>الحالية</span>}
     >
       {loading ? (
         <PaymentSkeleton />
       ) : errorMsg && options.length === 0 ? (
-        <div className="rounded-[18px] border border-red-500/15 bg-red-500/5 px-4 py-4 text-center text-[13px] leading-6 text-red-700 sm:rounded-[20px]">
-          {errorMsg}
-        </div>
+        <div className="co-field-error">{errorMsg}</div>
       ) : options.length === 0 ? (
-        <div className="rounded-[18px] border border-dashed border-zinc-200 bg-zinc-50 px-4 py-5 text-center sm:rounded-[20px]">
-          <div className="text-sm font-black text-zinc-800">
-            لا توجد طرق دفع متاحة
-          </div>
-
-          <div className="mt-1 text-[13px] leading-6 text-zinc-500">
-            جرّب لاحقًا أو تواصل مع المتجر.
-          </div>
+        <div className="co-empty-small">
+          <strong>لا توجد طرق دفع متاحة</strong>
+          <span>جرّب لاحقًا أو تواصل مع المتجر.</span>
         </div>
       ) : (
-        <div
-          className={[
-            "grid gap-1.5 sm:grid-cols-2 sm:gap-2.5",
-            disabledUI ? "pointer-events-none opacity-80" : "",
-          ].join(" ")}
-        >
+        <div className="co-payment-list">
           {options.map((option) => {
             const selected = option.id === method;
-            const isSyncing = savingId === option.id;
+            const isFinalizing = submitSaving && savingId === option.id;
             const disabledReason = humanizePaymentDisabledReason(
               option.disabled_reason,
             );
 
             return (
-              <button
+              <div
                 key={option.id}
-                type="button"
+                role="button"
+                tabIndex={option.disabled ? -1 : 0}
+                aria-disabled={option.disabled ? "true" : "false"}
+                data-selected={selected ? "true" : "false"}
+                className={[
+                  "co-payment-option",
+                  selected ? "is-selected" : "",
+                  option.disabled ? "is-disabled" : "",
+                  isFinalizing ? "is-loading" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
                 onClick={() => {
                   if (option.disabled) return;
-                  onPick(option.id);
+                  choosePayment(option.id);
                 }}
-                className={[
-                  "rounded-[18px] px-3 py-3 text-right transition active:scale-[0.997] sm:rounded-[22px] sm:border sm:p-3.5",
-                  selected
-                    ? "border border-amber-700/30 bg-[#fffaf1] shadow-none sm:shadow-[0_12px_32px_rgba(15,23,42,0.055)]"
-                    : "border border-transparent bg-transparent hover:bg-zinc-50 sm:border-zinc-200 sm:bg-white",
-                  option.disabled
-                    ? "cursor-not-allowed border-zinc-200 bg-zinc-50 text-zinc-500"
-                    : "cursor-pointer",
-                ].join(" ")}
-                aria-disabled={option.disabled ? "true" : "false"}
+                onKeyDown={(event) => {
+                  if (option.disabled) return;
+                  if (event.key !== "Enter" && event.key !== " ") return;
+
+                  event.preventDefault();
+                  choosePayment(option.id);
+                }}
               >
-                <div className="flex items-start gap-2.5 sm:gap-3">
-                  <div
-                    className={[
-                      "mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full border text-sm font-black",
-                      selected
-                        ? "border-zinc-950 bg-zinc-950 text-white"
-                        : "border-zinc-200 bg-white text-transparent",
-                    ].join(" ")}
-                  >
-                    ✓
-                  </div>
+                <span className="co-payment-radio" aria-hidden="true">
+                  {selected ? "✓" : ""}
+                </span>
 
-                  <div className="min-w-0 flex-1">
-                    <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2">
-                      <div className="min-w-0 max-w-full truncate text-sm font-black text-zinc-950">
-                        {option.title}
-                      </div>
+                <div className="co-payment-main">
+                  <div className="co-payment-title">
+                    <strong>{option.title}</strong>
 
-                      {selected ? (
-                        <span className="rounded-full border border-amber-900/15 bg-white px-2 py-0.5 text-[11px] font-black text-stone-700 sm:text-[12px]">
-                          محدد
-                        </span>
-                      ) : null}
+                    <div className="co-payment-badges">
+                      <em>{getPaymentBadge(option)}</em>
 
-                      {option.recommended ? (
-                        <span className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[11px] text-zinc-500 sm:bg-zinc-50 sm:text-[12px]">
-                          موصى به
-                        </span>
-                      ) : null}
+                      {option.recommended ? <em>موصى به</em> : null}
+
+                      {selected ? <span>محدد</span> : null}
                     </div>
-
-                    {!option.disabled && option.subtitle ? (
-                      <div className="mt-1.5 line-clamp-2 text-[12px] leading-5 text-zinc-500 sm:text-[13px]">
-                        {option.subtitle}
-                      </div>
-                    ) : null}
-
-                    {option.fee_text ? (
-                      <div className="mt-2 inline-flex max-w-full rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-[11px] leading-5 text-zinc-500 sm:text-[12px]">
-                        {option.fee_text}
-                      </div>
-                    ) : null}
-
-                    {selected && isSyncing ? (
-                      <div className="mt-2 inline-flex items-center gap-2 text-[12px] leading-5 text-zinc-500">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        جاري تثبيت طريقة الدفع...
-                      </div>
-                    ) : null}
-
-                    {option.disabled ? (
-                      <div className="mt-2 inline-flex max-w-full rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-[11px] font-bold leading-5 text-zinc-500 sm:text-[12px]">
-                        {disabledReason}
-                      </div>
-                    ) : null}
-
-                    {option.disabled &&
-                    option.disabled_help?.kind ===
-                      "cod_untrusted_customer" ? (
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setHelpModal(option.disabled_help ?? null);
-                        }}
-                        className="mt-2 inline-flex rounded-full border border-zinc-300 bg-white px-3 py-1 text-[11px] font-black text-zinc-800 transition hover:bg-zinc-50 sm:text-[12px]"
-                      >
-                        معرفة السبب
-                      </button>
-                    ) : null}
                   </div>
+
+                  {option.subtitle ? <p>{option.subtitle}</p> : null}
+
+                  {option.fee_text ? <small>{option.fee_text}</small> : null}
+
+                  {selected && isFinalizing ? (
+                    <small className="co-inline-loader">
+                      <Loader2 size={13} className="co-spin" />
+                      جاري تجهيز الدفع...
+                    </small>
+                  ) : null}
+
+                  {option.disabled ? (
+                    <small className="co-payment-disabled-text">
+                      {disabledReason}
+                    </small>
+                  ) : null}
+
+                  {option.disabled &&
+                  option.disabled_help?.kind === "cod_untrusted_customer" ? (
+                    <button
+                      type="button"
+                      className="co-payment-help-btn"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setHelpModal(option.disabled_help ?? null);
+                      }}
+                    >
+                      معرفة السبب
+                    </button>
+                  ) : null}
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>
       )}
 
-      {!loading && picked?.type === "bank_transfer" ? (
-        <div className="mt-3 rounded-[18px] border border-zinc-200 bg-zinc-50/80 px-3 py-3 sm:rounded-[20px] sm:p-4">
-          <div className="text-sm font-black text-zinc-950">
-            بيانات التحويل البنكي
-          </div>
+      {!loading && selectedOption?.type === "bank_transfer" ? (
+        <div className="co-payment-note co-payment-note--bank">
+          <strong>بيانات التحويل البنكي</strong>
 
-          <div className="mt-1 text-[12px] leading-6 text-zinc-500 sm:text-[13px]">
-            حوّل المبلغ إلى الحساب التالي، ثم أرسل صورة الإيصال لخدمة العملاء
-            ليتم اعتماد طلبك.
-          </div>
-
-          <div className="mt-3 rounded-2xl border border-zinc-200 bg-white px-3 py-2.5 sm:p-3">
-            <div className="text-[13px] font-black text-zinc-950">
-              {picked.title}
-            </div>
-
-            {picked.subtitle ? (
-              <div className="mt-1 text-[12px] leading-relaxed text-zinc-500 sm:text-[13px]">
-                {picked.subtitle}
-              </div>
-            ) : (
-              <div className="mt-1 text-[12px] text-zinc-500 sm:text-[13px]">
-                لا توجد بيانات تحويل حالياً.
-              </div>
-            )}
-          </div>
+          {selectedBankDetails ? (
+            <p>
+              {selectedBankDetails.bank_name} —{" "}
+              {selectedBankDetails.account_holder}
+              <br />
+              {selectedBankMaskedIban || selectedBankDetails.iban}
+            </p>
+          ) : selectedOption.subtitle ? (
+            <p>{selectedOption.subtitle}</p>
+          ) : (
+            <p>سيتم عرض بيانات التحويل بعد اختيار طريقة الدفع.</p>
+          )}
         </div>
       ) : null}
 
-      {!loading && picked?.type === "provider" ? (
-        <div className="mt-3 rounded-[18px] border border-zinc-200 bg-zinc-50/80 px-3 py-3 sm:rounded-[20px] sm:p-4">
-          <div className="text-sm font-black text-zinc-950">بوابة الدفع</div>
+      {!loading && selectedOption?.type === "provider" ? (
+        <div className="co-payment-note">
+          <strong>بوابة دفع آمنة</strong>
+          <p>بعد تأكيد الطلب سيتم توجيهك لإكمال عملية الدفع الإلكتروني.</p>
+        </div>
+      ) : null}
 
-          <div className="mt-1 text-[12px] leading-6 text-zinc-500 sm:text-[13px]">
-            عند تأكيد الطلب سيتم تحويلك إلى بوابة دفع آمنة لإكمال العملية.
-          </div>
+      {!loading && selectedOption?.type === "cod" ? (
+        <div className="co-payment-note">
+          <strong>الدفع عند الاستلام</strong>
+          <p>
+            سيتم تحصيل قيمة الطلب عند وصول الشحنة.
+            {selectedOption.fee_text ? (
+              <>
+                <br />
+                {selectedOption.fee_text}
+              </>
+            ) : null}
+          </p>
         </div>
       ) : null}
 
       {errorMsg && options.length > 0 ? (
-        <div className="mt-3 rounded-2xl border border-red-500/15 bg-red-500/5 px-3 py-2 text-center text-[12px] leading-5 text-red-700">
-          {errorMsg}
-        </div>
+        <div className="co-field-error">{errorMsg}</div>
       ) : null}
 
-      <Button
-        className="mt-3 h-11 w-full rounded-[18px] bg-zinc-950 text-[14px] font-black text-white shadow-[0_12px_28px_rgba(15,23,42,0.14)] transition hover:bg-zinc-800 active:scale-[0.99] disabled:bg-zinc-200 disabled:text-zinc-400 disabled:shadow-none sm:mt-4 sm:h-12 sm:rounded-[20px] sm:text-[15px]"
-        type="button"
-        disabled={isLocked || !isActive || loading || !canConfirmPayment}
-        onClick={confirmPayment}
-      >
-        <span className="inline-flex items-center justify-center gap-2">
-          {isWorking ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          {isWorking ? "جاري تثبيت طريقة الدفع..." : "اعتماد طريقة الدفع"}
-        </span>
-      </Button>
-
-    {helpModal ? (
-  <div
-    dir="rtl"
-    className="fixed inset-0 z-[9999] grid place-items-center bg-zinc-950/55 px-4 py-6"
-  >
-    <button
-      type="button"
-      aria-label="إغلاق"
-      className="absolute inset-0 cursor-default"
-      onClick={() => setHelpModal(null)}
-    />
-
-    <div className="relative flex max-h-[86vh] w-full max-w-[560px] flex-col overflow-hidden rounded-[30px] border border-zinc-200 bg-white text-right shadow-[0_35px_100px_rgba(15,23,42,0.35)]">
-      <div className="flex items-center justify-between gap-4 border-b border-zinc-100 bg-[#fffaf1] px-6 py-5">
-        <div className="min-w-0">
-          <div className="text-[18px] font-black leading-7 text-zinc-950">
-            {helpModal.title}
-          </div>
-
-          <div className="mt-1 text-[12px] font-bold text-zinc-500">
-            سجل الدفع عند الاستلام
-          </div>
-        </div>
-
+      {!loading && options.length > 0 ? (
         <button
           type="button"
-          onClick={() => setHelpModal(null)}
-          aria-label="إغلاق"
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-zinc-200 bg-white text-2xl leading-none text-zinc-600 transition hover:bg-zinc-50 hover:text-zinc-950"
+          className="co-payment-final-btn"
+          disabled={submitDisabled}
+          onClick={() => {
+            void confirmPaymentAndSubmit();
+          }}
         >
-          ×
+          {submitSaving ? <Loader2 className="co-spin" size={16} /> : null}
+          {submitSaving ? "جاري تجهيز الدفع..." : "تأكيد الدفع"}
         </button>
-      </div>
+      ) : null}
 
-      <div className="overflow-auto px-5 py-5">
-        <div className="rounded-[18px] border border-amber-700/20 bg-[#fffaf1] px-4 py-4 text-[13px] font-bold leading-8 text-stone-700">
-          {helpModal.message}
-        </div>
+      {helpModal ? (
+        <div className="co-modal-layer" dir="rtl">
+          <button
+            type="button"
+            aria-label="إغلاق"
+            className="co-modal-backdrop"
+            onClick={() => setHelpModal(null)}
+          />
 
-        <div className="mt-4 grid gap-3">
-          {helpModal.records.map((record, index) => (
-            <div
-              key={`${record.store_name}-${index}`}
-              className="grid min-h-[116px] grid-cols-[42px_minmax(0,1fr)] gap-3 rounded-[20px] border border-zinc-200 bg-white p-4"
-            >
-              <div className="grid h-9 w-9 place-items-center rounded-full bg-zinc-100 text-[13px] font-black text-zinc-500">
-                {index + 1}
+          <div className="co-modal">
+            <div className="co-modal__head">
+              <div>
+                <strong>{helpModal.title}</strong>
+                <p>سجل الدفع عند الاستلام</p>
               </div>
 
-              <div className="min-w-0 text-right">
-                <div className="text-[15px] font-black leading-7 text-zinc-950">
-                  {record.store_name}
-                </div>
-
-                <div className="mt-1 text-[13px] font-black leading-6 text-zinc-500">
-                  {record.reason_text}
-                </div>
-
-                {record.reason_note ? (
-                  <div className="mt-1 text-[12px] font-bold leading-6 text-zinc-500">
-                    {record.reason_note}
-                  </div>
-                ) : null}
-
-                {record.created_at ? (
-                  <div className="mt-2 text-[11px] font-bold leading-5 text-zinc-400">
-                    {fmtDate(record.created_at)}
-                  </div>
-                ) : null}
-              </div>
+              <button
+                type="button"
+                onClick={() => setHelpModal(null)}
+                aria-label="إغلاق"
+              >
+                ×
+              </button>
             </div>
-          ))}
-        </div>
 
-        <button
-          type="button"
-          onClick={() => setHelpModal(null)}
-          className="mt-5 h-12 w-full rounded-[18px] bg-zinc-950 text-[14px] font-black text-white transition hover:bg-zinc-800"
-        >
-          فهمت
-        </button>
-      </div>
-    </div>
-  </div>
-) : null}
+            <div className="co-modal__body">
+              <div className="co-alert co-alert--warning">
+                {helpModal.message}
+              </div>
+
+              <div className="co-modal-records">
+                {helpModal.records.map((record, index) => (
+                  <div key={`${record.store_name}-${index}`}>
+                    <span>{index + 1}</span>
+
+                    <div>
+                      <strong>{record.store_name}</strong>
+                      <p>{record.reason_text}</p>
+
+                      {record.reason_note ? <p>{record.reason_note}</p> : null}
+
+                      {record.created_at ? (
+                        <small>{fmtDate(record.created_at)}</small>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                className="co-btn co-btn--dark co-btn--full"
+                onClick={() => setHelpModal(null)}
+              >
+                فهمت
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </StepShell>
   );
 }

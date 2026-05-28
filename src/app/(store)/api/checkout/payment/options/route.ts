@@ -1,12 +1,14 @@
 // FILE: apps/storefront/src/app/(store)/api/checkout/payment/options/route.ts
 
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+
 import { supabaseAdmin } from "@/data/store/supabase.server";
+import { verifySession } from "@/lib/auth/session";
 import {
-  getStoreIdOrThrow,
+  cartSessionCookie,
   getCartSessionId,
-  getOrCreateOpenCart,
-  getStoreCurrency,
+  getStoreIdOrThrow,
 } from "../../../_cart/cart.server";
 import {
   evaluateCodRestrictions,
@@ -14,6 +16,8 @@ import {
 } from "../../lib/cod-restrictions";
 
 export const dynamic = "force-dynamic";
+
+const SESSION_COOKIE = "elyaia_session";
 
 function s(x: any) {
   return String(x ?? "").trim();
@@ -31,8 +35,27 @@ function round2(x: number) {
 function jsonError(error: string, status = 400, extra?: any) {
   return NextResponse.json(
     { ok: false, error, ...(extra ? { extra } : {}) },
-    { status },
+    {
+      status,
+      headers: {
+        "Cache-Control": "no-store",
+      },
+    },
   );
+}
+
+function jsonOk(payload: Record<string, any>, sessionId: string) {
+  const res = NextResponse.json(payload, {
+    headers: {
+      "Cache-Control": "no-store",
+    },
+  });
+
+  if (sessionId) {
+    res.cookies.set(cartSessionCookie(sessionId));
+  }
+
+  return res;
 }
 
 function safeObject(value: any): Record<string, any> {
@@ -114,6 +137,109 @@ type PaymentOption = {
     note: string;
   } | null;
 };
+
+async function getCheckoutCustomerId(args: { sb: any; store_id: string }) {
+  try {
+    const jar = await cookies();
+    const token = jar.get(SESSION_COOKIE)?.value || "";
+
+    if (!token) {
+      return {
+        ok: false as const,
+        status: 401,
+        error: "LOGIN_REQUIRED",
+      };
+    }
+
+    const payload: any = await Promise.resolve(verifySession(token) as any);
+    const customerId = payload?.customer_id ? String(payload.customer_id) : "";
+
+    if (!customerId) {
+      return {
+        ok: false as const,
+        status: 401,
+        error: "LOGIN_REQUIRED",
+      };
+    }
+
+    const linkR = await args.sb
+      .from("store_customers")
+      .select("store_id,customer_id")
+      .eq("store_id", args.store_id)
+      .eq("customer_id", customerId)
+      .limit(1)
+      .maybeSingle();
+
+    if (linkR.error) {
+      return {
+        ok: false as const,
+        status: 500,
+        error: linkR.error.message,
+      };
+    }
+
+    if (!linkR.data?.customer_id) {
+      return {
+        ok: false as const,
+        status: 401,
+        error: "LOGIN_REQUIRED",
+      };
+    }
+
+    return {
+      ok: true as const,
+      customer_id: customerId,
+    };
+  } catch {
+    return {
+      ok: false as const,
+      status: 401,
+      error: "LOGIN_REQUIRED",
+    };
+  }
+}
+
+async function getCheckoutCart(args: {
+  sb: any;
+  store_id: string;
+  customer_id: string;
+}) {
+  return await args.sb
+    .from("carts")
+    .select("id,user_id,address_id,shipping_id,payment_method,currency,status")
+    .eq("store_id", args.store_id)
+    .eq("user_id", args.customer_id)
+    .eq("status", "open")
+    .order("last_activity_at", { ascending: false, nullsFirst: false })
+    .order("updated_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+}
+
+async function readSelectedCurrencyCodeFromCookies() {
+  try {
+    const jar = await cookies();
+
+    const names = [
+      "mk_selected_currency",
+      "mk_currency",
+      "malak_currency",
+      "currency",
+      "store_currency",
+      "selected_currency",
+    ];
+
+    for (const name of names) {
+      const code = cleanCurrencyCode(jar.get(name)?.value, "");
+      if (code) return code;
+    }
+
+    return "";
+  } catch {
+    return "";
+  }
+}
 
 async function fetchStoreCurrenciesForRuntime(sb: any, storeId: string) {
   const selects = [
@@ -232,6 +358,28 @@ function buildCurrencyRuntime(rows: any[], fallbackCode: string) {
     defaultCode,
     map,
   };
+}
+
+function resolveTargetCurrencyCode(args: {
+  selectedCode: string;
+  fallbackCode: string;
+  runtime: ReturnType<typeof buildCurrencyRuntime>;
+}) {
+  const selectedCode = cleanCurrencyCode(args.selectedCode, "");
+  const fallbackCode = cleanCurrencyCode(
+    args.fallbackCode,
+    args.runtime.defaultCode,
+  );
+
+  if (selectedCode) {
+    const selected = args.runtime.map.get(selectedCode);
+    if (selected?.enabled) return selected.code;
+  }
+
+  const fallback = args.runtime.map.get(fallbackCode);
+  if (fallback?.enabled) return fallback.code;
+
+  return args.runtime.defaultCode;
 }
 
 function convertMoney(args: {
@@ -438,44 +586,73 @@ export async function GET() {
   try {
     const sb: any = supabaseAdmin();
     const store_id = await getStoreIdOrThrow();
-
     const session_id = await getCartSessionId();
-    const cart: any = await getOrCreateOpenCart({ store_id, session_id });
-    const cart_id = s(cart?.id) || "";
 
-    if (!cart_id) return jsonError("CART_NOT_FOUND", 404, { cart });
+    const customer = await getCheckoutCustomerId({
+      sb,
+      store_id,
+    });
 
-    const [storeCurrency, currencyRows] = await Promise.all([
-      getStoreCurrency(store_id),
-      fetchStoreCurrenciesForRuntime(sb, store_id),
-    ]);
+    if (!customer.ok) {
+      return jsonError(customer.error, customer.status);
+    }
 
-    const currencyRuntime = buildCurrencyRuntime(
-      currencyRows,
-      storeCurrency || "SAR",
-    );
-
-    const cartR = await sb
-      .from("carts")
-      .select("id,user_id,address_id,shipping_id,payment_method,currency")
-      .eq("id", cart_id)
-      .eq("store_id", store_id)
-      .limit(1)
-      .maybeSingle();
+    const cartR = await getCheckoutCart({
+      sb,
+      store_id,
+      customer_id: customer.customer_id,
+    });
 
     if (cartR.error) return jsonError(cartR.error.message, 500);
     if (!cartR.data?.id) return jsonError("CART_NOT_FOUND", 404);
 
+    const cart_id = s(cartR.data.id);
     const address_id = s(cartR.data.address_id) || "";
     const shipping_id = s(cartR.data.shipping_id) || "";
     const payment_method = s(cartR.data.payment_method) || "";
+    let customer_id = s(cartR.data.user_id) || customer.customer_id;
 
-    let customer_id = s(cartR.data.user_id) || "";
+    const [storeR, currencyRows, pmR, banksR] = await Promise.all([
+      sb
+        .from("stores")
+        .select("default_currency")
+        .eq("id", store_id)
+        .limit(1)
+        .maybeSingle(),
 
-    const targetCurrency = cleanCurrencyCode(
-      cartR.data.currency || storeCurrency,
-      currencyRuntime.defaultCode || "SAR",
+      fetchStoreCurrenciesForRuntime(sb, store_id),
+
+      sb
+        .from("store_payment_methods")
+        .select("id,provider_code,enabled,status,sort_order")
+        .eq("store_id", store_id)
+        .order("sort_order", { ascending: true }),
+
+      sb
+        .from("store_bank_accounts")
+        .select("id,bank_name,account_holder,iban,is_primary,status")
+        .eq("store_id", store_id)
+        .order("is_primary", { ascending: false })
+        .order("updated_at", { ascending: false }),
+    ]);
+
+    if (storeR.error) return jsonError(storeR.error.message, 500);
+    if (pmR.error) return jsonError(pmR.error.message, 500);
+    if (banksR.error) return jsonError(banksR.error.message, 500);
+
+    const storeCurrency = cleanCurrencyCode(
+      storeR.data?.default_currency,
+      "SAR",
     );
+
+    const currencyRuntime = buildCurrencyRuntime(currencyRows, storeCurrency);
+    const selectedCookieCurrency = await readSelectedCurrencyCodeFromCookies();
+
+    const targetCurrency = resolveTargetCurrencyCode({
+      selectedCode: selectedCookieCurrency,
+      fallbackCode: cartR.data.currency || storeCurrency,
+      runtime: currencyRuntime,
+    });
 
     let city_id = "";
 
@@ -484,6 +661,7 @@ export async function GET() {
         .from("customer_addresses")
         .select("id,city_id,customer_id")
         .eq("id", address_id)
+        .eq("customer_id", customer.customer_id)
         .limit(1)
         .maybeSingle();
 
@@ -599,24 +777,7 @@ export async function GET() {
       }
     }
 
-    const pmR = await sb
-      .from("store_payment_methods")
-      .select("id,provider_code,enabled,status,sort_order")
-      .eq("store_id", store_id)
-      .order("sort_order", { ascending: true });
-
-    if (pmR.error) return jsonError(pmR.error.message, 500);
-
     const rows = Array.isArray(pmR.data) ? pmR.data : [];
-
-    const banksR = await sb
-      .from("store_bank_accounts")
-      .select("id,bank_name,account_holder,iban,is_primary,status")
-      .eq("store_id", store_id)
-      .order("is_primary", { ascending: false })
-      .order("updated_at", { ascending: false });
-
-    if (banksR.error) return jsonError(banksR.error.message, 500);
 
     const banks = (banksR.data ?? []).filter(
       (b: any) => s(b.status) === "active",
@@ -704,29 +865,32 @@ export async function GET() {
       });
     }
 
-    return NextResponse.json({
-      ok: true,
-      context: {
-        cart_id,
-        customer_id: customer_id || null,
-        address_id: address_id || null,
-        city_id: city_id || null,
-        shipping_id: shipping_id || null,
-        shipping_carrier_type: shippingCarrierType,
-        payment_method: payment_method || null,
-        currency: targetCurrency,
-        cod_fee_source_currency: rateCurrency,
-        cod_disabled_reason: codAllowed ? null : codDisabledReason,
-        cod_restrictions: codRestrictions,
+    return jsonOk(
+      {
+        ok: true,
+        context: {
+          cart_id,
+          customer_id: customer_id || null,
+          address_id: address_id || null,
+          city_id: city_id || null,
+          shipping_id: shipping_id || null,
+          shipping_carrier_type: shippingCarrierType,
+          payment_method: payment_method || null,
+          currency: targetCurrency,
+          cod_fee_source_currency: rateCurrency,
+          cod_disabled_reason: codAllowed ? null : codDisabledReason,
+          cod_restrictions: codRestrictions,
+        },
+        options,
+        fees: {
+          cod_fee: codAllowed ? codFeeCustomerConverted : 0,
+          cod_fee_raw: codAllowed ? codFeeCustomerRaw : 0,
+          cod_fee_currency: targetCurrency,
+          cod_fee_source_currency: rateCurrency,
+        },
       },
-      options,
-      fees: {
-        cod_fee: codAllowed ? codFeeCustomerConverted : 0,
-        cod_fee_raw: codAllowed ? codFeeCustomerRaw : 0,
-        cod_fee_currency: targetCurrency,
-        cod_fee_source_currency: rateCurrency,
-      },
-    });
+      session_id,
+    );
   } catch (e: any) {
     return jsonError(e?.message || "PAYMENT_OPTIONS_FAILED", 500);
   }

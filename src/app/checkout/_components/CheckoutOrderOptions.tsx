@@ -18,6 +18,11 @@ type Choice = {
   id: string;
   label: string;
   price_customer?: number | string | null;
+  price_customer_raw?: number | string | null;
+  priceCustomerRaw?: number | string | null;
+  price_customer_display?: number | string | null;
+  priceCustomerDisplay?: number | string | null;
+  currency?: string | null;
 };
 
 type OrderOption = {
@@ -121,7 +126,9 @@ function bool(value: unknown, fallback = false) {
     const v = value.trim().toLowerCase();
 
     if (["true", "1", "yes", "on", "active", "enabled"].includes(v)) return true;
-    if (["false", "0", "no", "off", "inactive", "disabled"].includes(v)) return false;
+    if (["false", "0", "no", "off", "inactive", "disabled"].includes(v)) {
+      return false;
+    }
   }
 
   return fallback;
@@ -139,6 +146,15 @@ function formatMoney(currency: CurrencyInfo | null, value: any) {
   const code = currency?.code || "SAR";
 
   return `${code} ${amount.toLocaleString("en-US")}`;
+}
+
+function readChoiceRawPrice(choice: Choice) {
+  return (
+    choice.price_customer_raw ??
+    choice.priceCustomerRaw ??
+    choice.price_customer ??
+    0
+  );
 }
 
 function getAppointmentConfig(
@@ -358,6 +374,14 @@ function dispatchSummaryPatch(summary: any) {
   );
 }
 
+function dispatchSummaryRefreshSoon() {
+  if (typeof window === "undefined") return;
+
+  window.setTimeout(() => {
+    window.dispatchEvent(new CustomEvent("checkout:refresh"));
+  }, 80);
+}
+
 function buildInitialAppointmentMonth(selectedDate: string) {
   if (selectedDate) {
     const d = new Date(`${selectedDate}T12:00:00`);
@@ -390,11 +414,18 @@ function buildSelectedChoiceMetadata(option: OrderOption, choiceIds: string[]) {
       ...choiceIds,
       ...selected.map((choice) => s(choice.label)),
     ]),
-    selected_choices: selected.map((choice) => ({
-      id: s(choice.id),
-      label: s(choice.label),
-      price_customer: choice.price_customer ?? 0,
-    })),
+    selected_choices: selected.map((choice) => {
+      const rawPrice = readChoiceRawPrice(choice);
+
+      return {
+        id: s(choice.id),
+        label: s(choice.label),
+        price_customer: rawPrice,
+        price_customer_raw: rawPrice,
+        price_customer_display: choice.price_customer ?? rawPrice,
+        currency: choice.currency ?? null,
+      };
+    }),
   };
 }
 
@@ -591,6 +622,7 @@ export default function CheckoutOrderOptions({
         credentials: "same-origin",
         body: JSON.stringify({
           answers: answersList,
+          include_summary: false,
         }),
       });
 
@@ -604,6 +636,8 @@ export default function CheckoutOrderOptions({
 
       if (j.summary) {
         dispatchSummaryPatch(j.summary);
+      } else {
+        dispatchSummaryRefreshSoon();
       }
     } catch (e: any) {
       if (seq !== saveSeqRef.current) return;
@@ -1069,12 +1103,13 @@ function CalendarGrid({
       d.setHours(12, 0, 0, 0);
 
       const iso = toISODate(d);
+      const day = d.getDate();
       const inMonth = d.getMonth() === month;
       const allowed = inMonth && isDateAllowed(option, iso);
 
       return {
         iso,
-        day: d.getDate(),
+        day,
         inMonth,
         allowed,
         selected: selectedDate === iso,

@@ -1,0 +1,36 @@
+/* FILE: apps/storefront/src/app/checkout/_styles/checkout.tokens.css */
+
+:root {
+  --co-bg: #f4f4f4;
+  --co-surface: #ffffff;
+
+  --co-text: #111827;
+  --co-muted: #6b7280;
+  --co-faint: #9ca3af;
+
+  --co-soft: #fafafa;
+  --co-soft-2: #f3f4f6;
+
+  --co-border: #e5e7eb;
+  --co-border-strong: #d1d5db;
+
+  --co-black: #05070a;
+  --co-black-soft: #111827;
+
+  --co-gold: #d5c19a;
+  --co-gold-strong: #c8ad78;
+  --co-gold-dark: #8a641f;
+  --co-gold-soft: #fff8e8;
+
+  --co-danger: #b91c1c;
+  --co-danger-soft: #fff1f2;
+
+  --co-warning: #92400e;
+  --co-warning-soft: #fff7e6;
+
+  --co-radius: 0;
+  --co-page-width: 980px;
+
+  --co-shadow-card: 0 18px 42px rgba(15, 23, 42, 0.055);
+  --co-shadow-soft: 0 8px 24px rgba(15, 23, 42, 0.045);
+}

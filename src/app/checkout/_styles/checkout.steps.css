@@ -1,0 +1,560 @@
+/* FILE: apps/storefront/src/app/checkout/_styles/checkout.steps.css */
+
+.co-flow {
+  display: grid;
+  gap: 0;
+}
+
+.co-checkout-card {
+  overflow: hidden;
+  border: 1px solid var(--co-border);
+  background: #fff;
+  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.04);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Top progress steps                                                         */
+/* -------------------------------------------------------------------------- */
+
+.co-steps {
+  min-height: 70px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-items: center;
+  border: 1px solid var(--co-border);
+  border-bottom: 0;
+  background: #fff;
+  padding: 14px 28px 11px;
+}
+
+.co-steps__item {
+  position: relative;
+  min-width: 0;
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  border: 0;
+  background: transparent;
+  color: #a1a1aa;
+  font: inherit;
+  cursor: default;
+}
+
+.co-steps__item.is-clickable {
+  cursor: pointer;
+}
+
+.co-steps__item:disabled {
+  cursor: default;
+}
+
+.co-steps__item:not(:last-child) .co-steps__line {
+  position: absolute;
+  top: 15px;
+  inset-inline-start: calc(50% + 18px);
+  width: calc(100% - 36px);
+  height: 2px;
+  background: #d7dce2;
+}
+
+.co-steps__item.is-completed:not(:last-child) .co-steps__line,
+.co-steps__item.is-current:not(:last-child) .co-steps__line {
+  background: #05070a;
+}
+
+.co-steps__mark {
+  position: relative;
+  z-index: 1;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 2px solid #d7dce2;
+  border-radius: 999px;
+  background: #fff;
+  color: #9ca3af;
+  font-size: 12px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.co-steps__item.is-current .co-steps__mark {
+  border-color: #05070a;
+  background: #fff;
+  color: #05070a;
+  box-shadow: 0 0 0 4px rgba(5, 7, 10, 0.05);
+}
+
+.co-steps__item.is-completed .co-steps__mark {
+  border-color: #05070a;
+  background: #05070a;
+  color: #fff;
+}
+
+.co-steps__item.is-locked .co-steps__mark {
+  border-color: #d7dce2;
+  background: #fff;
+  color: #b7bdc7;
+}
+
+.co-steps__title {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 1.3;
+  font-weight: 950;
+}
+
+.co-steps__item.is-current .co-steps__title,
+.co-steps__item.is-completed .co-steps__title {
+  color: #111827;
+}
+
+.co-steps__item.is-locked .co-steps__title {
+  color: #a1a1aa;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Step shell                                                                 */
+/* -------------------------------------------------------------------------- */
+
+.co-step-shell {
+  position: relative;
+  border-top: 1px solid var(--co-border);
+  background: #fff;
+}
+
+.co-step-shell:first-child {
+  border-top: 0;
+}
+
+.co-step-shell.is-active,
+.co-step-shell.is-done {
+  background: #fff;
+}
+
+.co-step-shell.is-compact {
+  background: #fafafa;
+}
+
+.co-step-shell.is-done:has(.co-salla-saved-row) > .co-step-head {
+  display: none;
+}
+
+.co-step-head {
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 24px;
+}
+
+.co-step-shell.is-active .co-step-head {
+  border-bottom: 1px solid #f0f1f3;
+}
+
+.co-step-shell.is-done .co-step-head {
+  min-height: 72px;
+  padding: 16px 24px;
+}
+
+.co-step-shell.is-compact .co-step-head {
+  min-height: 58px;
+  padding: 13px 24px;
+  opacity: 0.72;
+}
+
+.co-step-head__main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.co-step-icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--co-border);
+  border-radius: 999px;
+  background: #fff;
+  color: #111827;
+}
+
+.co-step-shell.is-active .co-step-icon,
+.co-step-shell.is-done .co-step-icon {
+  border-color: #05070a;
+  background: #05070a;
+  color: #fff;
+}
+
+.co-step-shell.is-locked .co-step-icon {
+  border-color: #e5e7eb;
+  background: #f9fafb;
+  color: #9ca3af;
+}
+
+.co-step-title-wrap {
+  min-width: 0;
+}
+
+.co-step-title-row {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.co-step-title-row h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.25;
+  font-weight: 950;
+  letter-spacing: -0.01em;
+  color: #111827;
+}
+
+.co-step-title-wrap p {
+  margin: 3px 0 0;
+  font-size: 12px;
+  font-weight: 750;
+  color: #6b7280;
+  line-height: 1.55;
+}
+
+.co-step-locked-text {
+  color: #9ca3af !important;
+}
+
+.co-chip {
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--co-border);
+  border-radius: 999px;
+  background: #f9fafb;
+  color: #6b7280;
+  padding-inline: 8px;
+  font-size: 10.5px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.co-chip--success {
+  border-color: #e3c993;
+  background: #fff7e6;
+  color: #76521d;
+}
+
+.co-chip--locked {
+  background: #f3f4f6;
+  color: #9ca3af;
+}
+
+.co-chip--active {
+  border-color: #05070a;
+  background: #05070a;
+  color: #fff;
+}
+
+.co-edit-btn {
+  height: 34px;
+  min-width: 74px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  border: 1px solid #d9dde4;
+  border-radius: 4px;
+  background: #fff;
+  padding-inline: 12px;
+  color: #374151;
+  font-size: 12.5px;
+  font-weight: 950;
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    transform 150ms ease;
+}
+
+.co-edit-btn:hover {
+  background: #f9fafb;
+  border-color: #cfd4dc;
+}
+
+.co-edit-btn:active {
+  transform: scale(0.98);
+}
+
+.co-step-body {
+  padding: 0 24px 24px;
+}
+
+.co-step-body.is-disabled {
+  pointer-events: none;
+}
+
+.co-step-shell.is-done .co-step-body {
+  padding: 0;
+}
+
+.co-step-shell.is-done:not(:has(.co-salla-saved-row)) .co-step-body {
+  padding: 0 24px 20px;
+}
+
+.co-step-shell.is-active .co-step-body {
+  padding-top: 0;
+}
+
+.co-step-extra {
+  border-top: 1px solid var(--co-border);
+  padding: 16px 24px;
+  background: #fff;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Payment button safety                                                      */
+/* -------------------------------------------------------------------------- */
+
+.co-payment-final-btn {
+  width: 100%;
+  min-height: 54px;
+  height: 54px;
+  padding: 0 18px;
+  margin-top: 16px;
+  border: 0;
+  border-radius: 0;
+  background: #050505;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1;
+  text-align: center;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.co-payment-final-btn:hover {
+  background: #111;
+  color: #fff;
+}
+
+.co-payment-final-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.co-payment-final-btn * {
+  line-height: 1;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Flow messages                                                              */
+/* -------------------------------------------------------------------------- */
+
+.co-flow-error {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-bottom: 1px solid rgba(220, 38, 38, 0.14);
+  background: #fff1f2;
+  color: #b91c1c;
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 950;
+  line-height: 1.6;
+}
+
+.co-gate-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border: 1px solid var(--co-border);
+  background: #fff;
+  padding: 16px;
+}
+
+.co-gate-card__icon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  background: #05070a;
+  color: #fff;
+  border-radius: 999px;
+}
+
+.co-gate-card__title {
+  font-size: 15px;
+  font-weight: 950;
+  color: #111827;
+}
+
+.co-gate-card__text {
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #6b7280;
+  line-height: 1.7;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Helpers                                                                    */
+/* -------------------------------------------------------------------------- */
+
+.co-step-shell.is-active:has(.co-payment-grid) .co-step-body {
+  padding-bottom: 0;
+}
+
+.co-step-shell.is-done:has(.co-payment-final-btn) .co-step-body {
+  padding: 0;
+}
+
+.co-step-shell.is-done:has(.co-payment-final-btn) {
+  border-bottom: 0;
+}
+
+.co-step-shell.is-done .co-payment-final-btn {
+  margin: 0;
+  border-radius: 0;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Mobile                                                                     */
+/* -------------------------------------------------------------------------- */
+
+@media (max-width: 1023px) {
+  .co-checkout-card {
+    border-inline: 0;
+    box-shadow: none;
+  }
+
+  .co-steps {
+    min-height: 64px;
+    padding: 11px 10px 9px;
+  }
+
+  .co-steps__mark {
+    width: 28px;
+    height: 28px;
+    font-size: 10.5px;
+  }
+
+  .co-steps__item {
+    gap: 6px;
+  }
+
+  .co-steps__item:not(:last-child) .co-steps__line {
+    top: 13px;
+    inset-inline-start: calc(50% + 15px);
+    width: calc(100% - 30px);
+  }
+
+  .co-steps__title {
+    font-size: 10px;
+  }
+
+  .co-step-head {
+    min-height: 68px;
+    padding: 14px;
+    gap: 10px;
+  }
+
+  .co-step-shell.is-done .co-step-head {
+    min-height: 64px;
+    padding: 13px 14px;
+  }
+
+  .co-step-shell.is-compact .co-step-head {
+    min-height: 54px;
+    padding: 12px 14px;
+  }
+
+  .co-step-head__main {
+    gap: 10px;
+  }
+
+  .co-step-icon {
+    width: 36px;
+    height: 36px;
+  }
+
+  .co-step-title-row h2 {
+    font-size: 16px;
+  }
+
+  .co-step-title-wrap p {
+    font-size: 11.5px;
+  }
+
+  .co-chip {
+    min-height: 20px;
+    padding-inline: 7px;
+    font-size: 10px;
+  }
+
+  .co-edit-btn {
+    height: 31px;
+    min-width: 62px;
+    padding-inline: 9px;
+    font-size: 12px;
+  }
+
+  .co-step-body {
+    padding: 0 14px 16px;
+  }
+
+  .co-step-shell.is-done .co-step-body {
+    padding: 0;
+  }
+
+  .co-step-shell.is-done:not(:has(.co-salla-saved-row)) .co-step-body {
+    padding: 0 14px 16px;
+  }
+
+  .co-step-extra {
+    padding: 14px;
+  }
+
+  .co-flow-error {
+    min-height: 40px;
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+
+  .co-payment-final-btn {
+    min-height: 56px;
+    height: 56px;
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 640px) {
+  .co-steps {
+    padding-inline: 6px;
+  }
+
+  .co-steps__title {
+    font-size: 9.5px;
+  }
+
+  .co-step-title-row h2 {
+    font-size: 15px;
+  }
+}

@@ -1,5 +1,4 @@
 // FILE: apps/storefront/src/app/checkout/page.tsx
-
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { cookies } from "next/headers";
@@ -15,7 +14,24 @@ import { verifySession } from "@/lib/auth/session";
 import { supabaseAdmin } from "@/data/store/supabase.server";
 import { getStoreMaintenanceSettings } from "@/data/store/maintenance";
 import { renderMalakMaintenancePage } from "@/themes/malak/screens/maintenance/render-maintenance-page";
+import {
+  buildCartSummary,
+  type CartSummaryOut,
+} from "@/app/(store)/api/checkout/lib/summary";
+
 export const dynamic = "force-dynamic";
+
+type CheckoutInitialState = {
+  address_id: string | null;
+  shipping_id: string | null;
+  payment_method: string | null;
+};
+
+type CheckoutPageState = {
+  hasItems: boolean;
+  state: CheckoutInitialState;
+  summary: CartSummaryOut | null;
+};
 
 async function getCustomerIdFromSession() {
   const jar = await cookies();
@@ -30,147 +46,186 @@ async function getCustomerIdFromSession() {
   }
 }
 
-async function hasOpenCartItems(storeId: string, customerId: string) {
+async function getOpenCartCheckoutState(
+  storeId: string,
+  customerId: string,
+): Promise<CheckoutPageState> {
   const sb: any = supabaseAdmin();
+
+  const emptyState: CheckoutInitialState = {
+    address_id: null,
+    shipping_id: null,
+    payment_method: null,
+  };
 
   const cartR = await sb
     .from("carts")
-    .select("id")
+    .select("id,address_id,shipping_id,payment_method,item_count")
     .eq("store_id", storeId)
     .eq("user_id", customerId)
     .eq("status", "open")
     .limit(1)
     .maybeSingle();
 
-  if (cartR.error) {
-    throw new Error(cartR.error.message);
+  if (cartR.error) throw new Error(cartR.error.message);
+
+  const cartId = cartR.data?.id ? String(cartR.data.id) : "";
+
+  if (!cartId) {
+    return {
+      hasItems: false,
+      state: emptyState,
+      summary: null,
+    };
   }
 
-  const cartId = cartR.data?.id ? String(cartR.data.id) : null;
-  if (!cartId) return false;
+  const state: CheckoutInitialState = {
+    address_id: cartR.data.address_id ? String(cartR.data.address_id) : null,
+    shipping_id: cartR.data.shipping_id ? String(cartR.data.shipping_id) : null,
+    payment_method: cartR.data.payment_method
+      ? String(cartR.data.payment_method)
+      : null,
+  };
 
-  const itemsR = await sb
-    .from("cart_items")
-    .select("id", { count: "exact", head: true })
-    .eq("cart_id", cartId);
+  let hasItems = Number(cartR.data.item_count ?? 0) > 0;
 
-  if (itemsR.error) {
-    throw new Error(itemsR.error.message);
+  /*
+   * حماية من item_count لو كان قديم أو غير محدث.
+   * لا نفحص cart_items إلا إذا item_count طلع صفر.
+   */
+  if (!hasItems) {
+    const itemsR = await sb
+      .from("cart_items")
+      .select("id", { count: "exact", head: true })
+      .eq("cart_id", cartId);
+
+    if (itemsR.error) throw new Error(itemsR.error.message);
+
+    hasItems = Number(itemsR.count ?? 0) > 0;
   }
 
-  return Number(itemsR.count ?? 0) > 0;
+  if (!hasItems) {
+    return {
+      hasItems: false,
+      state,
+      summary: null,
+    };
+  }
+
+  let summary: CartSummaryOut | null = null;
+
+  try {
+    summary = await buildCartSummary({
+      store_id: storeId,
+      cart_id: cartId,
+    });
+
+    if (Array.isArray(summary.items) && summary.items.length === 0) {
+      return {
+        hasItems: false,
+        state,
+        summary: null,
+      };
+    }
+  } catch (error) {
+    /*
+     * لا نكسر صفحة الدفع إذا فشل بناء الملخص الأولي.
+     * OrderSummary سيعمل fallback ويطلب /api/checkout/prepare.
+     */
+    console.error("[checkout] initial summary failed", error);
+  }
+
+  return {
+    hasItems: true,
+    state,
+    summary,
+  };
 }
 
 function CheckoutUnavailableState() {
   return (
-    <section className="mx-auto w-full max-w-3xl px-4 py-8 lg:py-14">
-      <div className="overflow-hidden rounded-[28px] border border-zinc-200 bg-white shadow-[0_22px_70px_rgba(15,23,42,0.08)] sm:rounded-[30px]">
-        <div className="border-b border-zinc-200 bg-zinc-50 px-5 py-5 sm:px-6">
-          <div className="text-xs font-extrabold text-zinc-500">
-            إتمام الطلب
+    <main className="co-page">
+      <section className="co-container co-unavailable-wrap">
+        <div className="co-empty-card">
+          <div className="co-empty-card__head">
+            <div className="co-eyebrow">إتمام الطلب</div>
+            <h1>تعذر متابعة الدفع</h1>
           </div>
 
-          <h1 className="mt-1 text-2xl font-black tracking-tight text-zinc-950">
-            تعذر متابعة الدفع
-          </h1>
-        </div>
+          <div className="co-empty-card__body">
+            <div className="co-alert co-alert--warning">
+              بعض المنتجات في طلبك لم تعد متاحة، أو تم إخفاؤها من المتجر، لذلك لا
+              يمكن إكمال عملية الدفع بهذه السلة.
+            </div>
 
-        <div className="space-y-4 px-5 py-5 sm:px-6">
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm leading-7 text-amber-900">
-            بعض المنتجات في طلبك لم تعد متاحة، أو تم إخفاؤها من المتجر، لذلك لا
-            يمكن إكمال عملية الدفع بهذه السلة.
-          </div>
+            <div className="co-note">
+              قد يكون السبب أحد الحالات التالية:
+              <div className="co-note__list">
+                <div>• تم إخفاء المنتج من الإدارة.</div>
+                <div>• المنتج لم يعد متاحًا في الويب.</div>
+                <div>• نفدت الكمية أثناء وجودك في صفحة الدفع.</div>
+              </div>
+            </div>
 
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4 text-sm leading-7 text-zinc-700">
-            قد يكون السبب أحد الحالات التالية:
-            <div className="mt-2 space-y-1">
-              <div>• تم إخفاء المنتج من الإدارة.</div>
-              <div>• المنتج لم يعد متاحًا في الويب.</div>
-              <div>• نفدت الكمية أثناء وجودك في صفحة الدفع.</div>
+            <div className="co-actions-row">
+              <Link href="/cart" className="co-btn co-btn--dark">
+                العودة إلى سلة التسوق
+              </Link>
+
+              <Link href="/" className="co-btn co-btn--light">
+                متابعة التسوق
+              </Link>
             </div>
           </div>
-
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <Link
-              href="/cart"
-              className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-zinc-950 px-5 text-sm font-extrabold text-white transition hover:bg-zinc-800"
-            >
-              العودة إلى سلة التسوق
-            </Link>
-
-            <Link
-              href="/"
-              className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-zinc-200 bg-white px-5 text-sm font-bold text-zinc-700 transition hover:bg-zinc-50"
-            >
-              متابعة التسوق
-            </Link>
-          </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </main>
   );
 }
 
 export default async function CheckoutPage() {
   const ctx = await resolveStoreContext();
   if (!ctx.store) return notFound();
-const maintenance = await getStoreMaintenanceSettings(ctx.store.id);
 
-if (maintenance.enabled) {
-  return await renderMalakMaintenancePage({
-    ctx,
-    settings: maintenance,
-  });
-}
+  const maintenance = await getStoreMaintenanceSettings(ctx.store.id);
+
+  if (maintenance.enabled) {
+    return await renderMalakMaintenancePage({
+      ctx,
+      settings: maintenance,
+    });
+  }
+
   const customerId = await getCustomerIdFromSession();
 
   if (!customerId) {
     redirect("/cart?auth=1");
   }
 
-  const hasItems = await hasOpenCartItems(ctx.store.id, customerId);
+  const cartState = await getOpenCartCheckoutState(ctx.store.id, customerId);
 
   return (
     <>
       <CheckoutHeader storeName={ctx.store.name} logoUrl={ctx.store.logo_url} />
       <CheckoutUiLock />
 
-      {!hasItems ? (
+      {!cartState.hasItems ? (
         <CheckoutUnavailableState />
       ) : (
-        <main
-          className={[
-            "mx-auto w-full max-w-[1320px]",
-            "px-2.5 pt-3 sm:px-4 sm:pt-4",
-            "pb-[calc(9rem+env(safe-area-inset-bottom))]",
-            "lg:px-4 lg:pb-7 lg:pt-7",
-          ].join(" ")}
-        >
-          <div
-            className={[
-              "w-full",
-              "lg:rounded-[34px] lg:border lg:border-zinc-200 lg:bg-[#fffefa]",
-              "lg:p-5 lg:shadow-[0_28px_90px_rgba(15,23,42,0.09)]",
-            ].join(" ")}
-          >
-            <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-12 lg:gap-5">
-              <section className="space-y-3.5 lg:col-span-8 lg:space-y-4">
-                <CompleteProfileGate />
-                <CheckoutFlow />
-              </section>
+        <main className="co-page">
+          <div className="co-container">
+            <CompleteProfileGate />
+            <CheckoutSummarySlot initialSummary={cartState.summary} />
 
-              <aside className="lg:col-span-4">
-                <CheckoutSummarySlot />
-              </aside>
-            </div>
+            <section className="co-checkout-area">
+              <CheckoutFlow initialState={cartState.state} />
+            </section>
           </div>
         </main>
       )}
 
-      <footer className="hidden py-6 lg:block">
-        <div className="mx-auto max-w-7xl px-4 text-center text-xs leading-6 text-zinc-500">
-          تجربة دفع آمنة وسريعة — راجع بياناتك قبل تأكيد الطلب.
-        </div>
+      <footer className="co-footer">
+        دفع آمن ومشفّر — راجع بياناتك قبل تأكيد الطلب.
       </footer>
     </>
   );

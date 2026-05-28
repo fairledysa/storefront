@@ -25,6 +25,11 @@ type StoreOrderOptionChoiceRow = {
   option_id: string;
   label: string;
   price_customer?: number | string | null;
+  price_customer_raw?: number | string | null;
+  priceCustomerRaw?: number | string | null;
+  price_customer_display?: number | string | null;
+  priceCustomerDisplay?: number | string | null;
+  currency?: string | null;
   cost?: number | string | null;
   weight_kg?: number | string | null;
   sort_order?: number | string | null;
@@ -52,6 +57,8 @@ export type CartOrderOptionSummaryLine = {
     label: string;
     price_customer: number;
     priceCustomer: number;
+    price_customer_raw?: number;
+    priceCustomerRaw?: number;
   }>;
   metadata: Record<string, any>;
   price_customer: number;
@@ -350,6 +357,27 @@ function readCategoryIdsFromOptionMetadata(option: StoreOrderOptionRow) {
   );
 }
 
+function readRawChoicePrice(choice: any) {
+  return Math.max(
+    0,
+    n(
+      choice?.price_customer_raw ??
+        choice?.priceCustomerRaw ??
+        choice?.raw_price_customer ??
+        choice?.rawPriceCustomer ??
+        choice?.price_customer_base ??
+        choice?.priceCustomerBase ??
+        choice?.base_price_customer ??
+        choice?.basePriceCustomer ??
+        choice?.price_customer ??
+        choice?.priceCustomer ??
+        choice?.price ??
+        choice?.amount ??
+        0,
+    ),
+  );
+}
+
 function readChoiceRowsFromOptionMetadata(
   option: StoreOrderOptionRow,
 ): StoreOrderOptionChoiceRow[] {
@@ -385,16 +413,22 @@ function readChoiceRowsFromOptionMetadata(
       s(choice?.valueId) ||
       label;
 
+    const rawPrice = readRawChoicePrice(choice);
+
     rows.push({
       id,
       option_id: option.id,
       label,
-      price_customer:
+      price_customer: rawPrice,
+      price_customer_raw: rawPrice,
+      price_customer_display:
+        choice?.price_customer_display ??
+        choice?.priceCustomerDisplay ??
+        choice?.display_price_customer ??
+        choice?.displayPriceCustomer ??
         choice?.price_customer ??
         choice?.priceCustomer ??
-        choice?.price ??
-        choice?.amount ??
-        0,
+        rawPrice,
       cost: choice?.cost ?? 0,
       weight_kg: choice?.weight_kg ?? choice?.weightKg ?? 0,
       sort_order: choice?.sort_order ?? choice?.sortOrder ?? index,
@@ -418,12 +452,20 @@ function mergeChoicesForOption(args: {
     const id = s(choice.id);
     if (!id) continue;
 
+    const rawPrice = readRawChoicePrice(choice);
+
     map.set(id, {
       ...choice,
       id,
       option_id: args.option.id,
       label: s(choice.label),
-      price_customer: choice.price_customer ?? 0,
+      price_customer: rawPrice,
+      price_customer_raw: rawPrice,
+      price_customer_display:
+        choice.price_customer_display ??
+        choice.priceCustomerDisplay ??
+        choice.price_customer ??
+        rawPrice,
       cost: choice.cost ?? 0,
       weight_kg: choice.weight_kg ?? 0,
       sort_order: choice.sort_order ?? 0,
@@ -487,16 +529,28 @@ async function loadOptionCategoryLinks(args: {
   storeId: string;
   optionIds: string[];
 }) {
-  const optionIds = uniq(args.optionIds).filter(isUuidLike);
+  const optionIds = uniq(args.optionIds);
   const map = new Map<string, string[]>();
 
   if (optionIds.length === 0) return map;
 
-  const r = await args.sb
-    .from("store_order_option_categories")
-    .select("option_id,category_id")
-    .eq("store_id", args.storeId)
-    .in("option_id", optionIds);
+  async function run(ids: string[]) {
+    return await args.sb
+      .from("store_order_option_categories")
+      .select("option_id,category_id")
+      .eq("store_id", args.storeId)
+      .in("option_id", ids);
+  }
+
+  let r = await run(optionIds);
+
+  if (r.error) {
+    const uuidIds = optionIds.filter(isUuidLike);
+
+    if (uuidIds.length > 0 && uuidIds.length !== optionIds.length) {
+      r = await run(uuidIds);
+    }
+  }
 
   if (r.error || !Array.isArray(r.data)) return map;
 
@@ -519,7 +573,7 @@ async function loadChoices(args: {
   storeId: string;
   optionIds: string[];
 }) {
-  const optionIds = uniq(args.optionIds).filter(isUuidLike);
+  const optionIds = uniq(args.optionIds);
   const map = new Map<string, StoreOrderOptionChoiceRow[]>();
 
   if (optionIds.length === 0) return map;
@@ -532,33 +586,53 @@ async function loadChoices(args: {
 
   let lastError: any = null;
 
-  for (const select of selects) {
-    const r = await args.sb
+  async function run(select: string, ids: string[]) {
+    return await args.sb
       .from("store_order_option_choices")
       .select(select)
       .eq("store_id", args.storeId)
-      .in("option_id", optionIds)
+      .in("option_id", ids)
       .order("sort_order", { ascending: true });
+  }
+
+  function collect(rows: any[]) {
+    for (const row of Array.isArray(rows) ? rows : []) {
+      const optionId = s(row.option_id);
+      if (!optionId) continue;
+
+      const rawPrice = readRawChoicePrice(row);
+      const list = map.get(optionId) ?? [];
+
+      list.push({
+        id: s(row.id),
+        option_id: optionId,
+        label: s(row.label),
+        price_customer: rawPrice,
+        price_customer_raw: rawPrice,
+        price_customer_display: row.price_customer ?? rawPrice,
+        cost: row.cost ?? 0,
+        weight_kg: row.weight_kg ?? 0,
+        sort_order: row.sort_order ?? 0,
+        source: "table",
+      });
+
+      map.set(optionId, list);
+    }
+  }
+
+  for (const select of selects) {
+    let r = await run(select, optionIds);
+
+    if (r.error) {
+      const uuidIds = optionIds.filter(isUuidLike);
+
+      if (uuidIds.length > 0 && uuidIds.length !== optionIds.length) {
+        r = await run(select, uuidIds);
+      }
+    }
 
     if (!r.error) {
-      for (const row of Array.isArray(r.data) ? r.data : []) {
-        const optionId = s(row.option_id);
-        if (!optionId) continue;
-
-        const list = map.get(optionId) ?? [];
-        list.push({
-          id: s(row.id),
-          option_id: optionId,
-          label: s(row.label),
-          price_customer: row.price_customer ?? 0,
-          cost: row.cost ?? 0,
-          weight_kg: row.weight_kg ?? 0,
-          sort_order: row.sort_order ?? 0,
-          source: "table",
-        });
-        map.set(optionId, list);
-      }
-
+      collect(r.data);
       return map;
     }
 
@@ -733,16 +807,23 @@ function readSelectedChoicesFromPayload(
       s(choice?.valueId) ||
       label;
 
+    const rawPrice = readRawChoicePrice(choice);
+
     out.push({
       id,
       option_id: s(answer?.option_id),
       label,
-      price_customer:
+      price_customer: rawPrice,
+      price_customer_raw: rawPrice,
+      price_customer_display:
+        choice?.price_customer_display ??
+        choice?.priceCustomerDisplay ??
+        choice?.display_price_customer ??
+        choice?.displayPriceCustomer ??
         choice?.price_customer ??
         choice?.priceCustomer ??
-        choice?.price ??
-        choice?.amount ??
-        0,
+        rawPrice,
+      currency: choice?.currency ?? null,
       cost: choice?.cost ?? 0,
       weight_kg: choice?.weight_kg ?? choice?.weightKg ?? 0,
       sort_order: choice?.sort_order ?? choice?.sortOrder ?? index,
@@ -965,15 +1046,25 @@ function normalizeOneAnswer(args: {
     const allChoiceIds = finalChoices.map((choice) => s(choice.id)).filter(Boolean);
     const dbChoiceIds = allChoiceIds.filter(isUuidLike);
 
-    const choicesSnapshot = finalChoices.map((choice) => ({
-      id: s(choice.id),
-      label: s(choice.label),
-      price_customer: Math.max(0, n(choice.price_customer)),
-    }));
+    const choicesSnapshot = finalChoices.map((choice) => {
+      const rawPrice = readRawChoicePrice(choice);
+
+      return {
+        id: s(choice.id),
+        label: s(choice.label),
+        price_customer: rawPrice,
+        price_customer_raw: rawPrice,
+        price_customer_display:
+          choice.price_customer_display ??
+          choice.priceCustomerDisplay ??
+          choice.price_customer ??
+          rawPrice,
+      };
+    });
 
     const price = round2(
       choicesSnapshot.reduce(
-        (acc, choice) => acc + Math.max(0, n(choice.price_customer)),
+        (acc, choice) => acc + Math.max(0, n(choice.price_customer_raw)),
         0,
       ),
     );
@@ -1314,7 +1405,11 @@ export async function loadCartOrderOptionsSummary(args: {
       choice_ids: normalized.row.choice_ids,
       choiceIds: normalized.row.choice_ids,
       choices: choicesSnapshot.map((choice: any) => {
-        const rawChoicePrice = Math.max(0, n(choice.price_customer));
+        const rawChoicePrice = Math.max(
+          0,
+          n(choice.price_customer_raw ?? choice.priceCustomerRaw ?? choice.price_customer),
+        );
+
         const convertedChoicePrice = round2(
           args.convertFromStoreCurrency(rawChoicePrice),
         );
@@ -1324,6 +1419,8 @@ export async function loadCartOrderOptionsSummary(args: {
           label: s(choice.label),
           price_customer: convertedChoicePrice,
           priceCustomer: convertedChoicePrice,
+          price_customer_raw: rawChoicePrice,
+          priceCustomerRaw: rawChoicePrice,
         };
       }),
       metadata: normalized.row.metadata,

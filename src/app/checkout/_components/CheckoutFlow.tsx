@@ -1,7 +1,8 @@
 // FILE: apps/storefront/src/app/checkout/_components/CheckoutFlow.tsx
+
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import CheckoutSteps from "./CheckoutSteps";
 import AddressStep from "./AddressStep";
 import ShippingStep from "./ShippingStep";
@@ -13,9 +14,22 @@ import { AlertTriangle, Loader2, LockKeyhole } from "lucide-react";
 
 type StepKey = "address" | "shipping" | "payment";
 
+type CheckoutInitialState = {
+  address_id?: string | null;
+  shipping_id?: string | null;
+  payment_method?: string | null;
+};
+
+type DoneState = {
+  address: boolean;
+  shipping: boolean;
+  payment: boolean;
+};
+
 type ConfirmResult = {
   ok?: boolean;
   summary?: any;
+  summary_pending?: boolean;
   cart?: {
     id?: string;
     address_id?: string | null;
@@ -34,6 +48,7 @@ type ConfirmResult = {
 type OrderOptionsGateState = {
   valid: boolean;
   loading: boolean;
+  saving: boolean;
   requiredCount: number;
   answers: CheckoutOrderOptionAnswer[];
 };
@@ -41,6 +56,7 @@ type OrderOptionsGateState = {
 const ORDER_OPTIONS_READY: OrderOptionsGateState = {
   valid: true,
   loading: false,
+  saving: false,
   requiredCount: 0,
   answers: [],
 };
@@ -48,17 +64,10 @@ const ORDER_OPTIONS_READY: OrderOptionsGateState = {
 const ORDER_OPTIONS_PENDING: OrderOptionsGateState = {
   valid: false,
   loading: true,
+  saving: false,
   requiredCount: 0,
   answers: [],
 };
-
-async function safeJson(r: Response) {
-  try {
-    return await r.json();
-  } catch {
-    return null;
-  }
-}
 
 function s(x: any) {
   return String(x ?? "").trim();
@@ -67,6 +76,14 @@ function s(x: any) {
 function n(x: any) {
   const v = Number(x ?? 0);
   return Number.isFinite(v) ? v : 0;
+}
+
+async function safeJson(r: Response) {
+  try {
+    return await r.json();
+  } catch {
+    return null;
+  }
 }
 
 function dispatchCheckoutEvent(name: string, detail?: any) {
@@ -103,6 +120,28 @@ function readAddressId(result: ConfirmResult | null | undefined) {
 
 function readShippingId(result: ConfirmResult | null | undefined) {
   return s(result?.state?.shipping_id) || s(result?.cart?.shipping_id);
+}
+
+function readPaymentMethod(result: ConfirmResult | null | undefined) {
+  return s(result?.state?.payment_method) || s(result?.cart?.payment_method);
+}
+
+function buildInitialDone(state?: CheckoutInitialState): DoneState {
+  const address = Boolean(s(state?.address_id));
+  const shipping = Boolean(address && s(state?.shipping_id));
+  const payment = Boolean(address && shipping && s(state?.payment_method));
+
+  return { address, shipping, payment };
+}
+
+function pickInitialActive(done: DoneState): StepKey {
+  if (!done.address) return "address";
+  if (!done.shipping) return "shipping";
+  return "payment";
+}
+
+function cAddressChanged(prev?: string, next?: string) {
+  return Boolean(prev && next && prev !== next);
 }
 
 function toFriendlyCheckoutError(error: unknown) {
@@ -156,14 +195,18 @@ function toFriendlyCheckoutError(error: unknown) {
     return "تعذر العثور على سلة نشطة. ارجع للسلة وحاول مرة أخرى.";
   }
 
+  if (raw === "ORDER_OPTIONS_REQUIRED") {
+    return "أكمل خيارات الطلب أولًا قبل اختيار طريقة الدفع.";
+  }
+
   return raw || "تعذر تنفيذ العملية. حاول مرة أخرى.";
 }
 
 function CheckoutBusyOverlay({ label }: { label: string }) {
   return (
-    <div className="fixed inset-0 z-[95] flex cursor-wait items-center justify-center bg-white/35 backdrop-blur-[1px]">
-      <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-4 py-2.5 text-[12px] font-black text-zinc-600 shadow-[0_18px_50px_rgba(15,23,42,0.14)]">
-        <Loader2 className="h-4 w-4 animate-spin text-zinc-950" />
+    <div className="co-busy-overlay">
+      <div className="co-busy-pill">
+        <Loader2 className="co-spin" size={16} />
         {label}
       </div>
     </div>
@@ -178,28 +221,26 @@ function OrderOptionsGateCard({
   requiredCount: number;
 }) {
   return (
-    <div className="rounded-[30px] border border-zinc-200 bg-white p-5 text-right shadow-[0_18px_60px_rgba(15,23,42,0.055)]">
-      <div className="flex items-start gap-3">
-        <span className="mt-0.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[20px] bg-zinc-950 text-white">
-          {loading ? (
-            <Loader2 className="h-5 w-5 animate-spin" />
-          ) : (
-            <LockKeyhole className="h-5 w-5" />
-          )}
-        </span>
+    <div className="co-gate-card">
+      <span className="co-gate-card__icon">
+        {loading ? (
+          <Loader2 className="co-spin" size={18} />
+        ) : (
+          <LockKeyhole size={18} />
+        )}
+      </span>
 
-        <div className="min-w-0 flex-1">
-          <div className="text-[16px] font-black text-zinc-950">
-            {loading ? "جاري حفظ خيارات الطلب..." : "أكمل خيارات الطلب أولًا"}
-          </div>
+      <div>
+        <div className="co-gate-card__title">
+          {loading ? "جاري تحميل خيارات الطلب..." : "أكمل خيارات الطلب أولًا"}
+        </div>
 
-          <div className="mt-1 text-[12px] font-bold leading-6 text-zinc-500">
-            {loading
-              ? "نحفظ اختياراتك ونحدّث ملخص الطلب قبل عرض طرق الدفع."
-              : requiredCount > 0
-                ? "عبّئ الخيارات المطلوبة أعلاه، وبعدها ستظهر طرق الدفع مباشرة."
-                : "سيتم عرض طرق الدفع بعد تحديث ملخص الطلب."}
-          </div>
+        <div className="co-gate-card__text">
+          {loading
+            ? "نجهز خيارات الطلب المطلوبة من المتجر."
+            : requiredCount > 0
+              ? "عبّئ الخيارات المطلوبة، وبعدها ستظهر طرق الدفع مباشرة."
+              : "سيتم عرض طرق الدفع بعد تحديث خيارات الطلب."}
         </div>
       </div>
     </div>
@@ -209,52 +250,70 @@ function OrderOptionsGateCard({
 function getBusyLabel(step: StepKey | null) {
   if (step === "address") return "جاري اعتماد العنوان...";
   if (step === "shipping") return "جاري اعتماد شركة الشحن...";
-  if (step === "payment") return "جاري اعتماد طريقة الدفع...";
   return "جاري المعالجة...";
 }
 
-export default function CheckoutFlow() {
-  const [active, setActive] = useState<StepKey>("address");
+export default function CheckoutFlow({
+  initialState,
+}: {
+  initialState?: CheckoutInitialState;
+}) {
+  const initialDone = useMemo(
+    () => buildInitialDone(initialState),
+    [initialState],
+  );
+
+  const [active, setActive] = useState<StepKey>(() =>
+    pickInitialActive(initialDone),
+  );
+
   const [busyStep, setBusyStep] = useState<StepKey | null>(null);
   const [flowError, setFlowError] = useState("");
-
-  const [done, setDone] = useState({
-    address: false,
-    shipping: false,
-    payment: false,
-  });
+  const [done, setDone] = useState<DoneState>(initialDone);
 
   const [confirmed, setConfirmed] = useState<{
     addressId?: string;
     shippingId?: string;
-  }>({});
+    paymentMethod?: string;
+  }>(() => ({
+    addressId: s(initialState?.address_id) || undefined,
+    shippingId: s(initialState?.shipping_id) || undefined,
+    paymentMethod: s(initialState?.payment_method) || undefined,
+  }));
 
-  const [orderOptions, setOrderOptions] =
-    useState<OrderOptionsGateState>(ORDER_OPTIONS_READY);
+  const [orderOptions, setOrderOptions] = useState<OrderOptionsGateState>(() =>
+    initialDone.shipping ? ORDER_OPTIONS_PENDING : ORDER_OPTIONS_READY,
+  );
 
   const isBusy = busyStep !== null;
-
   const orderOptionsEnabled = Boolean(done.shipping && confirmed.shippingId);
 
-  const orderOptionsReady =
+  const orderOptionsReadyForPayment =
     !orderOptionsEnabled || (orderOptions.valid && !orderOptions.loading);
+
+  const orderOptionsReadyForSubmit =
+    !orderOptionsEnabled ||
+    (orderOptions.valid && !orderOptions.loading && !orderOptions.saving);
 
   useEffect(() => {
     function onOrderOptionsChange(evt: Event) {
       const e = evt as CustomEvent<{
         valid?: boolean;
         loading?: boolean;
+        saving?: boolean;
         answers?: CheckoutOrderOptionAnswer[];
         requiredCount?: number;
       }>;
 
       const detail = e.detail || {};
       const loading = Boolean(detail.loading);
+      const saving = Boolean(detail.saving);
       const valid = Boolean(detail.valid) && !loading;
 
       setOrderOptions({
         valid,
         loading,
+        saving,
         answers: Array.isArray(detail.answers) ? detail.answers : [],
         requiredCount: Math.max(0, Math.floor(n(detail.requiredCount))),
       });
@@ -265,6 +324,11 @@ export default function CheckoutFlow() {
           payment: false,
         }));
 
+        setSubmitEnabled(false);
+        return;
+      }
+
+      if (saving) {
         setSubmitEnabled(false);
       }
     }
@@ -282,11 +346,18 @@ export default function CheckoutFlow() {
     };
   }, []);
 
+  useEffect(() => {
+    setSubmitEnabled(Boolean(done.payment && orderOptionsReadyForSubmit));
+  }, [done.payment, orderOptionsReadyForSubmit]);
+
   async function confirmCheckout(patch: Record<string, any>) {
     const r = await fetch("/api/checkout/confirm", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
+      body: JSON.stringify({
+        ...patch,
+        include_summary: false,
+      }),
       cache: "no-store",
       credentials: "same-origin",
     });
@@ -307,19 +378,13 @@ export default function CheckoutFlow() {
   }
 
   function resetAfterAddressChange(addressId?: string) {
-    setConfirmed({
-      addressId,
-    });
-
+    setConfirmed({ addressId });
     setOrderOptions(ORDER_OPTIONS_READY);
     setSubmitEnabled(false);
   }
 
   function resetAfterShippingChange(addressId?: string) {
-    setConfirmed({
-      addressId,
-    });
-
+    setConfirmed({ addressId });
     setOrderOptions(ORDER_OPTIONS_READY);
     setSubmitEnabled(false);
   }
@@ -334,7 +399,7 @@ export default function CheckoutFlow() {
       return;
     }
 
-    if (!orderOptionsReady) {
+    if (!orderOptionsReadyForPayment) {
       setFlowError("أكمل خيارات الطلب أولًا قبل تعديل الدفع.");
       setActive("payment");
       setSubmitEnabled(false);
@@ -342,26 +407,12 @@ export default function CheckoutFlow() {
     }
 
     setFlowError("");
-
-    setDone((d) => ({
-      ...d,
-      payment: false,
-    }));
-
     setActive("payment");
-    setSubmitEnabled(false);
+    setSubmitEnabled(Boolean(done.payment && orderOptionsReadyForSubmit));
   }
 
   function goToStep(step: StepKey) {
     if (isBusy) return;
-
-    if (step === active) {
-      if (step === "payment" && done.payment) {
-        editPaymentStep();
-      }
-
-      return;
-    }
 
     setFlowError("");
 
@@ -399,34 +450,34 @@ export default function CheckoutFlow() {
         return;
       }
 
-      setDone((d) => ({
-        ...d,
-        payment: false,
-      }));
+      if (!orderOptionsReadyForPayment) {
+        setFlowError("أكمل خيارات الطلب أولًا قبل الانتقال إلى الدفع.");
+        setActive("payment");
+        setSubmitEnabled(false);
+        return;
+      }
 
       setActive("payment");
-      setSubmitEnabled(false);
+      setSubmitEnabled(Boolean(done.payment && orderOptionsReadyForSubmit));
     }
   }
 
   return (
-    <section className="relative space-y-4">
+    <section className="co-flow" data-active-step={active}>
       {busyStep ? <CheckoutBusyOverlay label={getBusyLabel(busyStep)} /> : null}
 
-      <CheckoutSteps active={active} done={done} onStepClick={goToStep} />
+      <div className="co-checkout-card">
+        <CheckoutSteps active={active} done={done} onStepClick={goToStep} />
 
-      {flowError ? (
-        <div className="rounded-[18px] border border-red-500/15 bg-red-500/5 px-4 py-3 text-center text-[12px] font-bold leading-6 text-red-700">
-          <span className="inline-flex items-center justify-center gap-2">
-            <AlertTriangle className="h-4 w-4" />
+        {flowError ? (
+          <div className="co-flow-error">
+            <AlertTriangle size={17} />
             {flowError}
-          </span>
-        </div>
-      ) : null}
+          </div>
+        ) : null}
 
-      {active === "address" ? (
         <AddressStep
-          isActive={!isBusy}
+          isActive={active === "address" && !isBusy}
           isDone={done.address}
           confirmedId={confirmed.addressId}
           onEdit={() => goToStep("address")}
@@ -443,21 +494,30 @@ export default function CheckoutFlow() {
               const result = await confirmCheckout({ address_id: addressId });
 
               const serverAddressId = readAddressId(result) || addressId;
+
               const serverShippingId = addressChanged
                 ? ""
                 : readShippingId(result) || confirmed.shippingId || "";
 
+              const serverPaymentMethod =
+                !addressChanged && serverShippingId
+                  ? readPaymentMethod(result) || confirmed.paymentMethod || ""
+                  : "";
+
               setConfirmed({
                 addressId: serverAddressId,
                 shippingId: serverShippingId || undefined,
+                paymentMethod: serverPaymentMethod || undefined,
               });
 
-              setDone((d) => ({
-                ...d,
+              setDone({
                 address: true,
                 shipping: Boolean(serverShippingId) && !addressChanged,
-                payment: false,
-              }));
+                payment:
+                  Boolean(serverShippingId) &&
+                  Boolean(serverPaymentMethod) &&
+                  !addressChanged,
+              });
 
               if (serverShippingId && !addressChanged) {
                 setOrderOptions(ORDER_OPTIONS_PENDING);
@@ -468,7 +528,6 @@ export default function CheckoutFlow() {
               }
 
               pushSummary(result.summary);
-
               return result;
             } catch (e) {
               setFlowError(toFriendlyCheckoutError(e));
@@ -479,11 +538,9 @@ export default function CheckoutFlow() {
             }
           }}
         />
-      ) : null}
 
-      {active === "shipping" ? (
         <ShippingStep
-          isActive={!isBusy}
+          isActive={active === "shipping" && !isBusy}
           isDone={done.shipping}
           isLocked={!done.address || !confirmed.addressId}
           confirmedId={confirmed.shippingId}
@@ -505,6 +562,7 @@ export default function CheckoutFlow() {
               const result = await confirmCheckout({ shipping_id: shippingId });
 
               const serverShippingId = readShippingId(result) || shippingId;
+              const serverPaymentMethod = readPaymentMethod(result) || "";
 
               if (!serverShippingId) {
                 throw new Error("NEED_SHIPPING_FOR_PAYMENT");
@@ -513,12 +571,13 @@ export default function CheckoutFlow() {
               setConfirmed((c) => ({
                 addressId: c.addressId,
                 shippingId: serverShippingId,
+                paymentMethod: serverPaymentMethod || undefined,
               }));
 
               setDone((d) => ({
                 ...d,
                 shipping: true,
-                payment: false,
+                payment: Boolean(serverPaymentMethod),
               }));
 
               setActive("payment");
@@ -547,68 +606,78 @@ export default function CheckoutFlow() {
             }
           }}
         />
-      ) : null}
 
-      {active === "payment" && orderOptionsEnabled ? (
-        <CheckoutOrderOptions enabled={orderOptionsEnabled} />
-      ) : null}
+        {active === "payment" && orderOptionsEnabled ? (
+          <div className="co-step-extra co-step-extra--order-options">
+            <CheckoutOrderOptions enabled={orderOptionsEnabled} />
+          </div>
+        ) : null}
 
-      {active === "payment" ? (
-        orderOptionsReady ? (
-          <PaymentStep
-            isActive={!isBusy && Boolean(confirmed.shippingId)}
-            isDone={done.payment}
-            isLocked={!done.shipping || !confirmed.shippingId}
-            onEdit={editPaymentStep}
-            onConfirm={async (result) => {
-              setBusyStep("payment");
-              setFlowError("");
-              setSubmitEnabled(false);
+        {active === "payment" && !orderOptionsReadyForPayment ? (
+          <div className="co-step-extra co-step-extra--gate">
+            <OrderOptionsGateCard
+              loading={orderOptions.loading}
+              requiredCount={orderOptions.requiredCount}
+            />
+          </div>
+        ) : null}
 
-              try {
-                if (!orderOptionsReady) {
-                  throw new Error("ORDER_OPTIONS_REQUIRED");
-                }
+        <PaymentStep
+          isActive={
+            active === "payment" &&
+            !isBusy &&
+            Boolean(confirmed.shippingId) &&
+            orderOptionsReadyForPayment
+          }
+          isDone={done.payment}
+          isLocked={
+            !done.shipping ||
+            !confirmed.shippingId ||
+            !orderOptionsReadyForPayment
+          }
+          confirmedId={confirmed.paymentMethod}
+          onEdit={editPaymentStep}
+          onConfirm={async (result) => {
+            setFlowError("");
 
-                setDone((d) => ({
-                  ...d,
-                  payment: true,
-                }));
-
-                pushSummary((result as ConfirmResult | null)?.summary);
-                setSubmitEnabled(true);
-              } catch (e) {
-                const raw = s((e as any)?.message || e);
-
-                setFlowError(
-                  raw === "ORDER_OPTIONS_REQUIRED"
-                    ? "أكمل خيارات الطلب أولًا قبل اعتماد طريقة الدفع."
-                    : toFriendlyCheckoutError(e),
-                );
-
-                setDone((d) => ({
-                  ...d,
-                  payment: false,
-                }));
-
-                setSubmitEnabled(false);
-                console.error(e);
-              } finally {
-                setBusyStep(null);
+            try {
+              if (!orderOptionsReadyForPayment) {
+                throw new Error("ORDER_OPTIONS_REQUIRED");
               }
-            }}
-          />
-        ) : (
-          <OrderOptionsGateCard
-            loading={orderOptions.loading}
-            requiredCount={orderOptions.requiredCount}
-          />
-        )
-      ) : null}
+
+              const paymentMethod =
+                readPaymentMethod(result as ConfirmResult | null) ||
+                confirmed.paymentMethod ||
+                "";
+
+              setConfirmed((c) => ({
+                ...c,
+                paymentMethod: paymentMethod || c.paymentMethod,
+              }));
+
+              setDone((d) => ({
+                ...d,
+                payment: true,
+              }));
+
+              setActive("payment");
+              pushSummary((result as ConfirmResult | null)?.summary);
+              setSubmitEnabled(Boolean(orderOptionsReadyForSubmit));
+            } catch (e) {
+              setFlowError(toFriendlyCheckoutError(e));
+
+              setDone((d) => ({
+                ...d,
+                payment: false,
+              }));
+
+              setActive("payment");
+              setSubmitEnabled(false);
+              console.error(e);
+            }
+          }}
+        />
+      </div>
     </section>
   );
-}
-
-function cAddressChanged(prev?: string, next?: string) {
-  return Boolean(prev && next && prev !== next);
 }

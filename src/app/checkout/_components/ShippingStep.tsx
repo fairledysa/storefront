@@ -1,11 +1,10 @@
 // FILE: apps/storefront/src/app/checkout/_components/ShippingStep.tsx
+
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import StepShell from "./StepShell";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Button } from "@/components/ui/button";
-import { Loader2, Truck } from "lucide-react";
+import { Loader2, Pencil, Truck } from "lucide-react";
 
 type Shipping = {
   id: string;
@@ -185,50 +184,20 @@ function hasFreeShipping(option: Shipping | null | undefined) {
   );
 }
 
-function ShippingPriceView({
-  option,
-  compact = false,
-}: {
-  option: Shipping;
-  compact?: boolean;
-}) {
+function ShippingPriceView({ option }: { option: Shipping }) {
   const isFree = hasFreeShipping(option);
 
   if (isFree) {
     return (
-      <div
-        dir="ltr"
-        className={[
-          "inline-grid justify-items-end text-left",
-          compact ? "gap-0.5" : "gap-1",
-        ].join(" ")}
-      >
-        <span
-          className={[
-            "font-black text-zinc-400 line-through decoration-red-500 decoration-2",
-            compact ? "text-[11px]" : "text-[12px]",
-          ].join(" ")}
-        >
-          {option.original_price}
-        </span>
-
-        <span
-          className={[
-            "font-black text-emerald-700",
-            compact ? "text-[12px]" : "text-[13px]",
-          ].join(" ")}
-        >
-          {option.price_label || "الشحن مجانًا"}
-        </span>
-      </div>
+      <span className="co-price-free" dir="ltr">
+        <span>{option.original_price}</span>
+        <strong>{option.price_label || "مجاني"}</strong>
+      </span>
     );
   }
 
   return (
-    <span
-      dir="ltr"
-      className={compact ? "text-sm font-black" : "text-[13px] font-black"}
-    >
+    <span dir="ltr" className="co-option-price">
       {option.price}
     </span>
   );
@@ -236,20 +205,15 @@ function ShippingPriceView({
 
 function ShippingSkeleton() {
   return (
-    <div className="space-y-2">
+    <div className="co-options-list">
       {Array.from({ length: 2 }).map((_, i) => (
-        <div
-          key={i}
-          className="rounded-[18px] border border-zinc-200 bg-white px-3 py-3 sm:rounded-[22px] sm:px-4 sm:py-4"
-        >
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="h-4 w-32 animate-pulse rounded-full bg-zinc-100" />
-              <div className="mt-2 h-3 w-20 animate-pulse rounded-full bg-zinc-100" />
-            </div>
-
-            <div className="h-4 w-14 animate-pulse rounded-full bg-zinc-100" />
+        <div key={i} className="co-option co-option--skeleton">
+          <span className="co-skeleton co-skeleton--radio" />
+          <div>
+            <span className="co-skeleton co-skeleton--title" />
+            <span className="co-skeleton co-skeleton--line" />
           </div>
+          <span className="co-skeleton co-skeleton--money" />
         </div>
       ))}
     </div>
@@ -424,43 +388,32 @@ export default function ShippingStep(props: {
 
   if (isDone && picked) {
     return (
-      <StepShell
-        title="شركة الشحن"
-        subtitle="تم اختيار طريقة الشحن — يمكنك تعديلها قبل الدفع"
-        icon={<Truck className="h-5 w-5 text-zinc-800" />}
-        isActive={isActive}
-        isDone
-        isLocked={false}
-        onEdit={confirming ? undefined : onEdit}
-      >
-        <div className="rounded-[18px] border border-amber-700/25 bg-[#fffaf1] px-3 py-3 sm:rounded-[22px] sm:p-4">
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-            <div className="min-w-0 truncate text-sm font-black text-zinc-950">
-              {picked.name}
+      <section className="co-salla-saved-step" aria-label="شركة الشحن">
+        <div className="co-salla-saved-row co-salla-saved-row--shipping">
+          <div className="co-salla-saved-row__main">
+            <Truck size={21} className="co-salla-saved-row__icon" />
+
+            <div className="co-salla-saved-row__content">
+              <h2>شركة الشحن</h2>
+
+              <p>
+                <strong>{picked.name}</strong>
+                {picked.eta ? <span> - {picked.eta}</span> : null}
+              </p>
             </div>
-
-            <span className="rounded-full border border-amber-900/15 bg-white px-2 py-0.5 text-[11px] font-black text-stone-700 sm:text-[12px]">
-              محدد
-            </span>
-
-            <span className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[11px] text-zinc-500 sm:text-[12px]">
-              {picked.eta}
-            </span>
-
-            {picked.recommended ? (
-              <span className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[11px] text-zinc-500 sm:text-[12px]">
-                موصى به
-              </span>
-            ) : null}
           </div>
 
-          <div className="mt-2.5 flex items-center justify-between gap-3 text-[13px]">
-            <div className="text-zinc-500">تكلفة الشحن</div>
-
-            <ShippingPriceView option={picked} />
-          </div>
+          <button
+            type="button"
+            className="co-salla-saved-row__edit"
+            onClick={onEdit}
+            disabled={confirming}
+          >
+            <Pencil size={14} />
+            تعديل
+          </button>
         </div>
-      </StepShell>
+      </section>
     );
   }
 
@@ -471,142 +424,79 @@ export default function ShippingStep(props: {
   return (
     <StepShell
       title="شركة الشحن"
-      subtitle={
-        isLocked ? "أكمل عنوان الشحن أولًا" : "اختر طريقة التوصيل المناسبة"
-      }
-      icon={<Truck className="h-5 w-5 text-zinc-800" />}
+      subtitle={isLocked ? "أكمل العنوان أولًا" : "اختر شركة الشحن المناسبة"}
+      icon={<Truck size={20} />}
       isActive={isActive}
       isDone={false}
       isLocked={isLocked}
-      rightChip={<span>الخطوة 2</span>}
+      rightChip={<span>الشحن</span>}
     >
-      <div className="-mt-1 sm:mt-0">
-        {loading ? (
-          <ShippingSkeleton />
-        ) : options.length === 0 ? (
-          <div className="rounded-[18px] border border-dashed border-zinc-200 bg-zinc-50 px-4 py-5 text-center sm:rounded-[20px]">
-            <div className="text-sm font-black text-zinc-800">
-              لا توجد خيارات شحن متاحة
-            </div>
-
-            <div className="mt-1 text-[13px] leading-6 text-zinc-500">
-              تأكد من اختيار عنوان صحيح أو جرّب لاحقًا.
-            </div>
-          </div>
-        ) : (
-          <RadioGroup
-            value={value}
-            onValueChange={onPick}
-            className="space-y-2"
-            disabled={isLocked || !isActive || loading || confirming}
-          >
-            {options.map((option) => {
-              const selected = option.id === value;
-              const inputId = `checkout-shipping-${option.id}`;
-              const free = hasFreeShipping(option);
-
-              return (
-                <div
-                  key={option.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => onPick(option.id)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      onPick(option.id);
-                    }
-                  }}
-                  className={[
-                    "group rounded-[18px] border px-3 py-3 text-right transition active:scale-[0.997]",
-                    "sm:rounded-[22px] sm:px-4 sm:py-4",
-                    confirming ? "pointer-events-none opacity-80" : "",
-                    selected
-                      ? "border-amber-700/30 bg-[#fffaf1] shadow-none sm:shadow-[0_12px_32px_rgba(15,23,42,0.055)]"
-                      : "border-zinc-200 bg-white hover:bg-zinc-50",
-                  ].join(" ")}
-                >
-                  <div
-                    className={[
-                      "relative min-h-[50px] pr-9 sm:pr-10",
-                      free ? "pl-[118px] sm:pl-[136px]" : "pl-[88px] sm:pl-[106px]",
-                    ].join(" ")}
-                  >
-                    <RadioGroupItem
-                      id={inputId}
-                      value={option.id}
-                      className="absolute right-0 top-1 shrink-0 border-zinc-300 text-zinc-950"
-                    />
-
-                    <div
-                      className={[
-                        "absolute left-0 top-0.5 flex justify-end text-zinc-950",
-                        free ? "w-[112px] sm:w-[130px]" : "max-w-[78px] sm:max-w-[98px]",
-                      ].join(" ")}
-                    >
-                      <ShippingPriceView option={option} compact />
-                    </div>
-
-                    <label
-                      htmlFor={inputId}
-                      className="block min-w-0 cursor-pointer text-right"
-                    >
-                      <div
-                        dir="rtl"
-                        className="flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2"
-                      >
-                        <div className="min-w-0 max-w-full truncate text-sm font-black text-zinc-950">
-                          {option.name}
-                        </div>
-
-                        {selected ? (
-                          <span className="shrink-0 rounded-full border border-amber-900/15 bg-white px-2 py-0.5 text-[11px] font-black text-stone-700 sm:text-[12px]">
-                            محدد
-                          </span>
-                        ) : null}
-
-                        {option.recommended ? (
-                          <span className="shrink-0 rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[11px] text-zinc-500 sm:bg-zinc-50 sm:text-[12px]">
-                            موصى به
-                          </span>
-                        ) : null}
-                      </div>
-
-                      <div className="mt-1 text-right text-[12px] leading-5 text-zinc-500 sm:mt-1.5 sm:text-[13px]">
-                        {option.eta}
-                      </div>
-                    </label>
-                  </div>
-                </div>
-              );
-            })}
-          </RadioGroup>
-        )}
-      </div>
-
-      {errorMsg ? (
-        <div className="mt-3 rounded-2xl border border-red-500/15 bg-red-500/5 px-3 py-2 text-center text-[12px] leading-5 text-red-700">
-          {errorMsg}
+      {loading ? (
+        <ShippingSkeleton />
+      ) : options.length === 0 ? (
+        <div className="co-empty-small">
+          <strong>لا توجد خيارات شحن متاحة</strong>
+          <span>تأكد من اختيار عنوان صحيح أو جرّب لاحقًا.</span>
         </div>
-      ) : null}
+      ) : (
+        <div className="co-options-list">
+          {options.map((option) => {
+            const selected = option.id === value;
+            const inputId = `checkout-shipping-${option.id}`;
 
-      <Button
-        className="mt-3 h-11 w-full rounded-[18px] bg-zinc-950 text-[14px] font-black text-white shadow-[0_12px_28px_rgba(15,23,42,0.14)] transition hover:bg-zinc-800 active:scale-[0.99] disabled:bg-zinc-200 disabled:text-zinc-400 disabled:shadow-none sm:mt-4 sm:h-12 sm:rounded-[20px] sm:text-[15px]"
+            return (
+              <label
+                key={option.id}
+                htmlFor={inputId}
+                className={[
+                  "co-option",
+                  selected ? "is-selected" : "",
+                  confirming ? "is-disabled" : "",
+                ].join(" ")}
+              >
+                <input
+                  id={inputId}
+                  name="checkout-shipping"
+                  type="radio"
+                  checked={selected}
+                  onChange={() => onPick(option.id)}
+                  disabled={isLocked || !isActive || loading || confirming}
+                  className="co-radio"
+                />
+
+                <span className="co-option-main">
+                  <strong>{option.name}</strong>
+                  <small>{option.eta}</small>
+                </span>
+
+                {option.recommended ? (
+                  <span className="co-mini-badge">موصى به</span>
+                ) : null}
+
+                <ShippingPriceView option={option} />
+              </label>
+            );
+          })}
+        </div>
+      )}
+
+      {errorMsg ? <div className="co-field-error">{errorMsg}</div> : null}
+
+      <button
+        type="button"
+        className="co-btn co-btn--dark co-btn--full"
         disabled={!canConfirmShipping}
         onClick={confirmCurrent}
       >
-        <span className="inline-flex items-center justify-center gap-2">
-          {loading || confirming ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : null}
-
-          {loading
-            ? "جاري تحميل الشحن..."
-            : confirming
-              ? "جاري اعتماد شركة الشحن..."
-              : "اعتماد شركة الشحن"}
-        </span>
-      </Button>
+        {loading || confirming ? (
+          <Loader2 size={16} className="co-spin" />
+        ) : null}
+        {loading
+          ? "جاري تحميل الشحن..."
+          : confirming
+            ? "جاري اعتماد شركة الشحن..."
+            : "تأكيد شركة الشحن"}
+      </button>
     </StepShell>
   );
 }

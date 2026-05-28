@@ -4,9 +4,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import StepShell from "./StepShell";
-import { Button } from "@/components/ui/button";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Input } from "@/components/ui/input";
 import { Loader2, MapPin, Pencil, Plus, Search, X } from "lucide-react";
 
 type Address = {
@@ -14,7 +11,6 @@ type Address = {
   label: string;
   full: string;
   national?: string | null;
-
   city_id?: string | null;
   district_id?: string | null;
   address_line1?: string | null;
@@ -33,13 +29,13 @@ type ConfirmResult = {
   state?: any;
 };
 
+type FormMode = "create" | "edit";
+
 let citiesCache: City[] | null = null;
 let citiesPromise: Promise<City[]> | null = null;
 
 const districtsCache = new Map<string, District[]>();
 const districtsPromise = new Map<string, Promise<District[]>>();
-
-type FormMode = "create" | "edit";
 
 function s(x: any) {
   return String(x ?? "").trim();
@@ -93,9 +89,7 @@ async function fetchCitiesOnce(): Promise<City[]> {
     method: "GET",
     credentials: "same-origin",
     cache: "no-store",
-    headers: {
-      "Cache-Control": "no-store",
-    },
+    headers: { "Cache-Control": "no-store" },
   })
     .then(async (r) => {
       const j = await safeJson(r);
@@ -130,9 +124,7 @@ async function fetchDistrictsOnce(cityId: string): Promise<District[]> {
       method: "GET",
       credentials: "same-origin",
       cache: "no-store",
-      headers: {
-        "Cache-Control": "no-store",
-      },
+      headers: { "Cache-Control": "no-store" },
     },
   )
     .then(async (r) => {
@@ -153,95 +145,73 @@ async function fetchDistrictsOnce(cityId: string): Promise<District[]> {
   return promise;
 }
 
-function NewAddressForm(props: {
+function buildAddressLine(address?: Address | null) {
+  if (!address) return "تم حفظ عنوان الشحن لهذا الطلب.";
+
+  const parts = [address.national, address.full]
+    .map((part) => s(part))
+    .filter(Boolean);
+
+  return parts.length ? parts.join(" - ") : "تم حفظ عنوان الشحن لهذا الطلب.";
+}
+
+function AddressForm(props: {
   isActive: boolean;
   mode: FormMode;
-  title?: string;
-
   cities: City[];
   districts: District[];
-
   cityId: string;
   districtId: string;
   line1: string;
   line2: string;
   postal: string;
-
   saving: boolean;
   errorMsg?: string;
-
   onCityChange: (v: string) => void;
   onDistrictChange: (v: string) => void;
   onLine1Change: (v: string) => void;
   onLine2Change: (v: string) => void;
   onPostalChange: (v: string) => void;
-
   onSubmit: () => void;
   onCancel?: () => void;
 }) {
-  const {
-    isActive,
-    mode,
-    title,
-    cities,
-    districts,
-    cityId,
-    districtId,
-    line1,
-    line2,
-    postal,
-    saving,
-    errorMsg,
-    onCityChange,
-    onDistrictChange,
-    onLine1Change,
-    onLine2Change,
-    onPostalChange,
-    onSubmit,
-    onCancel,
-  } = props;
-
-  const formDisabled = !isActive || saving;
+  const formDisabled = !props.isActive || props.saving;
 
   return (
-    <div className="rounded-[22px] border border-zinc-200 bg-white p-3 shadow-[0_10px_26px_rgba(15,23,42,0.035)] sm:rounded-[24px] sm:p-4">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="min-w-0 text-right">
-          <div className="text-sm font-black text-zinc-950">
-            {title ?? (mode === "edit" ? "تعديل العنوان" : "إضافة عنوان جديد")}
-          </div>
-
-          <div className="mt-0.5 text-[12px] leading-5 text-zinc-500">
-            اكتب العنوان بوضوح حتى تصل الشحنة بدون تأخير.
-          </div>
+    <div className="co-address-form">
+      <div className="co-form-head">
+        <div>
+          <strong>
+            {props.mode === "edit" ? "تعديل العنوان" : "إضافة عنوان جديد"}
+          </strong>
+          <p>اكتب العنوان بوضوح حتى تصل الشحنة بدون تأخير.</p>
         </div>
 
-        {onCancel ? (
-          <Button
+        {props.onCancel ? (
+          <button
             type="button"
-            variant="outline"
-            className="h-8 shrink-0 rounded-full border-zinc-200 bg-white px-3 text-xs font-black text-zinc-800 shadow-sm hover:bg-zinc-50 sm:h-9 sm:rounded-2xl sm:text-sm"
-            onClick={onCancel}
+            className="co-mini-action"
+            onClick={props.onCancel}
             disabled={formDisabled}
           >
-            <X className="h-4 w-4" />
-            <span className="ms-2 hidden sm:inline">إلغاء</span>
-          </Button>
+            <X size={15} />
+            إلغاء
+          </button>
         ) : null}
       </div>
 
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <div className="co-form-grid co-form-grid--2">
         <select
-          className="h-11 w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 text-right text-sm text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950/10 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-400"
-          disabled={formDisabled || cities.length === 0}
-          value={cityId}
-          onChange={(e) => onCityChange(e.target.value)}
+          className="co-field"
+          disabled={formDisabled || props.cities.length === 0}
+          value={props.cityId}
+          onChange={(e) => props.onCityChange(e.target.value)}
         >
-          {cities.length === 0 ? (
+          {props.cities.length === 0 ? (
             <option value="">جاري تحميل المدن...</option>
           ) : null}
 
-          {cities.map((c) => (
+          {props.cities.map((c) => (
             <option key={c.id} value={c.id}>
               {s(c.name_ar || c.name_en)}
             </option>
@@ -249,14 +219,14 @@ function NewAddressForm(props: {
         </select>
 
         <select
-          className="h-11 w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-3 text-right text-sm text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950/10 disabled:cursor-not-allowed disabled:bg-zinc-100 disabled:text-zinc-400"
-          disabled={formDisabled || !cityId}
-          value={districtId}
-          onChange={(e) => onDistrictChange(e.target.value)}
+          className="co-field"
+          disabled={formDisabled || !props.cityId}
+          value={props.districtId}
+          onChange={(e) => props.onDistrictChange(e.target.value)}
         >
           <option value="">اختر الحي</option>
 
-          {districts.map((d) => (
+          {props.districts.map((d) => (
             <option key={d.id} value={d.id}>
               {s(d.name_ar || d.name_en)}
             </option>
@@ -264,55 +234,50 @@ function NewAddressForm(props: {
         </select>
       </div>
 
-      <div className="mt-2 grid grid-cols-1 gap-2">
-        <Input
+      <div className="co-form-grid">
+        <input
+          className="co-field"
           placeholder="اسم الشارع أو أقرب معلم"
-          value={line1}
-          onChange={(e) => onLine1Change(e.target.value)}
-          className="h-11 rounded-2xl border-zinc-200 bg-zinc-50 text-right text-zinc-900 focus-visible:ring-2 focus-visible:ring-zinc-950/10"
+          value={props.line1}
+          onChange={(e) => props.onLine1Change(e.target.value)}
           disabled={formDisabled}
         />
 
-        <Input
+        <input
+          className="co-field"
           placeholder="رقم المبنى / تفاصيل إضافية"
-          value={line2}
-          onChange={(e) => onLine2Change(e.target.value)}
-          className="h-11 rounded-2xl border-zinc-200 bg-zinc-50 text-right text-zinc-900 focus-visible:ring-2 focus-visible:ring-zinc-950/10"
+          value={props.line2}
+          onChange={(e) => props.onLine2Change(e.target.value)}
           disabled={formDisabled}
         />
 
-        <Input
+        <input
+          className="co-field"
           placeholder="الرمز البريدي، إن وجد"
-          value={postal}
-          onChange={(e) => onPostalChange(e.target.value)}
-          className="h-11 rounded-2xl border-zinc-200 bg-zinc-50 text-right text-zinc-900 focus-visible:ring-2 focus-visible:ring-zinc-950/10"
+          value={props.postal}
+          onChange={(e) => props.onPostalChange(e.target.value)}
           disabled={formDisabled}
           dir="ltr"
         />
       </div>
 
-      {errorMsg ? (
-        <div className="mt-3 rounded-2xl border border-red-500/20 bg-red-500/5 px-3 py-2 text-right text-[13px] leading-6 text-red-700">
-          {errorMsg}
-        </div>
+      {props.errorMsg ? (
+        <div className="co-field-error">{props.errorMsg}</div>
       ) : null}
 
-      <Button
-        className="mt-3 h-11 w-full rounded-[18px] bg-zinc-950 text-[14px] font-black text-white shadow-[0_12px_28px_rgba(15,23,42,0.14)] transition hover:bg-zinc-800 active:scale-[0.99] disabled:bg-zinc-200 disabled:text-zinc-400 disabled:shadow-none sm:h-12 sm:rounded-[20px] sm:text-[15px]"
-        disabled={formDisabled || !cityId || !line1.trim()}
-        onClick={onSubmit}
+      <button
+        className="co-btn co-btn--dark co-btn--full"
+        disabled={formDisabled || !props.cityId || !props.line1.trim()}
+        onClick={props.onSubmit}
         type="button"
       >
-        <span className="inline-flex items-center justify-center gap-2">
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-
-          {saving
-            ? "جاري الحفظ..."
-            : mode === "edit"
-              ? "حفظ التعديل"
-              : "حفظ واستخدام العنوان"}
-        </span>
-      </Button>
+        {props.saving ? <Loader2 size={16} className="co-spin" /> : null}
+        {props.saving
+          ? "جاري الحفظ..."
+          : props.mode === "edit"
+            ? "حفظ التعديل"
+            : "حفظ واستخدام العنوان"}
+      </button>
     </div>
   );
 }
@@ -388,9 +353,7 @@ export default function AddressStep(props: {
         method: "GET",
         credentials: "same-origin",
         cache: "no-store",
-        headers: {
-          "Cache-Control": "no-store",
-        },
+        headers: { "Cache-Control": "no-store" },
       });
 
       const j = await safeJson(r);
@@ -487,9 +450,7 @@ export default function AddressStep(props: {
   }, []);
 
   useEffect(() => {
-    if (confirmedId) {
-      setValue(confirmedId);
-    }
+    if (confirmedId) setValue(confirmedId);
   }, [confirmedId]);
 
   useEffect(() => {
@@ -503,10 +464,7 @@ export default function AddressStep(props: {
     };
 
     window.addEventListener("auth:changed", onAuthChanged);
-
-    return () => {
-      window.removeEventListener("auth:changed", onAuthChanged);
-    };
+    return () => window.removeEventListener("auth:changed", onAuthChanged);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -549,11 +507,8 @@ export default function AddressStep(props: {
     setEditingId(String(a.id));
     setFormError("");
 
-    const nextCity = s(a.city_id);
-    const nextDistrict = s(a.district_id);
-
-    setCityId(nextCity || cityId || "");
-    setDistrictId(nextDistrict || "");
+    setCityId(s(a.city_id) || cityId || "");
+    setDistrictId(s(a.district_id) || "");
     setLine1(s(a.address_line1) || "");
     setLine2(s(a.address_line2) || "");
     setPostal(s(a.postal_code) || "");
@@ -576,11 +531,7 @@ export default function AddressStep(props: {
 
     setAddresses((prev) => {
       const exists = prev.some((x) => String(x.id) === id);
-
-      if (exists) {
-        return prev.map((x) => (String(x.id) === id ? address : x));
-      }
-
+      if (exists) return prev.map((x) => (String(x.id) === id ? address : x));
       return [address, ...prev];
     });
   }
@@ -629,10 +580,11 @@ export default function AddressStep(props: {
       }
 
       if (!r.ok || !j?.ok) {
-        const raw = s(j?.message_ar) || s(j?.error);
-        const msg =
-          raw || (mode === "edit" ? "تعذر تحديث العنوان" : "تعذر حفظ العنوان");
-        setFormError(msg);
+        setFormError(
+          s(j?.message_ar) ||
+            s(j?.error) ||
+            (mode === "edit" ? "تعذر تحديث العنوان" : "تعذر حفظ العنوان"),
+        );
         return;
       }
 
@@ -641,22 +593,6 @@ export default function AddressStep(props: {
 
       if (updatedId && updatedAddress?.id) {
         upsertAddressLocally(updatedAddress);
-        setValue(updatedId);
-        closeForm();
-
-        setConfirming(true);
-
-        try {
-          const result = await onConfirm(updatedId);
-          pushSummary((result as ConfirmResult | null)?.summary ?? null);
-        } finally {
-          if (mountedRef.current) {
-            setConfirming(false);
-          }
-        }
-
-        void loadAddresses({ keepForm: true });
-        return;
       }
 
       await loadAddresses({ keepForm: true });
@@ -671,17 +607,13 @@ export default function AddressStep(props: {
           const result = await onConfirm(updatedId);
           pushSummary((result as ConfirmResult | null)?.summary ?? null);
         } finally {
-          if (mountedRef.current) {
-            setConfirming(false);
-          }
+          if (mountedRef.current) setConfirming(false);
         }
       } else {
         closeForm();
       }
     } finally {
-      if (mountedRef.current) {
-        setSaving(false);
-      }
+      if (mountedRef.current) setSaving(false);
     }
   }
 
@@ -698,44 +630,38 @@ export default function AddressStep(props: {
     } catch (e: any) {
       setConfirmError(e?.message || "تعذر تأكيد العنوان. حاول مرة أخرى.");
     } finally {
-      if (mountedRef.current) {
-        setConfirming(false);
-      }
+      if (mountedRef.current) setConfirming(false);
     }
   }
 
-  if (isDone && picked) {
+  if (isDone) {
     return (
-      <StepShell
-        title="عنوان الشحن"
-        subtitle="تم اختيار العنوان — يمكنك تعديله قبل إتمام الطلب"
-        icon={<MapPin className="h-5 w-5 text-zinc-800" />}
-        isActive={isActive}
-        isDone
-        onEdit={confirming ? undefined : onEdit}
-      >
-        <div className="rounded-[18px] border border-amber-700/25 bg-[#fffaf1] px-3 py-3 sm:rounded-[22px] sm:p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="text-sm font-black text-zinc-950">
-              {picked.label}
+      <section className="co-salla-saved-step" aria-label="عنوان التوصيل">
+        <div className="co-salla-saved-row">
+          <div className="co-salla-saved-row__main">
+            <MapPin size={20} className="co-salla-saved-row__icon" />
+
+            <div className="co-salla-saved-row__content">
+              <h2>عنوان التوصيل</h2>
+
+              <p>
+                <strong>{s(picked?.label) || "عنوان محفوظ"}</strong>
+                <span> - {buildAddressLine(picked)}</span>
+              </p>
             </div>
-
-            <span className="rounded-full border border-amber-900/15 bg-white px-2 py-0.5 text-[11px] font-black text-stone-700 sm:text-[12px]">
-              محدد
-            </span>
-
-            {picked.national ? (
-              <span className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[11px] text-zinc-500 sm:text-[12px]">
-                {picked.national}
-              </span>
-            ) : null}
           </div>
 
-          <div className="mt-1 text-[12px] leading-6 text-zinc-500 sm:text-[13px]">
-            {picked.full}
-          </div>
+          <button
+            type="button"
+            className="co-salla-saved-row__edit"
+            onClick={onEdit}
+            disabled={confirming}
+          >
+            <Pencil size={14} />
+            تعديل
+          </button>
         </div>
-      </StepShell>
+      </section>
     );
   }
 
@@ -744,14 +670,13 @@ export default function AddressStep(props: {
       <StepShell
         title="عنوان الشحن"
         subtitle="اختر عنوانًا محفوظًا أو أضف عنوانًا جديدًا"
-        icon={<MapPin className="h-5 w-5 text-zinc-800" />}
+        icon={<MapPin size={18} />}
         isActive={isActive}
         isDone={false}
         isLocked={false}
-        rightChip={<span>الخطوة 1</span>}
+        rightChip={<span>العنوان</span>}
       >
-        <div className="space-y-2">
-          <AddressSkeleton />
+        <div className="co-options-list">
           <AddressSkeleton />
           <AddressSkeleton />
         </div>
@@ -764,13 +689,13 @@ export default function AddressStep(props: {
       <StepShell
         title="عنوان الشحن"
         subtitle="أضف عنوانك مرة واحدة لاستخدامه في الطلب"
-        icon={<MapPin className="h-5 w-5 text-zinc-800" />}
+        icon={<MapPin size={18} />}
         isActive={isActive && !confirming}
         isDone={false}
         isLocked={false}
-        rightChip={<span>الخطوة 1</span>}
+        rightChip={<span>العنوان</span>}
       >
-        <NewAddressForm
+        <AddressForm
           isActive={isActive && !confirming}
           mode="create"
           cities={cities}
@@ -797,41 +722,37 @@ export default function AddressStep(props: {
     <StepShell
       title="عنوان الشحن"
       subtitle="اختر عنوانًا محفوظًا أو أضف عنوانًا جديدًا"
-      icon={<MapPin className="h-5 w-5 text-zinc-800" />}
+      icon={<MapPin size={18} />}
       isActive={isActive && !confirming}
       isDone={false}
       isLocked={false}
-      rightChip={<span>الخطوة 1</span>}
+      rightChip={<span>العنوان</span>}
     >
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-        <div className="relative min-w-0">
-          <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
-
-          <Input
+      <div className="co-address-tools">
+        <div className="co-search-field">
+          <Search size={16} />
+          <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="ابحث باسم الحي أو الشارع"
-            className="h-10 rounded-2xl border-zinc-200 bg-white pr-9 text-right text-[13px] text-zinc-900 focus-visible:ring-2 focus-visible:ring-zinc-950/10 sm:h-11 sm:text-sm"
             disabled={!isActive || confirming}
           />
         </div>
 
-        <Button
-          variant="outline"
-          className="h-10 shrink-0 rounded-2xl border-zinc-200 bg-white px-3 text-[13px] font-black text-zinc-800 shadow-sm hover:bg-zinc-50 sm:h-11 sm:px-4 sm:text-sm"
+        <button
+          className="co-mini-action co-mini-action--dark"
           disabled={!isActive || confirming}
           onClick={openCreateForm}
           type="button"
         >
-          <Plus className="h-4 w-4" />
-          <span className="ms-1.5 sm:ms-2">إضافة</span>
-          <span className="hidden sm:inline"> عنوان</span>
-        </Button>
+          <Plus size={15} />
+          إضافة عنوان
+        </button>
       </div>
 
       {showForm ? (
-        <div className="mt-3 sm:mt-4">
-          <NewAddressForm
+        <div className="co-form-wrap">
+          <AddressForm
             isActive={isActive && !confirming}
             mode={mode}
             cities={cities}
@@ -854,144 +775,92 @@ export default function AddressStep(props: {
         </div>
       ) : (
         <>
-          <div className="mt-3 sm:mt-4">
+          <div className="co-address-list">
             {visibleAddresses.length === 0 ? (
-              <div className="rounded-[18px] border border-dashed border-zinc-200 bg-zinc-50 px-4 py-5 text-center sm:rounded-[22px]">
-                <div className="text-sm font-black text-zinc-800">
-                  لا توجد نتائج مطابقة
-                </div>
-
-                <div className="mt-1 text-[13px] text-zinc-500">
-                  جرّب البحث باسم الحي أو أضف عنوانًا جديدًا.
-                </div>
+              <div className="co-empty-small">
+                <strong>لا توجد نتائج مطابقة</strong>
+                <span>جرّب البحث باسم الحي أو أضف عنوانًا جديدًا.</span>
               </div>
             ) : (
-              <RadioGroup
-                value={value}
-                onValueChange={(next) => {
-                  if (!isActive || confirming || saving) return;
-                  setValue(next);
-                  setConfirmError("");
-                  setSubmitEnabled(false);
-                }}
-                className="space-y-2"
-                disabled={!isActive || confirming || saving}
-              >
-                {visibleAddresses.map((a) => {
-                  const selected = String(a.id) === String(value);
-                  const inputId = `checkout-address-${a.id}`;
+              visibleAddresses.map((a) => {
+                const selected = String(a.id) === String(value);
 
-                  return (
-                    <div
-                      key={a.id}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => {
-                        if (!isActive || confirming || saving) return;
-                        setValue(a.id);
-                        setConfirmError("");
-                        setSubmitEnabled(false);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
+                return (
+                  <div
+                    key={a.id}
+                    role="button"
+                    tabIndex={0}
+                    className={[
+                      "co-address-row",
+                      selected ? "is-selected" : "",
+                      confirming || saving ? "is-disabled" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    onClick={() => {
+                      if (!isActive || confirming || saving) return;
+                      setValue(a.id);
+                      setConfirmError("");
+                      setSubmitEnabled(false);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter" && e.key !== " ") return;
+                      e.preventDefault();
 
-                          if (!isActive || confirming || saving) return;
-                          setValue(a.id);
-                          setConfirmError("");
-                          setSubmitEnabled(false);
-                        }
-                      }}
-                      className={[
-                        "group rounded-[18px] border px-3 py-3 text-right transition active:scale-[0.997]",
-                        "sm:rounded-[22px] sm:px-4 sm:py-4",
-                        confirming || saving ? "pointer-events-none opacity-80" : "",
-                        selected
-                          ? "border-amber-700/30 bg-[#fffaf1] shadow-none sm:shadow-[0_12px_32px_rgba(15,23,42,0.055)]"
-                          : "border-zinc-200 bg-white hover:bg-zinc-50",
-                      ].join(" ")}
-                    >
-                      <div className="relative min-h-[50px] pr-9 pl-[46px] sm:pr-10 sm:pl-[92px]">
-                        <RadioGroupItem
-                          id={inputId}
-                          value={a.id}
-                          className="absolute right-0 top-1 shrink-0 border-zinc-300 text-zinc-950"
-                        />
+                      if (!isActive || confirming || saving) return;
+                      setValue(a.id);
+                      setConfirmError("");
+                      setSubmitEnabled(false);
+                    }}
+                  >
+                    <span className="co-address-radio">
+                      {selected ? "✓" : ""}
+                    </span>
 
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="absolute left-0 top-0 h-8 w-8 rounded-full border-zinc-200 bg-white p-0 text-zinc-800 shadow-sm transition hover:bg-zinc-50 sm:h-9 sm:w-auto sm:rounded-2xl sm:px-3"
-                          disabled={!isActive || confirming || saving}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            openEditForm(a);
-                          }}
-                          aria-label="تعديل العنوان"
-                        >
-                          <Pencil className="h-4 w-4" />
-                          <span className="ms-2 hidden sm:inline">تعديل</span>
-                        </Button>
+                    <div className="co-address-main">
+                      <div className="co-address-title">
+                        <strong>{a.label}</strong>
 
-                        <label
-                          htmlFor={inputId}
-                          className="block min-w-0 cursor-pointer text-right"
-                        >
-                          <div
-                            dir="rtl"
-                            className="flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2"
-                          >
-                            <span className="hidden h-8 w-8 shrink-0 place-items-center rounded-2xl border border-zinc-200 bg-white text-zinc-700 sm:grid">
-                              <MapPin className="h-4 w-4" />
-                            </span>
+                        {selected ? <span>محدد</span> : null}
 
-                            <div className="min-w-0 max-w-full truncate text-sm font-black text-zinc-950">
-                              {a.label}
-                            </div>
-
-                            {selected ? (
-                              <span className="shrink-0 rounded-full border border-amber-900/15 bg-white px-2 py-0.5 text-[11px] font-black text-stone-700 sm:text-[12px]">
-                                محدد
-                              </span>
-                            ) : null}
-
-                            {a.national ? (
-                              <span className="shrink-0 rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[11px] text-zinc-500 sm:bg-zinc-50 sm:text-[12px]">
-                                {a.national}
-                              </span>
-                            ) : null}
-                          </div>
-
-                          <div className="mt-1.5 line-clamp-2 text-right text-[12px] leading-5 text-zinc-500 sm:mt-2 sm:text-[13px] sm:leading-6">
-                            {a.full}
-                          </div>
-                        </label>
+                        {a.national ? <em>{a.national}</em> : null}
                       </div>
+
+                      <p>{a.full}</p>
                     </div>
-                  );
-                })}
-              </RadioGroup>
+
+                    <button
+                      type="button"
+                      className="co-mini-action"
+                      disabled={!isActive || confirming || saving}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        openEditForm(a);
+                      }}
+                    >
+                      <Pencil size={14} />
+                      تعديل
+                    </button>
+                  </div>
+                );
+              })
             )}
           </div>
 
           {confirmError ? (
-            <div className="mt-3 rounded-2xl border border-red-500/15 bg-red-500/5 px-3 py-2 text-center text-[12px] leading-5 text-red-700">
-              {confirmError}
-            </div>
+            <div className="co-field-error">{confirmError}</div>
           ) : null}
 
-          <Button
-            className="mt-3 h-11 w-full rounded-[18px] bg-zinc-950 text-[14px] font-black text-white shadow-[0_12px_28px_rgba(15,23,42,0.14)] transition hover:bg-zinc-800 active:scale-[0.99] disabled:bg-zinc-200 disabled:text-zinc-400 disabled:shadow-none sm:mt-4 sm:h-12 sm:rounded-[20px] sm:text-[15px]"
+          <button
+            className="co-btn co-btn--dark co-btn--full"
             disabled={!isActive || confirming || saving || !value}
             onClick={confirmCurrentAddress}
             type="button"
           >
-            <span className="inline-flex items-center justify-center gap-2">
-              {confirming ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              {confirming ? "جاري تأكيد العنوان..." : "تأكيد العنوان"}
-            </span>
-          </Button>
+            {confirming ? <Loader2 size={16} className="co-spin" /> : null}
+            {confirming ? "جاري تأكيد العنوان..." : "تأكيد العنوان"}
+          </button>
         </>
       )}
     </StepShell>
@@ -1000,16 +869,11 @@ export default function AddressStep(props: {
 
 function AddressSkeleton() {
   return (
-    <div className="rounded-[18px] border border-zinc-200 bg-white px-3 py-3 sm:rounded-[22px] sm:px-4 sm:py-4">
-      <div className="flex items-start gap-3">
-        <div className="h-5 w-5 animate-pulse rounded-full bg-zinc-100" />
-
-        <div className="min-w-0 flex-1">
-          <div className="h-4 w-32 animate-pulse rounded-full bg-zinc-100" />
-          <div className="mt-2 h-3 w-56 max-w-full animate-pulse rounded-full bg-zinc-100" />
-        </div>
-
-        <div className="h-8 w-8 animate-pulse rounded-full bg-zinc-100" />
+    <div className="co-address-row is-skeleton">
+      <span className="co-skeleton co-skeleton--radio" />
+      <div className="co-address-main">
+        <span className="co-skeleton co-skeleton--title" />
+        <span className="co-skeleton co-skeleton--line" />
       </div>
     </div>
   );

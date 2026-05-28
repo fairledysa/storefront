@@ -44,8 +44,27 @@ export type CouponRow = {
   minimum_amount: number | null;
   usage_limit: number | null;
   usage_limit_per_user: number | null;
-  status: "active" | "inactive";
+  status: "active" | "inactive" | string;
 };
+
+export type CouponLookupError =
+  | "CODE_REQUIRED"
+  | "COUPON_NOT_FOUND_OR_INVALID"
+  | "COUPON_INACTIVE"
+  | "COUPON_NOT_STARTED"
+  | "COUPON_EXPIRED";
+
+export type CouponLookupResult =
+  | {
+      ok: true;
+      coupon: CouponRow;
+      error: null;
+    }
+  | {
+      ok: false;
+      coupon: null;
+      error: CouponLookupError;
+    };
 
 export type PricingLine = {
   item_id: string;
@@ -84,6 +103,140 @@ function n(x: any) {
 
 function clampMoney(x: number) {
   return Math.max(0, Math.round(x * 100) / 100);
+}
+
+function s(x: any) {
+  return String(x ?? "").trim();
+}
+
+function normalizeDigits(value: string) {
+  const map: Record<string, string> = {
+    "٠": "0",
+    "١": "1",
+    "٢": "2",
+    "٣": "3",
+    "٤": "4",
+    "٥": "5",
+    "٦": "6",
+    "٧": "7",
+    "٨": "8",
+    "٩": "9",
+    "۰": "0",
+    "۱": "1",
+    "۲": "2",
+    "۳": "3",
+    "۴": "4",
+    "۵": "5",
+    "۶": "6",
+    "۷": "7",
+    "۸": "8",
+    "۹": "9",
+  };
+
+  return value.replace(/[٠-٩۰-۹]/g, (d) => map[d] ?? d);
+}
+
+export function normalizeCouponCode(value: any) {
+  return normalizeDigits(String(value ?? ""))
+    .replace(/\u0640/g, "")
+    .replace(/[\u061c\u200e\u200f]/g, "")
+    .replace(/\s+/g, "")
+    .trim()
+    .toUpperCase();
+}
+
+function isCouponStatusActive(value: any) {
+  if (value === true || value === 1) return true;
+
+  const status = s(value).toLowerCase();
+
+  return ["active", "enabled", "published", "true", "1"].includes(status);
+}
+
+function parseDateMs(value: any) {
+  const raw = s(value);
+  if (!raw) return null;
+
+  const ms = Date.parse(raw);
+
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function validateCouponAvailability(coupon: CouponRow): CouponLookupResult {
+  if (!coupon?.id) {
+    return {
+      ok: false,
+      coupon: null,
+      error: "COUPON_NOT_FOUND_OR_INVALID",
+    };
+  }
+
+  if (!isCouponStatusActive(coupon.status)) {
+    return {
+      ok: false,
+      coupon: null,
+      error: "COUPON_INACTIVE",
+    };
+  }
+
+  const now = Date.now();
+  const startMs = parseDateMs(coupon.start_at);
+  const endMs = parseDateMs(coupon.end_at);
+
+  if (startMs != null && startMs > now) {
+    return {
+      ok: false,
+      coupon: null,
+      error: "COUPON_NOT_STARTED",
+    };
+  }
+
+  if (endMs != null && endMs < now) {
+    return {
+      ok: false,
+      coupon: null,
+      error: "COUPON_EXPIRED",
+    };
+  }
+
+  return {
+    ok: true,
+    coupon,
+    error: null,
+  };
+}
+
+async function queryCouponsByPattern(args: {
+  sb: any;
+  store_id: string;
+  pattern: string;
+  limit?: number;
+}) {
+  const r = await args.sb
+    .from("coupons")
+    .select("*")
+    .eq("store_id", args.store_id)
+    .ilike("code", args.pattern)
+    .limit(Math.max(1, Math.min(100, Math.floor(n(args.limit ?? 20)))));
+
+  if (r.error) throw new Error(r.error.message);
+
+  return Array.isArray(r.data) ? (r.data as CouponRow[]) : [];
+}
+
+function dedupeCoupons(rows: CouponRow[]) {
+  const out: CouponRow[] = [];
+  const seen = new Set<string>();
+
+  for (const row of rows) {
+    const id = s(row?.id);
+    if (!id || seen.has(id)) continue;
+
+    seen.add(id);
+    out.push(row);
+  }
+
+  return out;
 }
 
 async function cleanupHiddenProductsFromCart(args: {
@@ -181,35 +334,71 @@ async function resolveUnitPrice(args: {
 
 /* -------------------------- Coupon Validation --------------------------- */
 
+export async function findCouponByCodeWithReason(args: {
+  store_id: string;
+  code: string;
+}): Promise<CouponLookupResult> {
+  const sb: any = supabaseAdmin();
+
+  const codeInput = s(args.code);
+  const normalizedInput = normalizeCouponCode(codeInput);
+
+  if (!normalizedInput) {
+    return {
+      ok: false,
+      coupon: null,
+      error: "CODE_REQUIRED",
+    };
+  }
+
+  const cleanPattern = codeInput.replace(/[%_]/g, "").trim() || codeInput;
+
+  const directRows = await queryCouponsByPattern({
+    sb,
+    store_id: args.store_id,
+    pattern: cleanPattern,
+    limit: 20,
+  });
+
+  let rows = directRows;
+
+  const hasExact = rows.some(
+    (row) => normalizeCouponCode(row?.code) === normalizedInput,
+  );
+
+  if (!hasExact) {
+    const fuzzyRows = await queryCouponsByPattern({
+      sb,
+      store_id: args.store_id,
+      pattern: `%${cleanPattern}%`,
+      limit: 50,
+    });
+
+    rows = dedupeCoupons([...directRows, ...fuzzyRows]);
+  }
+
+  const coupon =
+    rows.find((row) => normalizeCouponCode(row?.code) === normalizedInput) ??
+    null;
+
+  if (!coupon?.id) {
+    return {
+      ok: false,
+      coupon: null,
+      error: "COUPON_NOT_FOUND_OR_INVALID",
+    };
+  }
+
+  return validateCouponAvailability(coupon);
+}
+
 export async function findValidCouponByCode(args: {
   store_id: string;
   code: string;
 }): Promise<CouponRow | null> {
-  const sb: any = supabaseAdmin();
+  const result = await findCouponByCodeWithReason(args);
 
-  const codeInput = String(args.code || "").trim();
-  if (!codeInput) return null;
-
-  const r = await sb
-    .from("coupons")
-    .select("*")
-    .eq("store_id", args.store_id)
-    .ilike("code", codeInput)
-    .limit(1)
-    .maybeSingle();
-
-  if (r.error) throw new Error(r.error.message);
-
-  const c = (r.data as CouponRow | null) ?? null;
-  if (!c?.id) return null;
-
-  if (c.status !== "active") return null;
-
-  const now = Date.now();
-  if (c.start_at && Date.parse(c.start_at) > now) return null;
-  if (c.end_at && Date.parse(c.end_at) < now) return null;
-
-  return c;
+  return result.ok ? result.coupon : null;
 }
 
 async function getCouponUsageCounts(args: {
@@ -301,39 +490,50 @@ export async function resolveAppliedCoupon(args: {
   const coupon = (cR.data as CouponRow | null) ?? null;
   if (!coupon?.id) return { coupon: null, discount: 0 };
 
-  if (coupon.status !== "active") return { coupon: null, discount: 0 };
+  if (!isCouponStatusActive(coupon.status)) return { coupon: null, discount: 0 };
 
   const now = Date.now();
-  if (coupon.start_at && Date.parse(coupon.start_at) > now)
+  const startMs = parseDateMs(coupon.start_at);
+  const endMs = parseDateMs(coupon.end_at);
+
+  if (startMs != null && startMs > now) {
     return { coupon: null, discount: 0 };
-  if (coupon.end_at && Date.parse(coupon.end_at) < now)
+  }
+
+  if (endMs != null && endMs < now) {
     return { coupon: null, discount: 0 };
+  }
 
   if (coupon.minimum_amount != null && subtotal < n(coupon.minimum_amount)) {
     return { coupon: null, discount: 0 };
   }
 
-  const counts = await getCouponUsageCounts({
-    sb,
-    store_id,
-    coupon_id: coupon.id,
-    customer_id,
-  });
+  const needsUsageCounts =
+    coupon.usage_limit != null || coupon.usage_limit_per_user != null;
 
-  if (coupon.usage_limit != null && counts.total >= n(coupon.usage_limit)) {
-    return { coupon: null, discount: 0 };
-  }
+  if (needsUsageCounts) {
+    const counts = await getCouponUsageCounts({
+      sb,
+      store_id,
+      coupon_id: coupon.id,
+      customer_id,
+    });
 
-  if (coupon.usage_limit_per_user != null && !customer_id) {
-    return { coupon: null, discount: 0 };
-  }
+    if (coupon.usage_limit != null && counts.total >= n(coupon.usage_limit)) {
+      return { coupon: null, discount: 0 };
+    }
 
-  if (
-    coupon.usage_limit_per_user != null &&
-    customer_id &&
-    counts.perUser >= n(coupon.usage_limit_per_user)
-  ) {
-    return { coupon: null, discount: 0 };
+    if (coupon.usage_limit_per_user != null && !customer_id) {
+      return { coupon: null, discount: 0 };
+    }
+
+    if (
+      coupon.usage_limit_per_user != null &&
+      customer_id &&
+      counts.perUser >= n(coupon.usage_limit_per_user)
+    ) {
+      return { coupon: null, discount: 0 };
+    }
   }
 
   const discount = computeCouponDiscount({ coupon, subtotal });
