@@ -1,4 +1,5 @@
 // FILE: apps/storefront/src/app/checkout/_components/CheckoutOrderOptions.tsx
+
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -18,11 +19,6 @@ type Choice = {
   id: string;
   label: string;
   price_customer?: number | string | null;
-  price_customer_raw?: number | string | null;
-  priceCustomerRaw?: number | string | null;
-  price_customer_display?: number | string | null;
-  priceCustomerDisplay?: number | string | null;
-  currency?: string | null;
 };
 
 type OrderOption = {
@@ -39,9 +35,16 @@ type OrderOption = {
 };
 
 type CurrencyInfo = {
-  code: string;
-  symbol: string;
-  decimal_digits: number;
+  code?: string;
+  currency_code?: string;
+  currencyCode?: string;
+  symbol?: string;
+  currency_symbol?: string;
+  currencySymbol?: string;
+  decimal_digits?: number | string | null;
+  decimalDigits?: number | string | null;
+  currency_decimals?: number | string | null;
+  currencyDecimals?: number | string | null;
 };
 
 export type CheckoutOrderOptionAnswer = {
@@ -138,23 +141,71 @@ function uniq(values: string[]) {
   return Array.from(new Set(values.map((value) => s(value)).filter(Boolean)));
 }
 
+function clampDecimals(value: any, fallback = 2) {
+  const raw = value ?? fallback;
+  const num = Number(raw);
+
+  if (!Number.isFinite(num)) return fallback;
+
+  return Math.max(0, Math.min(4, Math.floor(num)));
+}
+
+function fallbackDecimalsByCurrency(code: string) {
+  const value = s(code).toUpperCase();
+
+  if (value === "YER") return 0;
+  if (value === "JPY") return 0;
+  if (value === "KRW") return 0;
+
+  return 2;
+}
+
+function readCurrencyCode(currency: CurrencyInfo | null) {
+  return (
+    s(currency?.code) ||
+    s(currency?.currency_code) ||
+    s(currency?.currencyCode) ||
+    "SAR"
+  ).toUpperCase();
+}
+
+function readCurrencySymbol(currency: CurrencyInfo | null, code: string) {
+  return (
+    s(currency?.symbol) ||
+    s(currency?.currency_symbol) ||
+    s(currency?.currencySymbol) ||
+    code
+  );
+}
+
+function readCurrencyDecimals(currency: CurrencyInfo | null, code: string) {
+  const raw =
+    currency?.decimal_digits ??
+    currency?.decimalDigits ??
+    currency?.currency_decimals ??
+    currency?.currencyDecimals;
+
+  return clampDecimals(raw, fallbackDecimalsByCurrency(code));
+}
+
 function formatMoney(currency: CurrencyInfo | null, value: any) {
   const amount = n(value);
 
   if (!(amount > 0)) return "";
 
-  const code = currency?.code || "SAR";
+  const code = readCurrencyCode(currency);
+  const symbol = readCurrencySymbol(currency, code);
+  const decimals = readCurrencyDecimals(currency, code);
 
-  return `${code} ${amount.toLocaleString("en-US")}`;
-}
+  const rounded =
+    decimals <= 0 ? Math.round(amount) : Number(amount.toFixed(decimals));
 
-function readChoiceRawPrice(choice: Choice) {
-  return (
-    choice.price_customer_raw ??
-    choice.priceCustomerRaw ??
-    choice.price_customer ??
-    0
-  );
+  const formatted = rounded.toLocaleString("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: decimals,
+  });
+
+  return `${symbol || code} ${formatted}`;
 }
 
 function getAppointmentConfig(
@@ -414,18 +465,11 @@ function buildSelectedChoiceMetadata(option: OrderOption, choiceIds: string[]) {
       ...choiceIds,
       ...selected.map((choice) => s(choice.label)),
     ]),
-    selected_choices: selected.map((choice) => {
-      const rawPrice = readChoiceRawPrice(choice);
-
-      return {
-        id: s(choice.id),
-        label: s(choice.label),
-        price_customer: rawPrice,
-        price_customer_raw: rawPrice,
-        price_customer_display: choice.price_customer ?? rawPrice,
-        currency: choice.currency ?? null,
-      };
-    }),
+    selected_choices: selected.map((choice) => ({
+      id: s(choice.id),
+      label: s(choice.label),
+      price_customer: choice.price_customer ?? 0,
+    })),
   };
 }
 

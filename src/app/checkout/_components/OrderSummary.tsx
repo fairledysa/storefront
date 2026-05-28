@@ -40,7 +40,20 @@ type OrderOptionSummaryLine = {
 
 type Summary = {
   cart_id: string;
+
   currency: string;
+  currency_code?: string;
+  currencyCode?: string;
+
+  currency_symbol?: string;
+  currencySymbol?: string;
+  symbol?: string;
+
+  currency_decimals?: number;
+  currencyDecimals?: number;
+  decimal_digits?: number;
+  decimalDigits?: number;
+
   items?: SummaryItem[];
   subtotal: number;
   discount: number;
@@ -103,6 +116,12 @@ type PrepareOptions = {
 
 type ActionLock = "coupon" | "submit" | null;
 
+type MoneyFormatInfo = {
+  code: string;
+  symbol: string;
+  decimals: number;
+};
+
 const INCOMPLETE_CHECKOUT_MESSAGE =
   "أكمل بيانات العنوان والشحن والدفع لتأكيد الطلب.";
 
@@ -113,6 +132,55 @@ function n(x: any) {
 
 function round2(x: number) {
   return Math.round(x * 100) / 100;
+}
+
+function s(x: any) {
+  return String(x ?? "").trim();
+}
+
+function clampDecimals(value: any, fallback = 2) {
+  const raw = value ?? fallback;
+  const num = Number(raw);
+
+  if (!Number.isFinite(num)) return fallback;
+
+  return Math.max(0, Math.min(4, Math.floor(num)));
+}
+
+function fallbackDecimalsByCurrency(code: string) {
+  const value = s(code).toUpperCase();
+
+  if (value === "YER") return 0;
+  if (value === "JPY") return 0;
+  if (value === "KRW") return 0;
+
+  return 2;
+}
+
+function readMoneyFormat(summary: Summary | null): MoneyFormatInfo {
+  const code =
+    s(summary?.currency_code) ||
+    s(summary?.currencyCode) ||
+    s(summary?.currency) ||
+    "SAR";
+
+  const symbol =
+    s(summary?.currency_symbol) ||
+    s(summary?.currencySymbol) ||
+    s(summary?.symbol) ||
+    code;
+
+  const rawDecimals =
+    summary?.currency_decimals ??
+    summary?.currencyDecimals ??
+    summary?.decimal_digits ??
+    summary?.decimalDigits;
+
+  return {
+    code,
+    symbol,
+    decimals: clampDecimals(rawDecimals, fallbackDecimalsByCurrency(code)),
+  };
 }
 
 function readOrderOptionsFee(summary: Partial<Summary>) {
@@ -243,6 +311,8 @@ export default function OrderSummary({
     abortRef.current = null;
   }
 
+  const money = useMemo(() => readMoneyFormat(summary), [summary]);
+
   const items = useMemo(
     () => (Array.isArray(summary?.items) ? summary.items : []),
     [summary?.items],
@@ -274,7 +344,6 @@ export default function OrderSummary({
   const orderOptionsFee = hasTotals ? readOrderOptionsFee(summary!) : null;
   const discount = hasTotals ? summary!.discount : null;
   const total = hasTotals ? summary!.total : null;
-  const currency = summary?.currency ?? "SAR";
   const hasCouponApplied = Boolean(summary?.coupon?.code);
 
   const fetchPrepare = useCallback(
@@ -660,7 +729,9 @@ export default function OrderSummary({
 
   const submitButtonLabel = useMemo(() => {
     if (submitBusy) return "جاري تأكيد الطلب";
-    if (couponBusy) return hasCouponApplied ? "جاري إزالة الكوبون" : "جاري تطبيق الكوبون";
+    if (couponBusy) {
+      return hasCouponApplied ? "جاري إزالة الكوبون" : "جاري تطبيق الكوبون";
+    }
     if (softLoading) return "جاري تحديث الطلب";
     if (isInitialLoading || !hasTotals) return "جاري تجهيز الطلب";
     return "تأكيد الدفع";
@@ -709,7 +780,7 @@ export default function OrderSummary({
             {showSkeleton || total == null ? (
               <span className="co-skeleton co-skeleton--total" />
             ) : (
-              <strong dir="ltr">{formatMoney(currency, total)}</strong>
+              <strong dir="ltr">{formatMoney(money, total)}</strong>
             )}
 
             <button
@@ -820,7 +891,7 @@ export default function OrderSummary({
                       <SummaryItemRow
                         key={item.id}
                         item={item}
-                        currency={currency}
+                        money={money}
                       />
                     ))}
                   </div>
@@ -842,14 +913,14 @@ export default function OrderSummary({
                     value={
                       showSkeleton || subtotal == null
                         ? null
-                        : formatMoney(currency, subtotal)
+                        : formatMoney(money, subtotal)
                     }
                   />
 
                   {showTaxRow ? (
                     <Row
                       label="ضريبة القيمة المضافة"
-                      value={formatMoney(currency, tax ?? 0)}
+                      value={formatMoney(money, tax ?? 0)}
                     />
                   ) : null}
 
@@ -857,7 +928,7 @@ export default function OrderSummary({
                     <div className="co-total-row is-discount">
                       <span>الخصم</span>
                       <strong dir="ltr">
-                        - {formatMoney(currency, discount)}
+                        - {formatMoney(money, discount)}
                       </strong>
                     </div>
                   ) : null}
@@ -867,14 +938,14 @@ export default function OrderSummary({
                     value={
                       showSkeleton || shipping == null
                         ? null
-                        : formatMoney(currency, shipping)
+                        : formatMoney(money, shipping)
                     }
                   />
 
                   {showPaymentFee ? (
                     <Row
                       label="رسوم الدفع عند الاستلام"
-                      value={formatMoney(currency, paymentFee ?? 0)}
+                      value={formatMoney(money, paymentFee ?? 0)}
                     />
                   ) : null}
 
@@ -882,7 +953,7 @@ export default function OrderSummary({
                     <>
                       <Row
                         label="خيارات الطلب"
-                        value={formatMoney(currency, orderOptionsFee ?? 0)}
+                        value={formatMoney(money, orderOptionsFee ?? 0)}
                       />
 
                       {orderOptions.length > 0 ? (
@@ -895,13 +966,15 @@ export default function OrderSummary({
                             )
                             .map((item) => (
                               <div
-                                key={item.option_id ?? item.optionId ?? item.name}
+                                key={
+                                  item.option_id ?? item.optionId ?? item.name
+                                }
                               >
                                 <span>{item.name || "خيار الطلب"}</span>
                                 <strong dir="ltr">
                                   +{" "}
                                   {formatMoney(
-                                    currency,
+                                    money,
                                     n(
                                       item.price_customer ??
                                         item.priceCustomer,
@@ -921,7 +994,7 @@ export default function OrderSummary({
                     {showSkeleton || total == null ? (
                       <span className="co-skeleton co-skeleton--money" />
                     ) : (
-                      <strong dir="ltr">{formatMoney(currency, total)}</strong>
+                      <strong dir="ltr">{formatMoney(money, total)}</strong>
                     )}
                   </div>
                 </div>
@@ -975,7 +1048,9 @@ export default function OrderSummary({
                 ]
                   .filter(Boolean)
                   .join(" ")}
-                disabled={loading || submitBusy || couponBusy || softLoading || !hasTotals}
+                disabled={
+                  loading || submitBusy || couponBusy || softLoading || !hasTotals
+                }
                 onClick={submitOrder}
               >
                 {submitBusy || loading || couponBusy || softLoading ? (
@@ -1003,10 +1078,10 @@ export default function OrderSummary({
 
 const SummaryItemRow = memo(function SummaryItemRow({
   item,
-  currency,
+  money,
 }: {
   item: SummaryItem;
-  currency: string;
+  money: MoneyFormatInfo;
 }) {
   const qty = Math.max(1, Math.floor(n(item.qty) || 1));
   const lineTotal = round2(n(item.unit_price) * qty);
@@ -1034,7 +1109,7 @@ const SummaryItemRow = memo(function SummaryItemRow({
       </div>
 
       <div dir="ltr" className="co-summary-item__price">
-        {formatMoney(currency, lineTotal)}
+        {formatMoney(money, lineTotal)}
       </div>
     </div>
   );
@@ -1054,6 +1129,17 @@ function Row({ label, value }: { label: string; value: string | null }) {
   );
 }
 
-function formatMoney(currency: string, v: number) {
-  return `${currency} ${Number(v).toLocaleString("en-US")}`;
+function formatMoney(info: MoneyFormatInfo, v: number) {
+  const decimals = clampDecimals(info.decimals, 2);
+  const value = Number.isFinite(Number(v)) ? Number(v) : 0;
+
+  const rounded =
+    decimals <= 0 ? Math.round(value) : Number(value.toFixed(decimals));
+
+  const formatted = rounded.toLocaleString("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: decimals,
+  });
+
+  return `${info.code} ${formatted}`;
 }
