@@ -238,6 +238,11 @@ export async function getCartSessionId() {
   return sid;
 }
 
+export async function getCartSessionIdFromCookie() {
+  const jar = await cookies();
+  return String(jar.get(CART_COOKIE)?.value || "").trim();
+}
+
 export function cartSessionCookie(sid: string) {
   return {
     name: CART_COOKIE,
@@ -286,6 +291,129 @@ async function getCustomerIdMaybe(store_id: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+function readCartActivityTime(cart: any) {
+  const values = [
+    cart?.last_activity_at,
+    cart?.updated_at,
+    cart?.created_at,
+  ];
+
+  for (const value of values) {
+    const time = Date.parse(String(value ?? ""));
+    if (Number.isFinite(time)) return time;
+  }
+
+  return 0;
+}
+
+function pickBestExistingCart(carts: any[]) {
+  const rows = Array.isArray(carts)
+    ? carts.filter((cart) => String(cart?.id ?? "").trim())
+    : [];
+
+  if (!rows.length) return null;
+  if (rows.length === 1) return rows[0];
+
+  return [...rows].sort((a, b) => {
+    const ai = Math.max(0, Number(a?.item_count ?? 0));
+    const bi = Math.max(0, Number(b?.item_count ?? 0));
+
+    const aHasItems = ai > 0 ? 1 : 0;
+    const bHasItems = bi > 0 ? 1 : 0;
+
+    if (bHasItems !== aHasItems) return bHasItems - aHasItems;
+    if (bi !== ai) return bi - ai;
+
+    return readCartActivityTime(b) - readCartActivityTime(a);
+  })[0];
+}
+
+/**
+ * قراءة فقط.
+ * لا ينشئ cart.
+ * لا يدمج carts.
+ * يستخدمه GET /api/cart حتى لا ننشئ carts وهمية للزوار.
+ */
+export async function getExistingOpenCart(args: {
+  store_id: string;
+  session_id?: string | null;
+}) {
+  const sb: any = supabaseAdmin();
+
+  const storeId = String(args.store_id ?? "").trim();
+  const sessionId = String(args.session_id ?? "").trim();
+
+  if (!storeId) throw new Error("STORE_NOT_FOUND");
+
+  const customer_id = await getCustomerIdMaybe(storeId);
+  const carts: any[] = [];
+  const seen = new Set<string>();
+
+  function pushCart(cart: any) {
+    const id = String(cart?.id ?? "").trim();
+    if (!id || seen.has(id)) return;
+
+    seen.add(id);
+    carts.push(cart);
+  }
+
+  if (customer_id) {
+    const [customerCartR, sessionCartR] = await Promise.all([
+      sb
+        .from("carts")
+        .select("*")
+        .eq("store_id", storeId)
+        .eq("user_id", customer_id)
+        .eq("status", "open")
+        .order("last_activity_at", { ascending: false, nullsFirst: false })
+        .order("updated_at", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+
+      sessionId
+        ? sb
+            .from("carts")
+            .select("*")
+            .eq("store_id", storeId)
+            .eq("session_id", sessionId)
+            .eq("status", "open")
+            .order("last_activity_at", { ascending: false, nullsFirst: false })
+            .order("updated_at", { ascending: false, nullsFirst: false })
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+    ]);
+
+    if (customerCartR.error) throw new Error(customerCartR.error.message);
+    if (sessionCartR.error) throw new Error(sessionCartR.error.message);
+
+    if (customerCartR.data?.id) pushCart(customerCartR.data);
+    if (sessionCartR.data?.id) pushCart(sessionCartR.data);
+
+    return pickBestExistingCart(carts);
+  }
+
+  if (!sessionId) return null;
+
+  const sessionCartR = await sb
+    .from("carts")
+    .select("*")
+    .eq("store_id", storeId)
+    .eq("session_id", sessionId)
+    .eq("status", "open")
+    .order("last_activity_at", { ascending: false, nullsFirst: false })
+    .order("updated_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (sessionCartR.error) throw new Error(sessionCartR.error.message);
+
+  return sessionCartR.data?.id ? sessionCartR.data : null;
 }
 
 /** ---------- Stock helpers ---------- */
@@ -836,9 +964,12 @@ async function mergeSessionCartIntoCustomerCart(args: {
 }
 
 /**
- * المصدر الوحيد للحصول على السلة المفتوحة:
- * - إذا المستخدم مسجل ومربوط بنفس المتجر => حوّل/ادمج سلة session داخل سلة العميل
- * - إذا زائر أو جلسة لا تخص هذا المتجر => سلة session
+ * المصدر الوحيد للحصول على السلة المفتوحة عند العمليات التي تحتاج إنشاء/كتابة:
+ * - إضافة منتج
+ * - checkout
+ * - claim
+ *
+ * لا تستخدمه داخل GET /api/cart الفاضي.
  */
 export async function getOrCreateOpenCart(args: {
   store_id: string;

@@ -4,7 +4,7 @@ import { unstable_cache } from "next/cache";
 import { createHash } from "node:crypto";
 import {
   getBestSellingProductsForGrid,
-  getProductById,
+  getProductsByIds,
   getProductsForGrid,
 } from "@/data/catalog/products";
 import { supabaseAdmin } from "@/data/store/supabase.server";
@@ -511,9 +511,6 @@ function collectManualProductsFromHomepageThemeOptions(themeOptions: any) {
   return Array.from(ids).filter(Boolean).slice(0, 80);
 }
 
-
-
-
 function collectCountdownOfferProductIdsFromHomepageThemeOptions(
   themeOptions: any,
 ) {
@@ -554,10 +551,6 @@ function collectCountdownOfferProductIdsFromHomepageThemeOptions(
   return Array.from(ids).filter(Boolean).slice(0, 10);
 }
 
-
-
-
-
 function collectLinkedCategoriesFromHomepageThemeOptions(themeOptions: any) {
   const ids = new Set<string>();
 
@@ -581,25 +574,18 @@ async function loadLinkedProductsByIdRaw(args: {
   const ids = Array.from(new Set(args.productIds.map(s).filter(Boolean)));
   if (!ids.length) return {};
 
-  const pairs = await Promise.all(
-    ids.map(async (id) => {
-      const product = await getProductById({
-        store_id: args.store_id,
-        id,
-      });
-
-      if (!product?.id) return null;
-
-      return [String(product.id), product] as const;
-    }),
-  );
+  const products = await getProductsByIds({
+    store_id: args.store_id,
+    ids,
+    limit: ids.length,
+  });
 
   const map: Record<string, any> = {};
 
-  for (const pair of pairs) {
-    if (!pair) continue;
+  for (const product of Array.isArray(products) ? products : []) {
+    const id = s(product?.id);
+    if (!id) continue;
 
-    const [id, product] = pair;
     map[id] = product;
   }
 
@@ -918,7 +904,7 @@ function loadStoreReviews(storeId: string) {
   return fn();
 }
 
- async function loadHomePageRaw(args: {
+async function loadHomePageRaw(args: {
   store_id: string;
   limit: number;
   themeOptions: Record<string, any>;
@@ -1038,6 +1024,7 @@ function loadStoreReviews(storeId: string) {
     },
   };
 }
+
 const homePageCache = new Map<string, () => Promise<any>>();
 
 export async function loadHomePage(args: {

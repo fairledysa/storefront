@@ -2,8 +2,8 @@
 
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -13,11 +13,23 @@ import {
   type CSSProperties,
 } from "react";
 import Icon from "@/components/icon/Icon";
-import MegaMenu from "./MegaMenu";
-import AccountMenu from "./AccountMenu";
-import CurrencySwitcher from "./CurrencySwitcher";
 import type { SeoUrlMode } from "@/data/store/settings";
 import type { MalakBootstrap } from "../../bootstrap/types";
+
+const MegaMenu = dynamic(() => import("./MegaMenu"), {
+  ssr: false,
+  loading: () => null,
+});
+
+const AccountMenu = dynamic(() => import("./AccountMenu"), {
+  ssr: false,
+  loading: () => null,
+});
+
+const CurrencySwitcher = dynamic(() => import("./CurrencySwitcher"), {
+  ssr: false,
+  loading: () => null,
+});
 
 type Props = {
   className?: string;
@@ -47,30 +59,25 @@ function readEventQty(event: Event) {
   );
 }
 
+function readCartCountPayload(json: any) {
+  return safeNumber(
+    json?.count ??
+      json?.cartCount ??
+      json?.cart_count ??
+      json?.total ??
+      json?.data?.count ??
+      json?.data?.cartCount ??
+      json?.data?.cart_count ??
+      json?.data?.total,
+  );
+}
+
 function hasChildren(category: any) {
   return Array.isArray(category?.children) && category.children.length > 0;
 }
 
 function s(value: unknown) {
   return String(value ?? "").trim();
-}
-
-function normalizeInternalPrefetchHref(value: unknown) {
-  const href = s(value);
-
-  if (!href) return "";
-  if (href === "#") return "";
-  if (href.startsWith("#")) return "";
-
-  if (href.startsWith("http://")) return "";
-  if (href.startsWith("https://")) return "";
-  if (href.startsWith("mailto:")) return "";
-  if (href.startsWith("tel:")) return "";
-  if (href.startsWith("sms:")) return "";
-  if (href.startsWith("whatsapp:")) return "";
-  if (href.startsWith("javascript:")) return "";
-
-  return href.startsWith("/") ? href : `/${href}`;
 }
 
 export default function DesktopMegaNav({
@@ -83,8 +90,6 @@ export default function DesktopMegaNav({
   bootstrap,
   initialCartCount = 0,
 }: Props) {
-  const router = useRouter();
-
   const tree = bootstrap?.navigation?.categories ?? [];
   const megaMenu = (bootstrap as any)?.navigation?.mega_menu;
   const header = theme?.header || {};
@@ -114,98 +119,29 @@ export default function DesktopMegaNav({
   const openTimer = useRef<number | null>(null);
   const closeTimer = useRef<number | null>(null);
   const cartSyncTimer = useRef<number | null>(null);
-  const prefetchTimer = useRef<number | null>(null);
-  const prefetchedRef = useRef<Set<string>>(new Set());
 
   const OPEN_DELAY = 60;
   const CLOSE_DELAY = 140;
-
-  const prefetchHref = useCallback(
-    (value: unknown) => {
-      const href = normalizeInternalPrefetchHref(value);
-      if (!href) return;
-      if (prefetchedRef.current.has(href)) return;
-
-      prefetchedRef.current.add(href);
-
-      try {
-        router.prefetch(href);
-      } catch {
-        //
-      }
-    },
-    [router],
-  );
-
-  const prefetchCategory = useCallback(
-    (category: any) => {
-      prefetchHref(category?.href);
-
-      const children = Array.isArray(category?.children)
-        ? category.children
-        : [];
-
-      children.slice(0, 4).forEach((child: any) => {
-        prefetchHref(child?.href);
-      });
-    },
-    [prefetchHref],
-  );
-
-  const prefetchTopRoots = useCallback(() => {
-    roots.slice(0, 8).forEach((root: any) => {
-      prefetchCategory(root);
-    });
-  }, [roots, prefetchCategory]);
-
-  useEffect(() => {
-    if (prefetchTimer.current) {
-      window.clearTimeout(prefetchTimer.current);
-      prefetchTimer.current = null;
-    }
-
-    prefetchTimer.current = window.setTimeout(() => {
-      prefetchTimer.current = null;
-
-      prefetchHref("/cart");
-      prefetchTopRoots();
-    }, 700);
-
-    return () => {
-      if (prefetchTimer.current) {
-        window.clearTimeout(prefetchTimer.current);
-        prefetchTimer.current = null;
-      }
-    };
-  }, [prefetchHref, prefetchTopRoots]);
+  const CART_SYNC_DELAY = 220;
 
   useEffect(() => {
     setCartCount(safeNumber(initialCartCount));
   }, [initialCartCount]);
 
-  const loadCart = useCallback(async () => {
+  const loadCartCount = useCallback(async () => {
     try {
-      const res = await fetch("/api/cart", {
+      const res = await fetch("/api/cart/count", {
         method: "GET",
         credentials: "include",
         cache: "no-store",
       });
 
       const json = await res.json().catch(() => null);
+      const nextCount = readCartCountPayload(json);
 
-      const items = Array.isArray(json?.items)
-        ? json.items
-        : Array.isArray(json?.data?.items)
-          ? json.data.items
-          : [];
-
-      const total = items.reduce((sum: number, item: any) => {
-        return sum + Number(item?.qty ?? item?.quantity ?? item?.count ?? 0);
-      }, 0);
-
-      setCartCount(safeNumber(total));
+      setCartCount(nextCount);
     } catch {
-      setCartCount(0);
+      // لا نصفر العداد عند فشل الشبكة حتى لا يختفي الرقم غلط.
     }
   }, []);
 
@@ -216,9 +152,9 @@ export default function DesktopMegaNav({
 
     cartSyncTimer.current = window.setTimeout(() => {
       cartSyncTimer.current = null;
-      void loadCart();
-    }, 180);
-  }, [loadCart]);
+      void loadCartCount();
+    }, CART_SYNC_DELAY);
+  }, [loadCartCount]);
 
   useEffect(() => {
     const onOptimisticAdd = (event: Event) => {
@@ -281,9 +217,9 @@ export default function DesktopMegaNav({
     if (!root) return;
 
     const headerBottom = root.closest(".mk-header__bottom") as HTMLElement | null;
-    const header = root.closest(".mk-header") as HTMLElement | null;
+    const headerEl = root.closest(".mk-header") as HTMLElement | null;
 
-    const target = headerBottom || header || root;
+    const target = headerBottom || headerEl || root;
     const rect = target.getBoundingClientRect();
 
     const top = Math.max(0, Math.round(rect.bottom) - 1);
@@ -311,8 +247,6 @@ export default function DesktopMegaNav({
   }
 
   function openRootSoon(root: any) {
-    prefetchCategory(root);
-
     if (!hasChildren(root)) {
       clearTimers();
       setOpen(false);
@@ -408,6 +342,7 @@ export default function DesktopMegaNav({
       <div dir="ltr" className="mk-desktop-nav__left">
         <Link
           href="/cart"
+          prefetch={false}
           aria-label={
             cartCount > 0
               ? `الذهاب إلى السلة، عدد المنتجات ${cartCount}`
@@ -418,8 +353,6 @@ export default function DesktopMegaNav({
           data-mk-cart-button="true"
           data-mk-cart-icon="true"
           data-mk-cart-count={cartCount}
-          onMouseEnter={() => prefetchHref("/cart")}
-          onFocus={() => prefetchHref("/cart")}
         >
           <Icon icon="ShoppingBag02" size={25} />
 
@@ -472,7 +405,6 @@ export default function DesktopMegaNav({
           onMouseEnter={
             header.desktopSideMenu && hasAnyMegaContent
               ? () => {
-                  prefetchTopRoots();
                   openAllSoon();
                 }
               : undefined
@@ -482,8 +414,6 @@ export default function DesktopMegaNav({
               closeNow();
               return;
             }
-
-            prefetchTopRoots();
 
             calcOverlayTop();
             setShowAll(true);
@@ -498,7 +428,6 @@ export default function DesktopMegaNav({
           <div
             className="mk-desktop-nav__itemWrap"
             onMouseEnter={() => {
-              prefetchTopRoots();
               openAllSoon();
             }}
             onMouseLeave={closeSoon}
@@ -509,16 +438,12 @@ export default function DesktopMegaNav({
               aria-expanded={showAllMega}
               aria-haspopup="dialog"
               onClick={() => {
-                prefetchTopRoots();
-
                 calcOverlayTop();
                 setShowAll(true);
                 setActiveRootId(null);
                 setOpen((value) => !(value && showAll));
               }}
               onFocus={() => {
-                prefetchTopRoots();
-
                 calcOverlayTop();
                 setShowAll(true);
                 setActiveRootId(null);
@@ -567,7 +492,7 @@ export default function DesktopMegaNav({
         ) : null}
 
         {roots.map((root: any) => {
-          const href = root.href || "/";
+          const href = s(root.href) || "/";
           const rootHasChildren = hasChildren(root);
 
           const isActiveRoot =
@@ -580,16 +505,15 @@ export default function DesktopMegaNav({
               <Link
                 key={root.id}
                 href={href}
+                prefetch={false}
                 className="mk-desktop-nav__rootLink"
                 onMouseEnter={() => {
-                  prefetchCategory(root);
                   clearTimers();
                   setOpen(false);
                   setShowAll(false);
                   setActiveRootId(null);
                 }}
                 onFocus={() => {
-                  prefetchCategory(root);
                   closeNow();
                   setShowAll(false);
                   setActiveRootId(null);
@@ -609,8 +533,8 @@ export default function DesktopMegaNav({
             >
               <Link
                 href={href}
+                prefetch={false}
                 className="mk-desktop-nav__rootLink"
-                onMouseEnter={() => prefetchCategory(root)}
                 onFocus={() => openRootSoon(root)}
               >
                 {root.name}

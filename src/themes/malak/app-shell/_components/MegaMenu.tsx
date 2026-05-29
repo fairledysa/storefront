@@ -2,12 +2,9 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
-  useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -33,6 +30,10 @@ type BalancedLane = {
   weight: number;
   items: MalakBootstrapCategory[];
 };
+
+const MAX_COLUMN_CHILDREN = 12;
+const MAX_COLUMNS = 16;
+const MAX_BANNERS = 6;
 
 function s(value: unknown) {
   return String(value ?? "").trim();
@@ -73,18 +74,6 @@ function isExternalHref(href: string) {
     href.startsWith("tel:") ||
     href.startsWith("whatsapp:")
   );
-}
-
-function isInternalPrefetchableHref(value: unknown) {
-  const href = normalizeHref(value);
-
-  if (!href) return false;
-  if (href === "#") return false;
-  if (!href.startsWith("/")) return false;
-  if (href.startsWith("//")) return false;
-  if (href.startsWith("/api/")) return false;
-
-  return true;
 }
 
 function sortCategories<T extends { sort_order?: number | null; name?: string }>(
@@ -133,7 +122,8 @@ function getActiveBanners(
 
   return [...(settings.banners || [])]
     .filter((banner) => banner.is_enabled && banner.image_url)
-    .sort((a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0));
+    .sort((a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0))
+    .slice(0, MAX_BANNERS);
 }
 
 function hasCategoryContent(args: {
@@ -204,7 +194,7 @@ function getLaneCount(args: { columnsCount: number; hasBanners: boolean }) {
 function getCategoryWeight(category: MalakBootstrapCategory) {
   const children = getChildren(category);
 
-  return 2 + Math.min(children.length, 12);
+  return 2 + Math.min(children.length, MAX_COLUMN_CHILDREN);
 }
 
 function buildBalancedLanes(
@@ -278,13 +268,11 @@ function LinkItem({
   children,
   className,
   onNavigate,
-  onPrefetch,
 }: {
   href: string;
   children: ReactNode;
   className: string;
   onNavigate?: () => void;
-  onPrefetch?: (href: string) => void;
 }) {
   const finalHref = normalizeHref(href) || "#";
 
@@ -313,10 +301,8 @@ function LinkItem({
   return (
     <Link
       href={finalHref}
-      prefetch={true}
+      prefetch={false}
       className={className}
-      onMouseEnter={() => onPrefetch?.(finalHref)}
-      onFocus={() => onPrefetch?.(finalHref)}
       onClick={onNavigate}
     >
       {children}
@@ -327,13 +313,11 @@ function LinkItem({
 function CategoryColumn({
   category,
   onNavigate,
-  onPrefetch,
 }: {
   category: MalakBootstrapCategory;
   onNavigate?: () => void;
-  onPrefetch?: (href: string) => void;
 }) {
-  const children = getChildren(category).slice(0, 12);
+  const children = getChildren(category).slice(0, MAX_COLUMN_CHILDREN);
 
   return (
     <div
@@ -348,7 +332,6 @@ function CategoryColumn({
         href={category.href}
         className="mk-mega__titleLink"
         onNavigate={onNavigate}
-        onPrefetch={onPrefetch}
       >
         <div className="mk-mega__titleRow">
           <span className="mk-mega__titleArrow" aria-hidden="true">
@@ -366,7 +349,6 @@ function CategoryColumn({
               href={child.href}
               className="mk-mega__link"
               onNavigate={onNavigate}
-              onPrefetch={onPrefetch}
             >
               {child.name}
             </LinkItem>
@@ -381,12 +363,10 @@ function MegaBanners({
   settings,
   categoryName,
   onNavigate,
-  onPrefetch,
 }: {
   settings: MalakBootstrapMegaMenuCategorySettings | null;
   categoryName?: string | null;
   onNavigate?: () => void;
-  onPrefetch?: (href: string) => void;
 }) {
   const banners = getActiveBanners(settings);
 
@@ -396,13 +376,12 @@ function MegaBanners({
 
   return (
     <div className="mk-mega__banners" aria-label="عروض القائمة">
-      {banners.slice(0, 6).map((banner, index) => (
+      {banners.map((banner, index) => (
         <LinkItem
           key={banner.id}
           href={banner.href || "#"}
           className="mk-mega__banner"
           onNavigate={onNavigate}
-          onPrefetch={onPrefetch}
         >
           <img
             src={banner.image_url}
@@ -432,27 +411,6 @@ export default function MegaMenu({
   initialActiveId = null,
   onNavigate,
 }: Props) {
-  const router = useRouter();
-  const prefetchedRef = useRef<Set<string>>(new Set());
-
-  const prefetchInternal = useCallback(
-    (href: string) => {
-      const finalHref = normalizeHref(href);
-
-      if (!isInternalPrefetchableHref(finalHref)) return;
-      if (prefetchedRef.current.has(finalHref)) return;
-
-      prefetchedRef.current.add(finalHref);
-
-      try {
-        router.prefetch(finalHref);
-      } catch {
-        //
-      }
-    },
-    [router],
-  );
-
   const safeCategories = useMemo(() => {
     return cleanCategories(categories);
   }, [categories]);
@@ -463,11 +421,11 @@ export default function MegaMenu({
   );
 
   const [activeId, setActiveId] = useState<string | null>(
-    firstCategory?.id ?? null,
+    firstCategory?.id ? String(firstCategory.id) : null,
   );
 
   useEffect(() => {
-    setActiveId(firstCategory?.id ?? null);
+    setActiveId(firstCategory?.id ? String(firstCategory.id) : null);
   }, [firstCategory?.id]);
 
   const activeCategory = useMemo(() => {
@@ -492,19 +450,26 @@ export default function MegaMenu({
     return getChildren(activeCategory);
   }, [activeCategory]);
 
-  useEffect(() => {
-    if (!activeCategory) return;
+  const sideRows = useMemo(() => {
+    if (!showSide) return [];
 
-    prefetchInternal(activeCategory.href);
+    return safeCategories.map((category) => {
+      const id = String(category.id);
+      const categorySettings = getCategorySettings(megaMenu, id);
 
-    for (const child of rootChildren.slice(0, 12)) {
-      prefetchInternal(child.href);
-    }
+      const categoryHasContent = hasCategoryContent({
+        category,
+        megaMenu,
+      });
 
-    for (const banner of banners.slice(0, 4)) {
-      prefetchInternal(banner.href || "");
-    }
-  }, [activeCategory, rootChildren, banners, prefetchInternal]);
+      return {
+        category,
+        id,
+        categorySettings,
+        categoryHasContent,
+      };
+    });
+  }, [safeCategories, showSide, megaMenu]);
 
   if (!activeCategory) return null;
 
@@ -517,7 +482,7 @@ export default function MegaMenu({
     return null;
   }
 
-  const columns = rootChildren.slice(0, 16);
+  const columns = rootChildren.slice(0, MAX_COLUMNS);
   const laneCount = getLaneCount({
     columnsCount: columns.length,
     hasBanners,
@@ -548,54 +513,47 @@ export default function MegaMenu({
       <div className="mk-mega__inner">
         {showSide ? (
           <aside className="mk-mega__side" aria-label="الأقسام الرئيسية">
-            {safeCategories.map((category) => {
-              const isActive = String(category.id) === String(activeCategory.id);
-              const categorySettings = getCategorySettings(
-                megaMenu,
-                String(category.id),
-              );
+            {sideRows.map(
+              ({ category, id, categorySettings, categoryHasContent }) => {
+                const isActive = String(category.id) === String(activeCategory.id);
 
-              const categoryHasContent = hasCategoryContent({
-                category,
-                megaMenu,
-              });
-
-              return (
-                <button
-                  key={category.id}
-                  type="button"
-                  className={[
-                    "mk-mega__sideButton",
-                    isActive ? "is-active" : "",
-                    categorySettings ? "has-mega" : "",
-                    categoryHasContent ? "has-content" : "is-empty",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  onMouseEnter={() => {
-                    setActiveId(category.id);
-                    prefetchInternal(category.href);
-                  }}
-                  onFocus={() => {
-                    setActiveId(category.id);
-                    prefetchInternal(category.href);
-                  }}
-                >
-                  <span className="mk-mega__sideButtonInner">
-                    <span className="mk-mega__sideMain">
-                      <CategoryThumb category={category} />
-                      <span className="mk-mega__sideName">{category.name}</span>
-                    </span>
-
-                    {categoryHasContent ? (
-                      <span className="mk-mega__sideArrow" aria-hidden="true">
-                        ‹
+                return (
+                  <button
+                    key={category.id}
+                    type="button"
+                    className={[
+                      "mk-mega__sideButton",
+                      isActive ? "is-active" : "",
+                      categorySettings ? "has-mega" : "",
+                      categoryHasContent ? "has-content" : "is-empty",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    onMouseEnter={() => {
+                      setActiveId((current) => (current === id ? current : id));
+                    }}
+                    onFocus={() => {
+                      setActiveId((current) => (current === id ? current : id));
+                    }}
+                  >
+                    <span className="mk-mega__sideButtonInner">
+                      <span className="mk-mega__sideMain">
+                        <CategoryThumb category={category} />
+                        <span className="mk-mega__sideName">
+                          {category.name}
+                        </span>
                       </span>
-                    ) : null}
-                  </span>
-                </button>
-              );
-            })}
+
+                      {categoryHasContent ? (
+                        <span className="mk-mega__sideArrow" aria-hidden="true">
+                          ‹
+                        </span>
+                      ) : null}
+                    </span>
+                  </button>
+                );
+              },
+            )}
           </aside>
         ) : null}
 
@@ -606,7 +564,6 @@ export default function MegaMenu({
                 href={activeCategory.href}
                 className="mk-mega__rootTitle"
                 onNavigate={onNavigate}
-                onPrefetch={prefetchInternal}
               >
                 {activeCategory.name}
               </LinkItem>
@@ -620,7 +577,6 @@ export default function MegaMenu({
               href={activeCategory.href}
               className="mk-mega__viewAll"
               onNavigate={onNavigate}
-              onPrefetch={prefetchInternal}
             >
               عرض الكل
             </LinkItem>
@@ -643,7 +599,6 @@ export default function MegaMenu({
                         key={category.id}
                         category={category}
                         onNavigate={onNavigate}
-                        onPrefetch={prefetchInternal}
                       />
                     ))}
                   </div>
@@ -658,7 +613,6 @@ export default function MegaMenu({
                 settings={settings}
                 categoryName={activeCategory.name}
                 onNavigate={onNavigate}
-                onPrefetch={prefetchInternal}
               />
             ) : null}
           </div>

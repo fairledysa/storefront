@@ -12,8 +12,8 @@ import { loadFreeShippingEvaluator } from "../checkout/lib/free-shipping";
 import {
   buildLineKey,
   cartSessionCookie,
-  getCartSessionId,
-  getOrCreateOpenCart,
+  getCartSessionIdFromCookie,
+  getExistingOpenCart,
   getStoreCurrencyInfo,
   getStoreIdOrThrow,
 } from "../_cart/cart.server";
@@ -1397,7 +1397,7 @@ function emptySummary(currency: string, currencyInfo?: any) {
 }
 
 function jsonWithCartCookie(args: {
-  sid: string;
+  sid?: string | null;
   payload: any;
   status?: number;
 }) {
@@ -1405,7 +1405,11 @@ function jsonWithCartCookie(args: {
     status: args.status ?? 200,
   });
 
-  const c = cartSessionCookie(args.sid);
+  const sid = s(args.sid);
+
+  if (!sid) return res;
+
+  const c = cartSessionCookie(sid);
 
   res.cookies.set(c.name, c.value, {
     httpOnly: c.httpOnly,
@@ -1583,19 +1587,79 @@ function pickFinalConvertedUnitPrice(prices: {
   return price > 0 ? price : 0;
 }
 
+function emptyCartPayload(args: {
+  cart: any | null;
+  currencyInfo: any;
+  coupon?: any | null;
+}) {
+  const currencyInfo = normalizeCurrencyInfo(args.currencyInfo?.code, args.currencyInfo);
+
+  return {
+    data: {
+      cart: args.cart ?? null,
+      items: [],
+      summary: emptySummary(currencyInfo.code, currencyInfo),
+      coupon: args.coupon ?? null,
+      currency_info: currencyInfo,
+    },
+  };
+}
+
 export async function GET() {
   try {
     const store_id = await getStoreIdOrThrow();
-    const sid = await getCartSessionId();
+    const sid = await getCartSessionIdFromCookie();
     const sb: any = supabaseAdmin();
 
-    const [cart, seoMode, storeCurrencyInfo, storeDefaultCurrency] =
-      await Promise.all([
-        getOrCreateOpenCart({ store_id, session_id: sid }),
-        getSafeSeoMode(store_id),
-        getStoreCurrencyInfo(store_id),
-        fetchStoreDefaultCurrencyCode(sb, store_id, "SAR"),
-      ]);
+    const [cart, storeCurrencyInfo] = await Promise.all([
+      getExistingOpenCart({ store_id, session_id: sid }),
+      getStoreCurrencyInfo(store_id),
+    ]);
+
+    if (!cart?.id) {
+      return jsonWithCartCookie({
+        sid: "",
+        payload: emptyCartPayload({
+          cart: null,
+          currencyInfo: storeCurrencyInfo,
+        }),
+      });
+    }
+
+    const initialItems = await fetchCartItems(sb, cart.id);
+
+    if (!initialItems.length) {
+      return jsonWithCartCookie({
+        sid,
+        payload: emptyCartPayload({
+          cart,
+          currencyInfo: storeCurrencyInfo,
+        }),
+      });
+    }
+
+    const initialProductIds: string[] = Array.from(
+      new Set(
+        initialItems
+          .map((x: any) => String(x?.product_id ?? "").trim())
+          .filter((id: string) => Boolean(id)),
+      ),
+    );
+
+    if (!initialProductIds.length) {
+      return jsonWithCartCookie({
+        sid,
+        payload: emptyCartPayload({
+          cart,
+          currencyInfo: storeCurrencyInfo,
+        }),
+      });
+    }
+
+    const [seoMode, storeDefaultCurrency] = await Promise.all([
+      getSafeSeoMode(store_id),
+      fetchStoreDefaultCurrencyCode(sb, store_id, "SAR"),
+    ]);
 
     const cartTaxContextPromise = getCartTaxContext({
       store_id,
@@ -1630,17 +1694,15 @@ export async function GET() {
       fallbackInfo: storeCurrencyInfo,
     });
 
-    const [cartCouponR, initialItems] = await Promise.all([
-      sb
-        .from("cart_coupons")
-        .select("id,code,discount_amount,coupon_id")
-        .eq("store_id", store_id)
-        .eq("cart_id", cart.id)
-        .limit(1)
-        .maybeSingle(),
+    const empty = emptySummary(currencyInfo.code, currencyInfo);
 
-      fetchCartItems(sb, cart.id),
-    ]);
+    const cartCouponR = await sb
+      .from("cart_coupons")
+      .select("id,code,discount_amount,coupon_id")
+      .eq("store_id", store_id)
+      .eq("cart_id", cart.id)
+      .limit(1)
+      .maybeSingle();
 
     if (cartCouponR.error) throw new Error(cartCouponR.error.message);
 
@@ -1654,46 +1716,6 @@ export async function GET() {
           discount_amount: Number(cartCouponR.data.discount_amount ?? 0),
         }
       : null;
-
-    const empty = emptySummary(currencyInfo.code, currencyInfo);
-
-    if (!initialItems.length) {
-      return jsonWithCartCookie({
-        sid,
-        payload: {
-          data: {
-            cart,
-            items: [],
-            summary: empty,
-            coupon: couponRaw ? { ...couponRaw, discount_amount: 0 } : null,
-            currency_info: currencyInfo,
-          },
-        },
-      });
-    }
-
-    const initialProductIds: string[] = Array.from(
-      new Set(
-        initialItems
-          .map((x: any) => String(x?.product_id ?? "").trim())
-          .filter((id: string) => Boolean(id)),
-      ),
-    );
-
-    if (!initialProductIds.length) {
-      return jsonWithCartCookie({
-        sid,
-        payload: {
-          data: {
-            cart,
-            items: [],
-            summary: empty,
-            coupon: couponRaw ? { ...couponRaw, discount_amount: 0 } : null,
-            currency_info: currencyInfo,
-          },
-        },
-      });
-    }
 
     const [productsR, stockR, variantsR, pricingR, mediaR, optionsR] =
       await Promise.all([

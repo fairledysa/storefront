@@ -4,6 +4,7 @@ import "server-only";
 
 import { cookies } from "next/headers";
 import { unstable_cache } from "next/cache";
+import { createHash } from "node:crypto";
 import { getCategoriesTree } from "@/data/catalog/categories";
 import {
   buildCategoryHref,
@@ -154,6 +155,17 @@ function safeObject(value: any): Record<string, any> {
 
   return {};
 }
+
+function hashObject(value: unknown) {
+  try {
+    return createHash("sha1")
+      .update(JSON.stringify(value ?? {}))
+      .digest("hex");
+  } catch {
+    return "no-hash";
+  }
+}
+
 function normalizePwaSettings(
   value: Record<string, any>,
   args: {
@@ -2898,12 +2910,12 @@ function loadMalakCategoriesTree(storeId: string) {
   return fn();
 }
 
-export async function getMalakBootstrap(input: {
+async function buildMalakBootstrapStableRaw(input: {
   store: StoreInput;
   seoMode: SeoUrlMode;
   themeOptions?: Record<string, any> | null;
   version_id?: string | null;
-}): Promise<MalakBootstrap> {
+}): Promise<MalakBootstrap & { appearance: Record<string, any> }> {
   const base = createDefaultMalakBootstrap({
     store: input.store,
     seoMode: input.seoMode,
@@ -2929,9 +2941,6 @@ export async function getMalakBootstrap(input: {
     versionId: input.version_id,
   });
 
-  const currencyCookieName = makeCurrencyCookieName(input.store.id);
-  const selectedCurrencyPromise = readCookieValue(currencyCookieName);
-
   const [
     categoriesTree,
     storeSettings,
@@ -2940,7 +2949,6 @@ export async function getMalakBootstrap(input: {
     footerPages,
     megaMenuRaw,
     currencyRows,
-    selectedCurrencyCode,
     storeTax,
   ] = await Promise.all([
     loadMalakCategoriesTree(input.store.id),
@@ -2950,7 +2958,6 @@ export async function getMalakBootstrap(input: {
     loadFooterPages(input.store.id),
     loadMegaMenuSettings(input.store.id),
     loadStoreCurrencies(input.store.id),
-    selectedCurrencyPromise,
     loadStoreTax(input.store.id),
   ]);
 
@@ -2989,7 +2996,7 @@ const customCode = sanitizeThemeCustomCode(themeOptions.custom_code);
     storeId: input.store.id,
     rows: currencyRows,
     storeDefaultCurrency: input.store.default_currency,
-    selectedCurrencyCode,
+    selectedCurrencyCode: "",
   });
 
   const normalizedMarketing = await normalizeMarketingValue({
@@ -3894,6 +3901,164 @@ catalogFilters,
       show_apps: bool(footerSettings.show_apps, true),
       show_social: bool(footerSettings.show_social, true),
     },
+  } as MalakBootstrap & {
+    appearance: Record<string, any>;
+  };
+}
+
+const malakBootstrapStableCache = new Map<
+  string,
+  () => Promise<MalakBootstrap & { appearance: Record<string, any> }>
+>();
+
+function makeMalakBootstrapStableKey(input: {
+  store: StoreInput;
+  seoMode: SeoUrlMode;
+  themeOptions?: Record<string, any> | null;
+  version_id?: string | null;
+}) {
+  const themeOptions = input.themeOptions ? safeObject(input.themeOptions) : null;
+  const themeHash = themeOptions ? hashObject(themeOptions) : "auto";
+
+  return [
+    "malak-bootstrap-stable",
+    s(input.store.id),
+    s(input.store.slug),
+    s(input.store.name),
+    s(input.store.logo_url),
+    s(input.store.favicon_url),
+    s(input.store.description),
+    s(input.store.default_currency),
+    s(input.seoMode),
+    s(input.version_id) || "published",
+    themeHash,
+  ].join(":");
+}
+
+function loadMalakBootstrapStable(input: {
+  store: StoreInput;
+  seoMode: SeoUrlMode;
+  themeOptions?: Record<string, any> | null;
+  version_id?: string | null;
+}) {
+  const themeOptions = input.themeOptions ? safeObject(input.themeOptions) : null;
+  const themeHash = themeOptions ? hashObject(themeOptions) : "auto";
+  const cacheKey = makeMalakBootstrapStableKey({
+    ...input,
+    themeOptions,
+  });
+
+  let fn = malakBootstrapStableCache.get(cacheKey);
+
+  if (!fn) {
+    fn = unstable_cache(
+      () =>
+        buildMalakBootstrapStableRaw({
+          store: input.store,
+          seoMode: input.seoMode,
+          themeOptions,
+          version_id: input.version_id,
+        }),
+      [
+        "malak-bootstrap-stable",
+        s(input.store.id),
+        s(input.store.slug),
+        s(input.store.name),
+        s(input.store.logo_url),
+        s(input.store.favicon_url),
+        s(input.store.description),
+        s(input.store.default_currency),
+        s(input.seoMode),
+        s(input.version_id) || "published",
+        themeHash,
+      ],
+      { revalidate: 60 },
+    );
+
+    malakBootstrapStableCache.set(cacheKey, fn);
+  }
+
+  return fn();
+}
+
+function patchBootstrapCurrenciesForRequest(
+  currencies: MalakBootstrapCurrencies | undefined,
+  selectedCurrencyCode?: string | null,
+): MalakBootstrapCurrencies | undefined {
+  if (!currencies) return currencies;
+
+  const items = Array.isArray(currencies.items) ? currencies.items : [];
+  if (!items.length) return currencies;
+
+  const selectedCode = normalizeCurrencyCode(selectedCurrencyCode);
+  const defaultCode =
+    normalizeCurrencyCode(currencies.default_code) ||
+    normalizeCurrencyCode(currencies.default_currency?.code) ||
+    normalizeCurrencyCode(items[0]?.code) ||
+    "SAR";
+
+  const defaultCurrency =
+    items.find((item) => item.code === defaultCode) ||
+    currencies.default_currency ||
+    items[0];
+
+  const activeCurrency =
+    (selectedCode && items.find((item) => item.code === selectedCode)) ||
+    defaultCurrency ||
+    items[0];
+
+  return {
+    ...currencies,
+
+    default_code: defaultCurrency.code,
+    active_code: activeCurrency.code,
+    selected_code: activeCurrency.code,
+
+    default_currency: defaultCurrency,
+    active_currency: activeCurrency,
+  };
+}
+
+async function readSelectedCurrencyCodeForRequest(storeId: string) {
+  const primaryCookieName = makeCurrencyCookieName(storeId);
+  const primary = await readCookieValue(primaryCookieName);
+
+  if (normalizeCurrencyCode(primary)) return primary;
+
+  const legacyCookieNames = [
+    "mk_selected_currency",
+    "mk_currency",
+    "malak_currency",
+    "currency",
+    "store_currency",
+    "selected_currency",
+  ];
+
+  for (const name of legacyCookieNames) {
+    const value = await readCookieValue(name);
+    if (normalizeCurrencyCode(value)) return value;
+  }
+
+  return "";
+}
+
+export async function getMalakBootstrap(input: {
+  store: StoreInput;
+  seoMode: SeoUrlMode;
+  themeOptions?: Record<string, any> | null;
+  version_id?: string | null;
+}): Promise<MalakBootstrap> {
+  const stableBootstrap = await loadMalakBootstrapStable(input);
+  const selectedCurrencyCode = await readSelectedCurrencyCodeForRequest(
+    input.store.id,
+  );
+
+  return {
+    ...stableBootstrap,
+    currencies: patchBootstrapCurrenciesForRequest(
+      stableBootstrap.currencies,
+      selectedCurrencyCode,
+    ),
   } as MalakBootstrap & {
     appearance: Record<string, any>;
   };

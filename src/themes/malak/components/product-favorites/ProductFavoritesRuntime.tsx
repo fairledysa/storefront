@@ -32,7 +32,21 @@ type FavoritesResponse = {
   error?: string;
 };
 
+type FavoritesCache = {
+  ids: string[];
+  expiresAt: number;
+};
+
 const API_URL = "/api/account/favorites";
+
+const FAVORITES_CACHE_TTL = 60_000;
+const FAVORITES_ERROR_CACHE_TTL = 10_000;
+const FAVORITES_IDLE_TIMEOUT = 1800;
+const FAVORITES_FALLBACK_DELAY = 700;
+const MUTATION_PAINT_DELAY = 90;
+
+let favoritesCache: FavoritesCache | null = null;
+let favoritesPending: Promise<string[]> | null = null;
 
 function s(value: any) {
   return String(value ?? "").trim();
@@ -58,11 +72,13 @@ function readProductIds(payload: FavoritesResponse) {
         : null;
 
   if (direct) {
-    return direct.map((id) => s(id)).filter(Boolean);
+    return Array.from(new Set(direct.map((id) => s(id)).filter(Boolean)));
   }
 
   if (Array.isArray(payload?.items)) {
-    return payload.items.map((item) => readProductId(item)).filter(Boolean);
+    return Array.from(
+      new Set(payload.items.map((item) => readProductId(item)).filter(Boolean)),
+    );
   }
 
   return [];
@@ -86,10 +102,138 @@ async function readJsonResponse(response: Response) {
   return json;
 }
 
+function getCachedFavoriteIds() {
+  if (!favoritesCache) return null;
+
+  if (favoritesCache.expiresAt <= Date.now()) {
+    favoritesCache = null;
+    return null;
+  }
+
+  return favoritesCache.ids;
+}
+
+function setCachedFavoriteIds(ids: string[], ttl = FAVORITES_CACHE_TTL) {
+  favoritesCache = {
+    ids: Array.from(new Set(ids.map((id) => s(id)).filter(Boolean))),
+    expiresAt: Date.now() + ttl,
+  };
+}
+
+function clearFavoritesCache() {
+  favoritesCache = null;
+  favoritesPending = null;
+}
+
+function scheduleIdleTask(callback: () => void) {
+  if (typeof window === "undefined") return () => {};
+
+  const w = window as any;
+
+  if (typeof w.requestIdleCallback === "function") {
+    const id = w.requestIdleCallback(callback, {
+      timeout: FAVORITES_IDLE_TIMEOUT,
+    });
+
+    return () => {
+      if (typeof w.cancelIdleCallback === "function") {
+        w.cancelIdleCallback(id);
+      }
+    };
+  }
+
+  const id = window.setTimeout(callback, FAVORITES_FALLBACK_DELAY);
+
+  return () => {
+    window.clearTimeout(id);
+  };
+}
+
+async function loadFavoriteIds(force = false) {
+  if (!force) {
+    const cached = getCachedFavoriteIds();
+    if (cached) return cached;
+  }
+
+  if (favoritesPending) return favoritesPending;
+
+  favoritesPending = fetch(API_URL, {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      Accept: "application/json",
+    },
+    cache: "no-store",
+  })
+    .then(async (response) => {
+      const json = await readJsonResponse(response);
+      const ids = readProductIds(json);
+
+      setCachedFavoriteIds(ids);
+
+      return ids;
+    })
+    .catch(() => {
+      setCachedFavoriteIds([], FAVORITES_ERROR_CACHE_TTL);
+      return [];
+    })
+    .finally(() => {
+      favoritesPending = null;
+    });
+
+  return favoritesPending;
+}
+
+function hasFavoriteDomTargets() {
+  if (typeof document === "undefined") return false;
+
+  return Boolean(
+    document.querySelector(
+      "[data-mk-product-card-id], [data-mk-favorite-button], .mkpc-action--fav",
+    ),
+  );
+}
+
+function cssEscape(value: string) {
+  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+    return CSS.escape(value);
+  }
+
+  return value.replace(/["\\]/g, "\\$&");
+}
+
+function readButtonProductId(button: HTMLElement) {
+  return (
+    s(button.getAttribute("data-mk-favorite-product-id")) ||
+    s(button.getAttribute("data-mk-product-id")) ||
+    s(button.getAttribute("data-product-id")) ||
+    s(button.closest("[data-mk-product-card-id]")?.getAttribute("data-mk-product-card-id"))
+  );
+}
+
+function paintFavoriteButton(args: {
+  button: HTMLButtonElement;
+  productId: string;
+  isFavorite: boolean;
+  isPending: boolean;
+}) {
+  const { button, isFavorite, isPending } = args;
+
+  button.classList.toggle("is-favorite", isFavorite);
+  button.classList.toggle("is-loading", isPending);
+  button.setAttribute("aria-pressed", isFavorite ? "true" : "false");
+  button.setAttribute(
+    "aria-label",
+    isFavorite ? "إزالة من المفضلة" : "إضافة للمفضلة",
+  );
+}
+
 export default function ProductFavoritesRuntime() {
   const favoritesRef = useRef<Set<string>>(new Set());
   const pendingRef = useRef<Set<string>>(new Set());
+  const loadedRef = useRef(false);
   const rafRef = useRef<number | null>(null);
+  const mutationTimerRef = useRef<number | null>(null);
 
   const [, forceRender] = useState(0);
 
@@ -109,19 +253,34 @@ export default function ProductFavoritesRuntime() {
         card.classList.toggle("is-favorite", isFavorite);
         card.setAttribute("data-mk-favorite", isFavorite ? "true" : "false");
 
-        const button = card.querySelector<HTMLButtonElement>(
-          "[data-mk-favorite-button], .mkpc-action--fav",
-        );
+        card
+          .querySelectorAll<HTMLButtonElement>(
+            "[data-mk-favorite-button], .mkpc-action--fav",
+          )
+          .forEach((button) => {
+            paintFavoriteButton({
+              button,
+              productId,
+              isFavorite,
+              isPending,
+            });
+          });
+      });
 
-        if (!button) return;
+    document
+      .querySelectorAll<HTMLButtonElement>(
+        "[data-mk-favorite-button][data-mk-favorite-product-id], [data-mk-favorite-button][data-mk-product-id], .mkpc-action--fav[data-mk-favorite-product-id], .mkpc-action--fav[data-mk-product-id]",
+      )
+      .forEach((button) => {
+        const productId = readButtonProductId(button);
+        if (!productId) return;
 
-        button.classList.toggle("is-favorite", isFavorite);
-        button.classList.toggle("is-loading", isPending);
-        button.setAttribute("aria-pressed", isFavorite ? "true" : "false");
-        button.setAttribute(
-          "aria-label",
-          isFavorite ? "إزالة من المفضلة" : "إضافة للمفضلة",
-        );
+        paintFavoriteButton({
+          button,
+          productId,
+          isFavorite: favoriteIds.has(productId),
+          isPending: pendingIds.has(productId),
+        });
       });
   }, []);
 
@@ -137,19 +296,26 @@ export default function ProductFavoritesRuntime() {
   }, [paintDom]);
 
   const commitFavorites = useCallback(
-    (next: Set<string>) => {
+    (next: Set<string>, options?: { emitLoaded?: boolean; cache?: boolean }) => {
       favoritesRef.current = next;
+
+      if (options?.cache !== false) {
+        setCachedFavoriteIds(Array.from(next));
+      }
+
       forceRender((value) => value + 1);
       schedulePaint();
 
-      window.dispatchEvent(
-        new CustomEvent("product:favorites:loaded", {
-          detail: {
-            productIds: Array.from(next),
-            product_ids: Array.from(next),
-          },
-        }),
-      );
+      if (options?.emitLoaded !== false) {
+        window.dispatchEvent(
+          new CustomEvent("product:favorites:loaded", {
+            detail: {
+              productIds: Array.from(next),
+              product_ids: Array.from(next),
+            },
+          }),
+        );
+      }
     },
     [schedulePaint],
   );
@@ -176,43 +342,70 @@ export default function ProductFavoritesRuntime() {
 
       window.dispatchEvent(new CustomEvent("favorites:changed", { detail }));
 
-      window.dispatchEvent(
-        new CustomEvent("product:fav-changed", { detail }),
-      );
+      window.dispatchEvent(new CustomEvent("product:fav-changed", { detail }));
     },
     [],
   );
 
-  useEffect(() => {
-    let alive = true;
-
-    async function loadFavorites() {
-      try {
-        const response = await fetch(API_URL, {
-          method: "GET",
-          credentials: "include",
-          headers: {
-            Accept: "application/json",
-          },
-          cache: "no-store",
-        });
-
-        const json = await readJsonResponse(response);
-        if (!alive) return;
-
-        commitFavorites(new Set(readProductIds(json)));
-      } catch {
-        if (!alive) return;
-        commitFavorites(new Set());
+  const ensureLoaded = useCallback(
+    async (force = false) => {
+      if (!force && loadedRef.current) {
+        schedulePaint();
+        return;
       }
+
+      const cached = force ? null : getCachedFavoriteIds();
+
+      if (cached) {
+        loadedRef.current = true;
+        commitFavorites(new Set(cached), {
+          emitLoaded: true,
+          cache: false,
+        });
+        return;
+      }
+
+      if (!force && !hasFavoriteDomTargets()) {
+        schedulePaint();
+        return;
+      }
+
+      const ids = await loadFavoriteIds(force);
+
+      loadedRef.current = true;
+
+      commitFavorites(new Set(ids), {
+        emitLoaded: true,
+        cache: false,
+      });
+    },
+    [commitFavorites, schedulePaint],
+  );
+
+  useEffect(() => {
+    const cached = getCachedFavoriteIds();
+
+    if (cached) {
+      loadedRef.current = true;
+      commitFavorites(new Set(cached), {
+        emitLoaded: true,
+        cache: false,
+      });
+      return;
     }
 
-    void loadFavorites();
+    let alive = true;
+
+    const cancelIdle = scheduleIdleTask(() => {
+      if (!alive) return;
+      void ensureLoaded(false);
+    });
 
     return () => {
       alive = false;
+      cancelIdle();
     };
-  }, [commitFavorites]);
+  }, [commitFavorites, ensureLoaded]);
 
   useEffect(() => {
     const onFavorite = async (event: Event) => {
@@ -232,6 +425,8 @@ export default function ProductFavoritesRuntime() {
       }
 
       pendingRef.current.add(productId);
+      loadedRef.current = true;
+
       commitFavorites(optimistic);
 
       try {
@@ -295,18 +490,51 @@ export default function ProductFavoritesRuntime() {
       }
     };
 
+    const onAuthChanged = () => {
+      clearFavoritesCache();
+      loadedRef.current = false;
+      commitFavorites(new Set(), {
+        emitLoaded: false,
+        cache: false,
+      });
+      void ensureLoaded(true);
+    };
+
+    const onFavoritesReload = () => {
+      clearFavoritesCache();
+      loadedRef.current = false;
+      void ensureLoaded(true);
+    };
+
     window.addEventListener("product:fav", onFavorite);
+    window.addEventListener("auth:changed", onAuthChanged);
+    window.addEventListener("favorites:reload", onFavoritesReload);
+    window.addEventListener("product:favorites:reload", onFavoritesReload);
 
     return () => {
       window.removeEventListener("product:fav", onFavorite);
+      window.removeEventListener("auth:changed", onAuthChanged);
+      window.removeEventListener("favorites:reload", onFavoritesReload);
+      window.removeEventListener("product:favorites:reload", onFavoritesReload);
     };
-  }, [commitFavorites, emitChanged, schedulePaint]);
+  }, [commitFavorites, emitChanged, ensureLoaded, schedulePaint]);
 
   useEffect(() => {
     schedulePaint();
 
     const observer = new MutationObserver(() => {
-      schedulePaint();
+      if (mutationTimerRef.current) {
+        window.clearTimeout(mutationTimerRef.current);
+      }
+
+      mutationTimerRef.current = window.setTimeout(() => {
+        mutationTimerRef.current = null;
+        schedulePaint();
+
+        if (!loadedRef.current && hasFavoriteDomTargets()) {
+          void ensureLoaded(false);
+        }
+      }, MUTATION_PAINT_DELAY);
     });
 
     observer.observe(document.body, {
@@ -317,11 +545,16 @@ export default function ProductFavoritesRuntime() {
     return () => {
       observer.disconnect();
 
+      if (mutationTimerRef.current) {
+        window.clearTimeout(mutationTimerRef.current);
+        mutationTimerRef.current = null;
+      }
+
       if (rafRef.current) {
         window.cancelAnimationFrame(rafRef.current);
       }
     };
-  }, [schedulePaint]);
+  }, [ensureLoaded, schedulePaint]);
 
   return (
     <style jsx global>{`

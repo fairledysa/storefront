@@ -94,6 +94,16 @@ function s(x: any) {
   return String(x ?? "").trim();
 }
 
+function uniqueStrings(values: any[]) {
+  return Array.from(
+    new Set(
+      (Array.isArray(values) ? values : [])
+        .map((value) => s(value))
+        .filter(Boolean),
+    ),
+  );
+}
+
 function readOne(value: any) {
   if (Array.isArray(value)) return value[0] ?? null;
   return value ?? null;
@@ -830,28 +840,14 @@ async function getProductsByCategoryRaw(opts: {
   const sb = supabaseAdmin();
   const limit = Math.min(Math.max(Number(opts.limit ?? 24), 1), 200);
 
-  const [a, b] = await Promise.all([
-    sb
-      .from("category_products")
-      .select(`sort_order, products:products(${BASE_SELECT})`)
-      .eq("category_id", opts.category_id)
-      .order("sort_order", { ascending: true })
-      .limit(limit),
+  const firstR = await sb
+    .from("category_products")
+    .select(`sort_order, products:products(${BASE_SELECT})`)
+    .eq("category_id", opts.category_id)
+    .order("sort_order", { ascending: true })
+    .limit(limit);
 
-    sb
-      .from("product_categories")
-      .select(`products:products(${BASE_SELECT})`)
-      .eq("category_id", opts.category_id)
-      .limit(limit),
-  ]);
-
-  const aProducts = (a.data || [])
-    .map((x: any) => readOne(x.products))
-    .filter(Boolean)
-    .filter((p: any) => p.store_id === opts.store_id)
-    .filter((p: any) => isProductVisibleInWeb(p));
-
-  const bProducts = (b.data || [])
+  const firstProducts = (firstR.data || [])
     .map((x: any) => readOne(x.products))
     .filter(Boolean)
     .filter((p: any) => p.store_id === opts.store_id)
@@ -860,25 +856,43 @@ async function getProductsByCategoryRaw(opts: {
   const seen = new Set<string>();
   const merged: any[] = [];
 
-  for (const p of aProducts) {
-    if (!p?.id) continue;
-    if (seen.has(p.id)) continue;
-    seen.add(p.id);
-    merged.push(p);
+  for (const product of firstProducts) {
+    const id = s(product?.id);
+    if (!id || seen.has(id)) continue;
+
+    seen.add(id);
+    merged.push(product);
+
     if (merged.length >= limit) break;
   }
 
-  for (const p of bProducts) {
-    if (!p?.id) continue;
-    if (seen.has(p.id)) continue;
-    seen.add(p.id);
-    merged.push(p);
-    if (merged.length >= limit) break;
+  if (merged.length < limit) {
+    const secondR = await sb
+      .from("product_categories")
+      .select(`products:products(${BASE_SELECT})`)
+      .eq("category_id", opts.category_id)
+      .limit(limit);
+
+    const secondProducts = (secondR.data || [])
+      .map((x: any) => readOne(x.products))
+      .filter(Boolean)
+      .filter((p: any) => p.store_id === opts.store_id)
+      .filter((p: any) => isProductVisibleInWeb(p));
+
+    for (const product of secondProducts) {
+      const id = s(product?.id);
+      if (!id || seen.has(id)) continue;
+
+      seen.add(id);
+      merged.push(product);
+
+      if (merged.length >= limit) break;
+    }
   }
 
   if (!merged.length) return [] as ProductRow[];
 
-  return await mapProductRowsBulk(merged);
+  return await mapProductRowsBulk(merged.slice(0, limit));
 }
 
 const productsByCategoryCache = new Map<string, () => Promise<ProductRow[]>>();
@@ -958,8 +972,42 @@ async function getBestSellingProductsForGridRaw(opts: {
   store_id: string;
   limit?: number;
 }): Promise<ProductRow[]> {
-  const sb = supabaseAdmin();
+  const sb = supabaseAdmin() as any;
   const limit = Math.min(Math.max(Number(opts.limit ?? 12), 1), 60);
+
+  try {
+    const fastR = await sb
+      .from("products")
+      .select(`${BASE_SELECT},sold_qty`)
+      .eq("store_id", opts.store_id)
+      .gt("sold_qty", 0)
+      .order("sold_qty", { ascending: false, nullsFirst: false })
+      .limit(Math.min(limit * 3, 180));
+
+    if (!fastR.error && Array.isArray(fastR.data) && fastR.data.length) {
+      const rows = fastR.data
+        .filter((row: any) => isProductVisibleInWeb(row))
+        .slice(0, limit);
+
+      if (rows.length) {
+        const soldMap = new Map<string, number>();
+
+        for (const row of rows) {
+          const productId = s(row?.id);
+          if (!productId) continue;
+
+          const soldQty = Number(row?.sold_qty ?? 0);
+          soldMap.set(productId, Number.isFinite(soldQty) ? soldQty : 0);
+        }
+
+        return await mapProductRowsBulk(rows, {
+          soldQtyByProductId: soldMap,
+        });
+      }
+    }
+  } catch {
+    // fallback to order_items aggregation below
+  }
 
   const orderItemsR = await sb
     .from("order_items")
@@ -1300,6 +1348,80 @@ async function loadProductRowsByIds(args: {
 
   return rows;
 }
+
+async function getProductsByIdsRaw(opts: {
+  store_id: string;
+  ids: string[];
+  limit?: number;
+}): Promise<ProductRow[]> {
+  const limit = Math.min(Math.max(Number(opts.limit ?? opts.ids.length), 1), 500);
+  const ids = uniqueStrings(opts.ids).slice(0, limit);
+
+  if (!s(opts.store_id) || !ids.length) return [];
+
+  const rows = await loadProductRowsByIds({
+    store_id: opts.store_id,
+    ids,
+  });
+
+  if (!rows.length) return [];
+
+  const rowById = new Map<string, any>();
+
+  for (const row of rows) {
+    const id = s(row?.id);
+    if (id) rowById.set(id, row);
+  }
+
+  const orderedRows = ids.map((id) => rowById.get(id)).filter(Boolean);
+
+  return await mapProductRowsBulk(orderedRows);
+}
+
+const productsByIdsCache = new Map<string, () => Promise<ProductRow[]>>();
+
+export async function getProductsByIds(opts: {
+  store_id: string;
+  ids: string[];
+  limit?: number;
+}): Promise<ProductRow[]> {
+  const storeId = s(opts.store_id);
+  const limit = Math.min(Math.max(Number(opts.limit ?? opts.ids?.length ?? 1), 1), 500);
+  const ids = uniqueStrings(opts.ids).slice(0, limit);
+
+  if (!storeId || !ids.length) return [];
+
+  const sortedIds = [...ids].sort();
+  const key = `${storeId}:${limit}:${sortedIds.join(",")}`;
+
+  let fn = productsByIdsCache.get(key);
+
+  if (!fn) {
+    fn = unstable_cache(
+      () =>
+        getProductsByIdsRaw({
+          store_id: storeId,
+          ids: sortedIds,
+          limit,
+        }),
+      ["products-by-ids", storeId, String(limit), sortedIds.join(",")],
+      { revalidate: 60 },
+    );
+
+    productsByIdsCache.set(key, fn);
+  }
+
+  const products = await fn();
+  const byId = new Map<string, ProductRow>();
+
+  for (const product of products) {
+    const id = s(product?.id);
+    if (id) byId.set(id, product);
+  }
+
+  return ids.map((id) => byId.get(id)).filter(Boolean) as ProductRow[];
+}
+
 
 async function getProductsBySearchRaw(opts: {
   store_id: string;

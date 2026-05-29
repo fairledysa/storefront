@@ -2,6 +2,7 @@
 
 "use client";
 
+import dynamic from "next/dynamic";
 import {
   useCallback,
   useEffect,
@@ -15,7 +16,6 @@ import { usePathname, useRouter } from "next/navigation";
 
 import MobileShell from "./MobileShell";
 import DesktopShell from "./DesktopShell";
-import ProductQuickView from "@/themes/malak/components/product-quick-view/ProductQuickView";
 import ProductFavoritesRuntime from "@/themes/malak/components/product-favorites/ProductFavoritesRuntime";
 import ProductCartRuntime from "@/themes/malak/components/product-cart/ProductCartRuntime";
 import ToastProvider from "./_components/ToastProvider";
@@ -25,6 +25,14 @@ import type { ThemeAdapterOutput } from "../types";
 import type { SeoUrlMode } from "@/data/store/settings";
 import type { MalakBootstrap } from "../bootstrap/types";
 import { useNavStack } from "../app-navigation/stack";
+
+const ProductQuickView = dynamic(
+  () => import("@/themes/malak/components/product-quick-view/ProductQuickView"),
+  {
+    ssr: false,
+    loading: () => null,
+  },
+);
 
 type Props = {
   theme: ThemeAdapterOutput;
@@ -130,6 +138,13 @@ const CUSTOM_JS_SCRIPT_ID = "mk-store-custom-js";
 
 const MAX_CUSTOM_CSS_SIZE = 300 * 1024;
 const MAX_CUSTOM_JS_SIZE = 150 * 1024;
+
+const ROUTE_PROGRESS_DELAY = 70;
+const ROUTE_SPINNER_DELAY = 460;
+const ROUTE_HIDE_DELAY = 140;
+const ROUTE_FALLBACK_TIMEOUT = 6500;
+const PREFETCH_INTENT_DELAY = 90;
+const MAX_PREFETCHED_LINKS = 80;
 
 function pickColor(value: any, fallback: string) {
   const text = String(value ?? "").trim();
@@ -262,6 +277,23 @@ function isSkippableHref(href: string) {
   );
 }
 
+function isBlockedRoutePath(path: string) {
+  const value = String(path || "").trim();
+
+  return (
+    value === "/cart" ||
+    value.startsWith("/cart?") ||
+    value === "/checkout" ||
+    value.startsWith("/checkout/") ||
+    value.startsWith("/checkout?") ||
+    value === "/account" ||
+    value.startsWith("/account/") ||
+    value.startsWith("/account?") ||
+    value.startsWith("/thankyou/") ||
+    value.startsWith("/api/")
+  );
+}
+
 function hasBlockedCustomCode(value: string, blocked: string[]) {
   const lower = String(value ?? "").toLowerCase();
   return blocked.some((item) => lower.includes(item));
@@ -334,6 +366,7 @@ function NavigationTransition({ enabled }: { enabled: boolean }) {
   const spinnerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearTimers = useCallback(() => {
     if (progressTimerRef.current) {
@@ -354,6 +387,11 @@ function NavigationTransition({ enabled }: { enabled: boolean }) {
     if (fallbackTimerRef.current) {
       clearTimeout(fallbackTimerRef.current);
       fallbackTimerRef.current = null;
+    }
+
+    if (prefetchTimerRef.current) {
+      clearTimeout(prefetchTimerRef.current);
+      prefetchTimerRef.current = null;
     }
   }, []);
 
@@ -396,7 +434,7 @@ function NavigationTransition({ enabled }: { enabled: boolean }) {
       setShowSpinner(false);
       setLeaving(false);
       hideTimerRef.current = null;
-    }, 160);
+    }, ROUTE_HIDE_DELAY);
   }, [setActiveState]);
 
   const start = useCallback(() => {
@@ -409,7 +447,7 @@ function NavigationTransition({ enabled }: { enabled: boolean }) {
     progressTimerRef.current = setTimeout(() => {
       setActiveState(true);
       progressTimerRef.current = null;
-    }, 90);
+    }, ROUTE_PROGRESS_DELAY);
 
     spinnerTimerRef.current = setTimeout(() => {
       if (startedRef.current) {
@@ -417,11 +455,11 @@ function NavigationTransition({ enabled }: { enabled: boolean }) {
       }
 
       spinnerTimerRef.current = null;
-    }, 520);
+    }, ROUTE_SPINNER_DELAY);
 
     fallbackTimerRef.current = setTimeout(() => {
       finish();
-    }, 7000);
+    }, ROUTE_FALLBACK_TIMEOUT);
   }, [clearTimers, finish, setActiveState]);
 
   const getInternalHref = useCallback((anchor: HTMLAnchorElement) => {
@@ -452,26 +490,13 @@ function NavigationTransition({ enabled }: { enabled: boolean }) {
       return "";
     }
 
-    if (
-      path === "/cart" ||
-      path.startsWith("/cart?") ||
-      path === "/checkout" ||
-      path.startsWith("/checkout/") ||
-      path.startsWith("/checkout?") ||
-      path === "/account" ||
-      path.startsWith("/account/") ||
-      path.startsWith("/account?") ||
-      path.startsWith("/thankyou/") ||
-      path.startsWith("/api/")
-    ) {
-      return "";
-    }
+    if (isBlockedRoutePath(path)) return "";
 
     return path;
   }, []);
 
   const prefetchAnchor = useCallback(
-    (anchor: HTMLAnchorElement | null) => {
+    (anchor: HTMLAnchorElement | null, immediate = false) => {
       if (!enabled || !anchor) return;
 
       const href = getInternalHref(anchor);
@@ -479,13 +504,36 @@ function NavigationTransition({ enabled }: { enabled: boolean }) {
 
       if (prefetchedRef.current.has(href)) return;
 
-      prefetchedRef.current.add(href);
+      const run = () => {
+        if (prefetchedRef.current.has(href)) return;
 
-      try {
-        router.prefetch(href);
-      } catch {
-        // ignore
+        if (prefetchedRef.current.size >= MAX_PREFETCHED_LINKS) {
+          prefetchedRef.current.clear();
+        }
+
+        prefetchedRef.current.add(href);
+
+        try {
+          router.prefetch(href);
+        } catch {
+          // ignore
+        }
+      };
+
+      if (prefetchTimerRef.current) {
+        clearTimeout(prefetchTimerRef.current);
+        prefetchTimerRef.current = null;
       }
+
+      if (immediate) {
+        run();
+        return;
+      }
+
+      prefetchTimerRef.current = setTimeout(() => {
+        run();
+        prefetchTimerRef.current = null;
+      }, PREFETCH_INTENT_DELAY);
     },
     [enabled, getInternalHref, router],
   );
@@ -518,8 +566,10 @@ function NavigationTransition({ enabled }: { enabled: boolean }) {
       if (!anchor) return;
       if (anchor.target && anchor.target !== "_self") return;
       if (anchor.hasAttribute("download")) return;
+      if (anchor.dataset.noRouter === "true") return;
+      if (anchor.getAttribute("data-router") === "false") return;
 
-      prefetchAnchor(anchor);
+      prefetchAnchor(anchor, false);
     }
 
     function handleClick(event: MouseEvent) {
@@ -530,6 +580,8 @@ function NavigationTransition({ enabled }: { enabled: boolean }) {
 
       if (anchor.target && anchor.target !== "_self") return;
       if (anchor.hasAttribute("download")) return;
+      if (anchor.dataset.noRouter === "true") return;
+      if (anchor.getAttribute("data-router") === "false") return;
 
       const rawHref = anchor.getAttribute("href") || "";
       if (isSkippableHref(rawHref)) return;
@@ -552,6 +604,9 @@ function NavigationTransition({ enabled }: { enabled: boolean }) {
         return;
       }
 
+      const routePath = `${url.pathname}${url.search}`;
+      if (isBlockedRoutePath(routePath)) return;
+
       const nextPath = `${url.pathname}${url.search}${url.hash}`;
       const currentPath = `${window.location.pathname}${window.location.search}${window.location.hash}`;
 
@@ -559,7 +614,7 @@ function NavigationTransition({ enabled }: { enabled: boolean }) {
 
       event.preventDefault();
 
-      prefetchAnchor(anchor);
+      prefetchAnchor(anchor, true);
       start();
 
       router.push(nextPath);
@@ -632,7 +687,7 @@ function NavigationTransition({ enabled }: { enabled: boolean }) {
               overflow: hidden;
               background: rgba(15, 23, 42, 0.04);
               opacity: 1;
-              transition: opacity 160ms ease;
+              transition: opacity 140ms ease;
             }
 
             .mk-route-progress--leaving {
@@ -651,7 +706,7 @@ function NavigationTransition({ enabled }: { enabled: boolean }) {
                 rgba(15, 23, 42, 0.72),
                 rgba(15, 23, 42, 0)
               );
-              animation: mkRouteProgressBar 760ms cubic-bezier(0.4, 0, 0.2, 1) infinite;
+              animation: mkRouteProgressBar 700ms cubic-bezier(0.4, 0, 0.2, 1) infinite;
             }
 
             .mk-route-loader {
@@ -663,10 +718,10 @@ function NavigationTransition({ enabled }: { enabled: boolean }) {
               display: grid;
               place-items: center;
               pointer-events: none;
-              background: rgba(255, 255, 255, 0.36);
+              background: rgba(255, 255, 255, 0.3);
               backdrop-filter: blur(0.5px);
               opacity: 1;
-              transition: opacity 160ms ease;
+              transition: opacity 140ms ease;
             }
 
             .mk-route-loader--leaving {
@@ -674,12 +729,12 @@ function NavigationTransition({ enabled }: { enabled: boolean }) {
             }
 
             .mk-route-loader__spinner {
-              width: 30px;
-              height: 30px;
+              width: 28px;
+              height: 28px;
               border-radius: 999px;
               border: 2px solid rgba(15, 23, 42, 0.08);
               border-top-color: rgba(15, 23, 42, 0.28);
-              animation: mkRouteSpinner 620ms linear infinite;
+              animation: mkRouteSpinner 580ms linear infinite;
             }
 
             @keyframes mkRouteProgressBar {
@@ -734,15 +789,22 @@ export default function AppShell({
   const bootstrapAny: any = bootstrap || {};
   const bootstrapHeader: any = bootstrapAny.header || {};
   const bootstrapAppearance: any = bootstrapAny.appearance || {};
+  const customCode: any = bootstrapAny.customCode || {};
 
   const customCss = useMemo(
-    () => resolveBootstrapCustomCss(bootstrapAny),
-    [bootstrapAny],
+    () =>
+      resolveBootstrapCustomCss({
+        customCode,
+      }),
+    [customCode.enabled, customCode.css],
   );
 
   const customJs = useMemo(
-    () => resolveBootstrapCustomJs(bootstrapAny),
-    [bootstrapAny],
+    () =>
+      resolveBootstrapCustomJs({
+        customCode,
+      }),
+    [customCode.js_enabled, customCode.js],
   );
 
   const isDarkMode = Boolean(themeUi.darkMode);

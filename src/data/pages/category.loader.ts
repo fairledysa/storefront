@@ -5,7 +5,10 @@ import {
   getCategoryByPublicNo,
   getCategoryByShortUrl,
 } from "@/data/catalog/category";
-import { getProductsByCategory } from "@/data/catalog/products";
+import {
+  getProductsByCategory,
+  getProductsByIds,
+} from "@/data/catalog/products";
 import { fromBase62 } from "@/lib/seo/base62";
 import { supabaseAdmin } from "@/data/store/supabase.server";
 
@@ -50,6 +53,16 @@ function toDecimalDigits(value: any) {
   return Math.max(0, Math.min(4, Math.floor(n)));
 }
 
+function uniqueStrings(values: any[]) {
+  return Array.from(
+    new Set(
+      (Array.isArray(values) ? values : [])
+        .map((value) => s(value))
+        .filter(Boolean),
+    ),
+  );
+}
+
 /* ------------------------- store options loader ------------------------ */
 
 async function loadStoreOptionsRaw(store_id: string) {
@@ -83,14 +96,15 @@ const storeOptionsCache = new Map<
 >();
 
 function loadStoreOptions(store_id: string) {
-  const key = normalizeCacheKey(store_id);
+  const storeId = s(store_id);
+  const key = normalizeCacheKey(storeId);
 
   let fn = storeOptionsCache.get(key);
 
   if (!fn) {
     fn = unstable_cache(
-      () => loadStoreOptionsRaw(store_id),
-      ["store-options", store_id],
+      () => loadStoreOptionsRaw(storeId),
+      ["category-store-options", storeId],
       {
         revalidate: 120,
       },
@@ -166,7 +180,7 @@ function loadStoreCurrencies(store_id: string) {
   if (!fn) {
     fn = unstable_cache(
       () => loadStoreCurrenciesRaw(storeId),
-      ["store-currencies-product-card", storeId],
+      ["category-store-currencies-product-card", storeId],
       {
         revalidate: 120,
       },
@@ -337,18 +351,14 @@ type ProductCardOptionForCategory = {
   values: ProductCardOptionValueForCategory[];
 };
 
-async function attachProductCardOptions(args: {
-  products: any[];
-}): Promise<any[]> {
-  const products = Array.isArray(args.products) ? args.products : [];
+type ProductCardOptionsMap = Record<string, ProductCardOptionForCategory[]>;
 
-  if (!products.length) return products;
+async function loadProductCardOptionsMapRaw(args: {
+  productIds: string[];
+}): Promise<ProductCardOptionsMap> {
+  const productIds = uniqueStrings(args.productIds).slice(0, 500);
 
-  const productIds = Array.from(
-    new Set(products.map((product) => s(product?.id)).filter(Boolean)),
-  );
-
-  if (!productIds.length) return products;
+  if (!productIds.length) return {};
 
   const sb: any = supabaseAdmin();
 
@@ -358,15 +368,15 @@ async function attachProductCardOptions(args: {
     .in("product_id", productIds)
     .order("sort_order", { ascending: true });
 
-  const optionRows = Array.isArray(optionsResult.data)
-    ? (optionsResult.data as any[])
-    : [];
+  if (optionsResult.error || !Array.isArray(optionsResult.data)) {
+    return {};
+  }
 
-  if (!optionRows.length) return products;
+  const optionRows = optionsResult.data as any[];
+  if (!optionRows.length) return {};
 
   const optionIds = optionRows.map((option) => s(option?.id)).filter(Boolean);
-
-  if (!optionIds.length) return products;
+  if (!optionIds.length) return {};
 
   const displayTypeByOptionId = new Map<string, string>();
 
@@ -383,9 +393,11 @@ async function attachProductCardOptions(args: {
     .in("option_id", optionIds)
     .order("sort_order", { ascending: true });
 
-  const valueRows = Array.isArray(valuesResult.data)
-    ? (valuesResult.data as any[])
-    : [];
+  if (valuesResult.error || !Array.isArray(valuesResult.data)) {
+    return {};
+  }
+
+  const valueRows = valuesResult.data as any[];
 
   const valuesByOptionId = new Map<
     string,
@@ -437,7 +449,6 @@ async function attachProductCardOptions(args: {
     if (!values.length) continue;
 
     const arr = optionsByProductId.get(productId) || [];
-
     const name = s(option?.name);
 
     arr.push({
@@ -450,9 +461,65 @@ async function attachProductCardOptions(args: {
     optionsByProductId.set(productId, arr);
   }
 
+  const out: ProductCardOptionsMap = {};
+
+  for (const [productId, options] of optionsByProductId.entries()) {
+    out[productId] = options;
+  }
+
+  return out;
+}
+
+const productCardOptionsMapCache = new Map<
+  string,
+  () => Promise<ProductCardOptionsMap>
+>();
+
+function loadProductCardOptionsMap(productIds: string[]) {
+  const ids = uniqueStrings(productIds).sort();
+
+  if (!ids.length) return Promise.resolve({} as ProductCardOptionsMap);
+
+  const key = ids.join(",");
+
+  let fn = productCardOptionsMapCache.get(key);
+
+  if (!fn) {
+    fn = unstable_cache(
+      () =>
+        loadProductCardOptionsMapRaw({
+          productIds: ids,
+        }),
+      ["category-product-card-options-map", key],
+      {
+        revalidate: 120,
+      },
+    );
+
+    productCardOptionsMapCache.set(key, fn);
+  }
+
+  return fn();
+}
+
+async function attachProductCardOptions(args: {
+  products: any[];
+}): Promise<any[]> {
+  const products = Array.isArray(args.products) ? args.products : [];
+
+  if (!products.length) return products;
+
+  const productIds = Array.from(
+    new Set(products.map((product) => s(product?.id)).filter(Boolean)),
+  );
+
+  if (!productIds.length) return products;
+
+  const optionsMap = await loadProductCardOptionsMap(productIds);
+
   return products.map((product) => {
     const productId = s(product?.id);
-    const options = optionsByProductId.get(productId);
+    const options = productId ? optionsMap[productId] : null;
 
     if (!options?.length) return product;
 
@@ -472,7 +539,111 @@ async function attachProductCardOptions(args: {
   });
 }
 
+/* ------------------------- products by ids loader ------------------------ */
+
+async function loadCategoryProductsByIdsRaw(args: {
+  store_id: string;
+  productIds: string[];
+  limit: number;
+}) {
+  const storeId = s(args.store_id);
+  const productIds = uniqueStrings(args.productIds).slice(
+    0,
+    Math.max(1, Math.min(500, Math.floor(Number(args.limit) || 60))),
+  );
+
+  if (!storeId || !productIds.length) return [];
+
+  const rawProducts = await getProductsByIds({
+    store_id: storeId,
+    ids: productIds,
+    limit: productIds.length,
+  });
+
+  const byId = new Map<string, any>();
+
+  for (const product of Array.isArray(rawProducts) ? rawProducts : []) {
+    const productId = s(product?.id);
+    if (productId) byId.set(productId, product);
+  }
+
+  const orderedProducts = productIds
+    .map((productId) => byId.get(productId))
+    .filter(Boolean);
+
+  const productsWithCurrency = await attachStoreCurrencyToProducts({
+    store_id: storeId,
+    products: orderedProducts,
+  });
+
+  return await attachProductCardOptions({
+    products: productsWithCurrency,
+  });
+}
+
+const categoryProductsByIdsCache = new Map<string, () => Promise<any[]>>();
+
+export async function loadCategoryProductsByIds(args: {
+  store_id: string;
+  productIds: string[];
+  limit?: number;
+}) {
+  const storeId = s(args.store_id);
+  const productIds = uniqueStrings(args.productIds);
+  const limit = Math.max(1, Math.min(500, Math.floor(Number(args.limit) || 60)));
+
+  if (!storeId || !productIds.length) return [];
+
+  const ids = productIds.slice(0, limit);
+  const sortedIds = [...ids].sort();
+  const key = `${storeId}:${limit}:${sortedIds.join(",")}`;
+
+  let fn = categoryProductsByIdsCache.get(key);
+
+  if (!fn) {
+    fn = unstable_cache(
+      () =>
+        loadCategoryProductsByIdsRaw({
+          store_id: storeId,
+          productIds: sortedIds,
+          limit,
+        }),
+      ["category-products-by-ids", storeId, String(limit), sortedIds.join(",")],
+      {
+        revalidate: 60,
+      },
+    );
+
+    categoryProductsByIdsCache.set(key, fn);
+  }
+
+  const products = await fn();
+
+  const byId = new Map<string, any>();
+
+  for (const product of Array.isArray(products) ? products : []) {
+    const id = s(product?.id);
+    if (id) byId.set(id, product);
+  }
+
+  return ids.map((productId) => byId.get(productId)).filter(Boolean);
+}
+
 /* ------------------------- raw category loaders ------------------------ */
+
+async function buildCategoryProductsForDisplay(args: {
+  store_id: string;
+  rawProducts: any[];
+}) {
+  const productsWithCurrency = await attachStoreCurrencyToProducts({
+    store_id: args.store_id,
+    products: args.rawProducts,
+  });
+
+  return await attachProductCardOptions({
+    products: productsWithCurrency,
+  });
+}
 
 async function loadCategoryPageByPublicNoRaw(args: {
   store_id: string;
@@ -495,13 +666,9 @@ async function loadCategoryPageByPublicNoRaw(args: {
     loadStoreOptions(args.store_id),
   ]);
 
-  const productsWithCurrency = await attachStoreCurrencyToProducts({
+  const products = await buildCategoryProductsForDisplay({
     store_id: args.store_id,
-    products: rawProducts,
-  });
-
-  const products = await attachProductCardOptions({
-    products: productsWithCurrency,
+    rawProducts,
   });
 
   return {
@@ -553,13 +720,9 @@ async function loadCategoryPageByShortCodeRaw(args: {
     loadStoreOptions(args.store_id),
   ]);
 
-  const productsWithCurrency = await attachStoreCurrencyToProducts({
+  const products = await buildCategoryProductsForDisplay({
     store_id: args.store_id,
-    products: rawProducts,
-  });
-
-  const products = await attachProductCardOptions({
-    products: productsWithCurrency,
+    rawProducts,
   });
 
   return {

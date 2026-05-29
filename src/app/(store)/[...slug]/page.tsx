@@ -39,7 +39,6 @@ import { loadTagPageBySlug } from "@/data/pages/tag.loader";
 import { getStoreMaintenanceSettings } from "@/data/store/maintenance";
 import { renderMalakMaintenancePage } from "@/themes/malak/screens/maintenance/render-maintenance-page";
 
-
 import { renderHomePage } from "@/theme-engine/runtime/pages/render-home";
 import { renderCategoryPage } from "@/theme-engine/runtime/pages/render-category";
 import { renderProductPage } from "@/theme-engine/runtime/pages/render-product";
@@ -100,6 +99,7 @@ const PAGE_SELECT = [
   "created_at",
   "updated_at",
 ].join(",");
+
 /* -------------------------
    Request-level cached helpers
    الهدف: تقليل التكرار بين generateMetadata و Page
@@ -149,6 +149,7 @@ const loadCategoryByShortOrBase62Cached = cache(
     });
   },
 );
+
 const loadCategoryFiltersForPageCached = cache(
   async (storeId: string, categoryId: string, searchParams?: SP) => {
     return await loadCategoryFiltersForPage({
@@ -192,9 +193,6 @@ const loadHomePageCached = cache(
   },
 );
 
-const loadStoreReviewsCached = cache(async (storeId: string) => {
-  return await loadStoreReviews(storeId);
-});
 function s(value: unknown) {
   return String(value ?? "").trim();
 }
@@ -420,7 +418,7 @@ async function renderMalakCategoryPage(args: {
     h.get("sec-ch-ua-mobile"),
   );
 
-  const seoMode = await getSeoUrlModeCached(args.ctx.store.id)
+  const seoMode = await getSeoUrlModeCached(args.ctx.store.id);
 
   const { bootstrap, initialCartCount } = await buildMalakShellData({
     ctx: args.ctx,
@@ -470,7 +468,7 @@ async function renderMalakTagPage(args: {
     h.get("sec-ch-ua-mobile"),
   );
 
-  const seoMode = await getSeoUrlModeCached(args.ctx.store.id)
+  const seoMode = await getSeoUrlModeCached(args.ctx.store.id);
 
   const { bootstrap, initialCartCount } = await buildMalakShellData({
     ctx: args.ctx,
@@ -508,6 +506,11 @@ async function renderMalakProductPage(args: {
   ctx: any;
   data: any;
   preview: boolean;
+  seoMode?: any;
+  shellData?: {
+    bootstrap: any;
+    initialCartCount: number;
+  };
 }) {
   const h = await headers();
 
@@ -516,12 +519,16 @@ async function renderMalakProductPage(args: {
     h.get("sec-ch-ua-mobile"),
   );
 
-  const seoMode = await getSeoUrlModeCached(args.ctx.store.id)
+  const seoMode = args.seoMode ?? (await getSeoUrlModeCached(args.ctx.store.id));
 
-  const { bootstrap, initialCartCount } = await buildMalakShellData({
-    ctx: args.ctx,
-    seoMode,
-  });
+  const shellData =
+    args.shellData ??
+    (await buildMalakShellData({
+      ctx: args.ctx,
+      seoMode,
+    }));
+
+  const { bootstrap, initialCartCount } = shellData;
 
   const dataWithMode = {
     ...(args.data ?? {}),
@@ -567,7 +574,7 @@ async function renderMalakInfoPage(args: {
     h.get("sec-ch-ua-mobile"),
   );
 
-  const seoMode = await getSeoUrlModeCached(args.ctx.store.id)
+  const seoMode = await getSeoUrlModeCached(args.ctx.store.id);
 
   const { bootstrap, initialCartCount } = await buildMalakShellData({
     ctx: args.ctx,
@@ -601,124 +608,25 @@ async function renderMalakInfoPage(args: {
   );
 }
 
-function customerNameFromReview(review: any) {
-  const customer = Array.isArray(review?.customers)
-    ? review.customers[0]
-    : review?.customers;
+function resolveHomeReviewsFromData(data: any) {
+  if (Array.isArray(data?.storeReviews)) return data.storeReviews;
+  if (Array.isArray(data?.store_reviews)) return data.store_reviews;
+  if (Array.isArray(data?.testimonials)) return data.testimonials;
+  if (Array.isArray(data?.reviews)) return data.reviews;
 
-  return (
-    String(review?.author_name ?? "").trim() ||
-    String(customer?.full_name ?? "").trim() ||
-    "عميل"
-  );
-}
+  const homepage = data?.homepage;
+  if (Array.isArray(homepage?.storeReviews)) return homepage.storeReviews;
+  if (Array.isArray(homepage?.store_reviews)) return homepage.store_reviews;
+  if (Array.isArray(homepage?.testimonials)) return homepage.testimonials;
+  if (Array.isArray(homepage?.reviews)) return homepage.reviews;
 
-function normalizeStoreReview(review: any) {
-  return {
-    id: String(review?.id ?? ""),
-    name: customerNameFromReview(review),
-    authorName: customerNameFromReview(review),
-    role: review?.is_verified_purchase ? "عميل موثّق" : "",
-    avatar: "",
-    image: "",
-    text: String(review?.body || review?.title || "").trim(),
-    body: String(review?.body || "").trim(),
-    title: String(review?.title || "").trim(),
-    rating: Number(review?.rating || 5),
-    createdAt: String(review?.published_at || review?.created_at || ""),
-    created_at: review?.published_at || review?.created_at || null,
-    isPinned: Boolean(review?.is_pinned),
-    isFeatured: Boolean(review?.is_featured),
-    helpfulCount: Number(review?.helpful_count || 0),
-    isVerifiedPurchase: Boolean(review?.is_verified_purchase),
-    isGuest: Boolean(review?.is_guest),
-  };
-}
+  const themeData = data?.themeData ?? data?.theme_data;
+  if (Array.isArray(themeData?.storeReviews)) return themeData.storeReviews;
+  if (Array.isArray(themeData?.store_reviews)) return themeData.store_reviews;
+  if (Array.isArray(themeData?.testimonials)) return themeData.testimonials;
+  if (Array.isArray(themeData?.reviews)) return themeData.reviews;
 
-async function loadStoreReviews(storeId: string) {
-  const sb: any = supabaseAdmin();
-
-  try {
-    const baseSelect = `
-      id,
-      store_id,
-      target_type,
-      target_id,
-      customer_id,
-      order_id,
-      review_type,
-      rating,
-      title,
-      body,
-      author_name,
-      is_verified_purchase,
-      is_guest,
-      status,
-      is_pinned,
-      is_featured,
-      helpful_count,
-      sort_order,
-      published_at,
-      created_at,
-      customers (
-        id,
-        full_name
-      )
-    `;
-
-    const firstQuery = await sb
-      .from("review_entries")
-      .select(baseSelect)
-      .eq("store_id", storeId)
-      .eq("target_type", "store")
-      .eq("target_id", storeId)
-      .eq("review_type", "review")
-      .eq("status", "published")
-      .not("rating", "is", null)
-      .order("is_pinned", { ascending: false })
-      .order("is_featured", { ascending: false })
-      .order("rating", { ascending: false })
-      .order("sort_order", { ascending: true })
-      .order("published_at", { ascending: false, nullsFirst: false })
-      .order("created_at", { ascending: false })
-      .limit(100);
-
-    if (
-      !firstQuery.error &&
-      Array.isArray(firstQuery.data) &&
-      firstQuery.data.length
-    ) {
-      return firstQuery.data.map((review: any) => normalizeStoreReview(review));
-    }
-
-    const fallbackQuery = await sb
-      .from("review_entries")
-      .select(baseSelect)
-      .eq("store_id", storeId)
-      .eq("target_type", "store")
-      .eq("review_type", "review")
-      .eq("status", "published")
-      .not("rating", "is", null)
-      .order("is_pinned", { ascending: false })
-      .order("is_featured", { ascending: false })
-      .order("rating", { ascending: false })
-      .order("sort_order", { ascending: true })
-      .order("published_at", { ascending: false, nullsFirst: false })
-      .order("created_at", { ascending: false })
-      .limit(100);
-
-    if (fallbackQuery.error) {
-      console.error("store reviews error", fallbackQuery.error);
-      return [];
-    }
-
-    return (fallbackQuery.data ?? []).map((review: any) =>
-      normalizeStoreReview(review),
-    );
-  } catch (error) {
-    console.error("store reviews exception", error);
-    return [];
-  }
+  return [];
 }
 
 async function renderStoreRoute(args: {
@@ -763,6 +671,7 @@ async function loadCategoryByShortOrBase62(args: {
 
   return category;
 }
+
 async function attachCatalogFiltersToCategoryData(args: {
   storeId: string;
   data: any;
@@ -785,6 +694,7 @@ async function attachCatalogFiltersToCategoryData(args: {
     catalogFilters,
   };
 }
+
 async function loadProductByShortOrBase62(args: {
   storeId: string;
   code: string;
@@ -1343,6 +1253,7 @@ function productPrice(product: any) {
 function productCurrency(product: any) {
   return s(product?.pricing?.currency) || s(product?.seo?.currency) || "SAR";
 }
+
 function roundJsonLdMoney(value: any, decimals: any) {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return null;
@@ -1374,10 +1285,7 @@ function buildProductJsonLdVm(args: {
   }
 }
 
-function productSeoPrice(
-  product: any,
-  productVm?: ProductDetailVM | null,
-) {
+function productSeoPrice(product: any, productVm?: ProductDetailVM | null) {
   const vmPrice = roundJsonLdMoney(
     productVm?.pricing?.price ?? productVm?.price,
     productVm?.pricing?.currencyDecimals ??
@@ -1392,10 +1300,7 @@ function productSeoPrice(
   return productPrice(product);
 }
 
-function productSeoCurrency(
-  product: any,
-  productVm?: ProductDetailVM | null,
-) {
+function productSeoCurrency(product: any, productVm?: ProductDetailVM | null) {
   return (
     s(productVm?.pricing?.currencyCode) ||
     s(productVm?.pricing?.currency_code) ||
@@ -1404,6 +1309,7 @@ function productSeoCurrency(
     productCurrency(product)
   );
 }
+
 function productSku(product: any) {
   const variants = Array.isArray(product?.variants) ? product.variants : [];
   const defaultVariant =
@@ -1515,7 +1421,7 @@ function buildProductJsonLd(args: {
   storeName: string;
 }) {
   const url = absoluteUrl(args.origin, args.canonicalPath);
- const price = productSeoPrice(args.product, args.productVm);
+  const price = productSeoPrice(args.product, args.productVm);
   const brandName = productBrandName(args.product);
   const images = productImages(args.product, args.origin, args.image);
 
@@ -1765,7 +1671,7 @@ function titleFromSlug(value: string) {
 
 export async function generateMetadata(props: PageProps): Promise<Metadata> {
   const ctx = await resolveStoreContext();
-const origin = await getRequestOriginSafeCached();
+  const origin = await getRequestOriginSafeCached();
 
   if (!ctx.store) {
     return makeNoIndexMetadata({
@@ -1787,22 +1693,23 @@ const origin = await getRequestOriginSafeCached();
   const params = ((await props.params) ?? {}) as PageParams;
   const slug = params.slug || [];
 
- const seoMode = await getSeoUrlModeCached(ctx.store.id);
+  const seoMode = await getSeoUrlModeCached(ctx.store.id);
   const storeName = s(ctx.store.name) || "المتجر";
   const storeDescription = getStoreDescription(ctx.store);
   const storeImage = getStoreImage(ctx.store);
   const currentPath = pathFromSlug(slug);
-const maintenance = await getStoreMaintenanceSettings(ctx.store.id);
+  const maintenance = await getStoreMaintenanceSettings(ctx.store.id);
 
-if (maintenance.enabled && !preview) {
-  return makeNoIndexMetadata({
-    origin,
-    title: maintenance.title || storeName,
-    description: maintenance.message || storeDescription,
-    canonicalPath: currentPath,
-    storeName,
-  });
-}
+  if (maintenance.enabled && !preview) {
+    return makeNoIndexMetadata({
+      origin,
+      title: maintenance.title || storeName,
+      description: maintenance.message || storeDescription,
+      canonicalPath: currentPath,
+      storeName,
+    });
+  }
+
   if (preview) {
     return makeNoIndexMetadata({
       origin,
@@ -1826,10 +1733,7 @@ if (maintenance.enabled && !preview) {
   const infoPageSlug = getInfoPageSlug(slug);
 
   if (infoPageSlug) {
-   const page = await loadInfoPageBySlugCached(
-  ctx.store.id,
-  infoPageSlug,
-);
+    const page = await loadInfoPageBySlugCached(ctx.store.id, infoPageSlug);
 
     if (!page) {
       return makeNoIndexMetadata({
@@ -1864,11 +1768,7 @@ if (maintenance.enabled && !preview) {
   const tagPageSlug = getTagPageSlug(slug);
 
   if (tagPageSlug) {
-const data = await loadTagPageBySlugCached(
-  ctx.store.id,
-  tagPageSlug,
-  1,
-);
+    const data = await loadTagPageBySlugCached(ctx.store.id, tagPageSlug, 1);
 
     if (!data) {
       return makeNoIndexMetadata({
@@ -1886,7 +1786,8 @@ const data = await loadTagPageBySlugCached(
       s(data?.title) ||
       titleFromSlug(tagPageSlug);
 
-    const description = limitText(data?.tag?.description, 160) || storeDescription;
+    const description =
+      limitText(data?.tag?.description, 160) || storeDescription;
 
     return makeMetadata({
       origin,
@@ -1914,10 +1815,10 @@ const data = await loadTagPageBySlugCached(
   }
 
   if (decision.type === "named_category") {
-  const data = await loadCategoryPageByPublicNoCached(
-  ctx.store.id,
-  decision.publicNo,
-);
+    const data = await loadCategoryPageByPublicNoCached(
+      ctx.store.id,
+      decision.publicNo,
+    );
 
     if (!data?.category) {
       return makeNoIndexMetadata({
@@ -1946,10 +1847,10 @@ const data = await loadTagPageBySlugCached(
   }
 
   if (decision.type === "named_product") {
-const data = await loadProductPageByPublicNoCached(
-  ctx.store.id,
-  decision.publicNo,
-);
+    const data = await loadProductPageByPublicNoCached(
+      ctx.store.id,
+      decision.publicNo,
+    );
 
     if (!data?.product) {
       return makeNoIndexMetadata({
@@ -1965,7 +1866,7 @@ const data = await loadProductPageByPublicNoCached(
     const title = s(product?.seo?.seo_title) || s(product?.name) || storeName;
     const description = getProductDescription(product, storeDescription);
     const canonicalPath = getProductCanonicalPath(data, seoMode);
- const image = getProductImage(product);
+    const image = getProductImage(product);
 
     return makeMetadata({
       origin,
@@ -1984,10 +1885,10 @@ const data = await loadProductPageByPublicNoCached(
   }
 
   if (decision.type === "short_category") {
-const data = await loadCategoryByShortOrBase62Cached(
-  ctx.store.id,
-  decision.code,
-);
+    const data = await loadCategoryByShortOrBase62Cached(
+      ctx.store.id,
+      decision.code,
+    );
 
     if (!data?.category) {
       return makeNoIndexMetadata({
@@ -2016,17 +1917,17 @@ const data = await loadCategoryByShortOrBase62Cached(
   }
 
   if (decision.type === "short") {
-  const product = await loadProductByShortOrBase62Cached(
-  ctx.store.id,
-  decision.code,
-);
+    const product = await loadProductByShortOrBase62Cached(
+      ctx.store.id,
+      decision.code,
+    );
 
     if (product?.product) {
       const row = product.product;
       const title = s(row?.seo?.seo_title) || s(row?.name) || storeName;
       const description = getProductDescription(row, storeDescription);
       const canonicalPath = getProductCanonicalPath(product, seoMode);
-     const image = getProductImage(row);
+      const image = getProductImage(row);
 
       return makeMetadata({
         origin,
@@ -2044,10 +1945,10 @@ const data = await loadCategoryByShortOrBase62Cached(
       });
     }
 
- const category = await loadCategoryByShortOrBase62Cached(
-  ctx.store.id,
-  decision.code,
-);
+    const category = await loadCategoryByShortOrBase62Cached(
+      ctx.store.id,
+      decision.code,
+    );
 
     if (category?.category) {
       const row = category.category;
@@ -2102,20 +2003,17 @@ export default async function Page(props: PageProps) {
 
   const maintenance = await getStoreMaintenanceSettings(ctx.store.id);
 
-if (maintenance.enabled && !preview) {
-  return await renderMalakMaintenancePage({
-    ctx,
-    settings: maintenance,
-  });
-}
+  if (maintenance.enabled && !preview) {
+    return await renderMalakMaintenancePage({
+      ctx,
+      settings: maintenance,
+    });
+  }
 
   const infoPageSlug = getInfoPageSlug(slug);
 
   if (infoPageSlug) {
- const page = await loadInfoPageBySlugCached(
-  ctx.store.id,
-  infoPageSlug,
-);
+    const page = await loadInfoPageBySlugCached(ctx.store.id, infoPageSlug);
 
     if (!page) return notFound();
 
@@ -2171,15 +2069,11 @@ if (maintenance.enabled && !preview) {
   const tagPageSlug = getTagPageSlug(slug);
 
   if (tagPageSlug) {
-const data = await loadTagPageBySlugCached(
-  ctx.store.id,
-  tagPageSlug,
-  48,
-);
+    const data = await loadTagPageBySlugCached(ctx.store.id, tagPageSlug, 48);
 
     if (!data) return notFound();
 
-   const seoMode = await getSeoUrlModeCached(ctx.store.id);
+    const seoMode = await getSeoUrlModeCached(ctx.store.id);
     const tagTitle =
       s(data?.tag?.name) ||
       s(data?.tag?.title) ||
@@ -2235,12 +2129,6 @@ const data = await loadTagPageBySlugCached(
       isLangPrefix(String(slug[0] ?? "")) &&
       slug[1] === "thankyou" &&
       String(slug[2] ?? "").trim() !== "");
-
-
-
-
-
-
 
   if (isThankYou) {
     const token = isLangPrefix(String(slug[0] ?? ""))
@@ -2461,117 +2349,118 @@ const data = await loadTagPageBySlugCached(
       Object.keys(checkoutSnapshot).length > 0
         ? checkoutSnapshot
         : shippingSnapshot;
-const orderOptionsR = await sb
-  .from("order_option_answers")
-  .select(
-    [
-      "id",
-      "option_id",
-      "option_name",
-      "option_type",
-      "value",
-      "choice_ids",
-      "choices_snapshot",
-      "metadata",
-      "snapshot",
-      "price_customer",
-      "currency",
-      "created_at",
-    ].join(","),
-  )
-  .eq("store_id", ctx.store.id)
-  .eq("order_id", order.id)
-  .order("created_at", { ascending: true });
 
-function safeArrayValue(value: any): any[] {
-  return Array.isArray(value) ? value : [];
-}
+    const orderOptionsR = await sb
+      .from("order_option_answers")
+      .select(
+        [
+          "id",
+          "option_id",
+          "option_name",
+          "option_type",
+          "value",
+          "choice_ids",
+          "choices_snapshot",
+          "metadata",
+          "snapshot",
+          "price_customer",
+          "currency",
+          "created_at",
+        ].join(","),
+      )
+      .eq("store_id", ctx.store.id)
+      .eq("order_id", order.id)
+      .order("created_at", { ascending: true });
 
-function normalizeOrderOptionAnswer(row: any, index: number) {
-  const snapshot = safeRecord(row?.snapshot);
-  const metadata = safeRecord(row?.metadata);
-
-  const choicesSnapshot =
-    safeArrayValue(row?.choices_snapshot).length > 0
-      ? safeArrayValue(row?.choices_snapshot)
-      : safeArrayValue(snapshot?.choices);
-
-  const optionName =
-    String(row?.option_name ?? "").trim() ||
-    String(snapshot?.option_name ?? "").trim() ||
-    `خيار الطلب ${index + 1}`;
-
-  const optionType =
-    String(row?.option_type ?? "").trim() ||
-    String(snapshot?.option_type ?? "").trim() ||
-    "";
-
-  let value = String(row?.value ?? "").trim();
-
-  if (optionType === "choices" && choicesSnapshot.length > 0) {
-    value = choicesSnapshot
-      .map((choice: any) => String(choice?.label ?? "").trim())
-      .filter(Boolean)
-      .join("، ");
-  }
-
-  if (optionType === "appointment") {
-    const date = String(metadata?.date ?? "").trim();
-    const from = String(metadata?.from ?? "").trim();
-    const to = String(metadata?.to ?? "").trim();
-
-    if (date && from && to) {
-      value = `${date} من ${from} إلى ${to}`;
-    } else if (date) {
-      value = date;
+    function safeArrayValue(value: any): any[] {
+      return Array.isArray(value) ? value : [];
     }
-  }
 
-  const price = moneyRound(row?.price_customer);
+    function normalizeOrderOptionAnswer(row: any, index: number) {
+      const snapshot = safeRecord(row?.snapshot);
+      const metadata = safeRecord(row?.metadata);
 
-  return {
-    id: String(row?.id ?? `${row?.option_id ?? "option"}-${index}`),
-    optionId: String(row?.option_id ?? ""),
-    option_id: String(row?.option_id ?? ""),
+      const choicesSnapshot =
+        safeArrayValue(row?.choices_snapshot).length > 0
+          ? safeArrayValue(row?.choices_snapshot)
+          : safeArrayValue(snapshot?.choices);
 
-    name: optionName,
-    optionName,
+      const optionName =
+        String(row?.option_name ?? "").trim() ||
+        String(snapshot?.option_name ?? "").trim() ||
+        `خيار الطلب ${index + 1}`;
 
-    type: optionType,
-    optionType,
+      const optionType =
+        String(row?.option_type ?? "").trim() ||
+        String(snapshot?.option_type ?? "").trim() ||
+        "";
 
-    value,
+      let value = String(row?.value ?? "").trim();
 
-    choices: choicesSnapshot.map((choice: any) => ({
-      id: String(choice?.id ?? ""),
-      label: String(choice?.label ?? "").trim(),
-      price_customer: moneyRound(choice?.price_customer),
-      priceCustomer: moneyRound(choice?.price_customer),
-    })),
+      if (optionType === "choices" && choicesSnapshot.length > 0) {
+        value = choicesSnapshot
+          .map((choice: any) => String(choice?.label ?? "").trim())
+          .filter(Boolean)
+          .join("، ");
+      }
 
-    metadata,
-    price_customer: price,
-    priceCustomer: price,
-    currency: String(row?.currency ?? order.currency ?? "").trim(),
-  };
-}
+      if (optionType === "appointment") {
+        const date = String(metadata?.date ?? "").trim();
+        const from = String(metadata?.from ?? "").trim();
+        const to = String(metadata?.to ?? "").trim();
 
-const orderOptions =
-  !orderOptionsR.error && Array.isArray(orderOptionsR.data)
-    ? orderOptionsR.data
-        .map((row: any, index: number) =>
-          normalizeOrderOptionAnswer(row, index),
-        )
-        .filter((row: any) => row.name)
-    : [];
+        if (date && from && to) {
+          value = `${date} من ${from} إلى ${to}`;
+        } else if (date) {
+          value = date;
+        }
+      }
 
-const orderOptionsFee = moneyRound(
-  orderOptions.reduce(
-    (acc: number, row: any) =>
-      acc + moneyRound(row.price_customer ?? row.priceCustomer),
-    0,
-  ),
-);
+      const price = moneyRound(row?.price_customer);
+
+      return {
+        id: String(row?.id ?? `${row?.option_id ?? "option"}-${index}`),
+        optionId: String(row?.option_id ?? ""),
+        option_id: String(row?.option_id ?? ""),
+
+        name: optionName,
+        optionName,
+
+        type: optionType,
+        optionType,
+
+        value,
+
+        choices: choicesSnapshot.map((choice: any) => ({
+          id: String(choice?.id ?? ""),
+          label: String(choice?.label ?? "").trim(),
+          price_customer: moneyRound(choice?.price_customer),
+          priceCustomer: moneyRound(choice?.price_customer),
+        })),
+
+        metadata,
+        price_customer: price,
+        priceCustomer: price,
+        currency: String(row?.currency ?? order.currency ?? "").trim(),
+      };
+    }
+
+    const orderOptions =
+      !orderOptionsR.error && Array.isArray(orderOptionsR.data)
+        ? orderOptionsR.data
+            .map((row: any, index: number) =>
+              normalizeOrderOptionAnswer(row, index),
+            )
+            .filter((row: any) => row.name)
+        : [];
+
+    const orderOptionsFee = moneyRound(
+      orderOptions.reduce(
+        (acc: number, row: any) =>
+          acc + moneyRound(row.price_customer ?? row.priceCustomer),
+        0,
+      ),
+    );
 
     const subtotalAmount = snapshotMoney(
       financialSnapshot,
@@ -2653,7 +2542,10 @@ const orderOptionsFee = moneyRound(
       paymentFeeBaseAmount > 0
         ? paymentFeeBaseAmount
         : paymentFeeTotalFromSnapshot > 0 && paymentFeeTaxAmount > 0
-          ? Math.max(0, moneyRound(paymentFeeTotalFromSnapshot - paymentFeeTaxAmount))
+          ? Math.max(
+              0,
+              moneyRound(paymentFeeTotalFromSnapshot - paymentFeeTaxAmount),
+            )
           : fallbackPaymentFeeAmount;
 
     const paymentFeeTotalAmount =
@@ -2668,17 +2560,10 @@ const orderOptionsFee = moneyRound(
     );
 
     const taxLabel =
-      snapshotText(
-        financialSnapshot,
-        ["tax_label", "taxLabel"],
-        "",
-      ) || "ضريبة القيمة المضافة";
+      snapshotText(financialSnapshot, ["tax_label", "taxLabel"], "") ||
+      "ضريبة القيمة المضافة";
 
-    const taxRate = snapshotMoney(
-      financialSnapshot,
-      ["tax_rate", "taxRate"],
-      0,
-    );
+    const taxRate = snapshotMoney(financialSnapshot, ["tax_rate", "taxRate"], 0);
 
     const pricesIncludeTax = snapshotBool(
       financialSnapshot,
@@ -2699,11 +2584,8 @@ const orderOptionsFee = moneyRound(
     );
 
     const paymentMethod =
-      snapshotText(
-        financialSnapshot,
-        ["payment_method", "paymentMethod"],
-        "",
-      ) || String(order.payment_method ?? "").trim();
+      snapshotText(financialSnapshot, ["payment_method", "paymentMethod"], "") ||
+      String(order.payment_method ?? "").trim();
 
     function paymentLabel(method: any) {
       const value = String(method ?? "").trim();
@@ -2812,10 +2694,11 @@ const orderOptionsFee = moneyRound(
       extraData: {
         token,
         orderNo,
-orderOptions,
-order_options: orderOptions,
-orderOptionsFee,
-order_options_fee: orderOptionsFee,
+
+        orderOptions,
+        order_options: orderOptions,
+        orderOptionsFee,
+        order_options_fee: orderOptionsFee,
 
         totalAmount,
         currency: String(order.currency ?? "SAR"),
@@ -2861,15 +2744,6 @@ order_options_fee: orderOptionsFee,
     });
   }
 
-
-
-
-
-
-
-
-
- 
   if (matchRoute(slug, ["account"])) {
     return await renderStoreRoute({
       store: ctx.store,
@@ -2981,13 +2855,8 @@ order_options_fee: orderOptionsFee,
   if (decision.type === "home") {
     const themeOptions = ctx?.theme?.options ?? {};
 
-const data = await loadHomePageCached(
-  ctx.store.id,
-  24,
-  themeOptions,
-);
-
-  const storeReviews = await loadStoreReviewsCached(ctx.store.id);
+    const data = await loadHomePageCached(ctx.store.id, 24, themeOptions);
+    const storeReviews = resolveHomeReviewsFromData(data);
 
     const content = await renderHomePage({
       store: ctx.store,
@@ -3017,11 +2886,11 @@ const data = await loadHomePageCached(
     );
   }
 
-if (decision.type === "named_category") {
-const rawData = await loadCategoryPageByPublicNoCached(
-  ctx.store.id,
-  decision.publicNo,
-);
+  if (decision.type === "named_category") {
+    const rawData = await loadCategoryPageByPublicNoCached(
+      ctx.store.id,
+      decision.publicNo,
+    );
 
     if (!rawData) return notFound();
 
@@ -3031,7 +2900,7 @@ const rawData = await loadCategoryPageByPublicNoCached(
       searchParams: sp,
     });
 
-   const seoMode = await getSeoUrlModeCached(ctx.store.id);
+    const seoMode = await getSeoUrlModeCached(ctx.store.id);
     const category = data.category;
     const title = s(category?.seo_title) || s(category?.name) || storeName;
     const description = getCategoryDescription(category, storeDescription);
@@ -3067,37 +2936,39 @@ const rawData = await loadCategoryPageByPublicNoCached(
   }
 
   if (decision.type === "named_product") {
- const data = await loadProductPageByPublicNoCached(
-  ctx.store.id,
-  decision.publicNo,
-);
+    const data = await loadProductPageByPublicNoCached(
+      ctx.store.id,
+      decision.publicNo,
+    );
 
     if (!data) return notFound();
 
-  const seoMode = await getSeoUrlModeCached(ctx.store.id);
+    const seoMode = await getSeoUrlModeCached(ctx.store.id);
     const product = data.product;
     const title = s(product?.seo?.seo_title) || s(product?.name) || storeName;
     const description = getProductDescription(product, storeDescription);
     const canonicalPath = getProductCanonicalPath(data, seoMode);
     const image = getProductImage(product) || storeImage;
-    const bootstrapForJsonLd = isMalakTheme(ctx)
-      ? await buildMalakBootstrap({
+
+    const malakShellData = isMalakTheme(ctx)
+      ? await buildMalakShellData({
           ctx,
           seoMode,
         })
       : null;
 
-    const productVmForJsonLd = bootstrapForJsonLd
+    const productVmForJsonLd = malakShellData
       ? buildProductJsonLdVm({
           product,
-          bootstrap: bootstrapForJsonLd,
+          bootstrap: malakShellData.bootstrap,
         })
       : null;
+
     const jsonLdEntries = buildProductJsonLdEntries({
       origin,
       canonicalPath,
       product,
-            productVm: productVmForJsonLd,
+      productVm: productVmForJsonLd,
       title,
       description,
       image,
@@ -3105,11 +2976,13 @@ const rawData = await loadCategoryPageByPublicNoCached(
       seoMode,
     });
 
-    if (isMalakTheme(ctx)) {
+    if (malakShellData) {
       const content = await renderMalakProductPage({
         ctx,
         data,
         preview,
+        seoMode,
+        shellData: malakShellData,
       });
 
       return withJsonLd(content, jsonLdEntries);
@@ -3125,11 +2998,11 @@ const rawData = await loadCategoryPageByPublicNoCached(
     return withJsonLd(content, jsonLdEntries);
   }
 
-if (decision.type === "short_category") {
-const rawCategory = await loadCategoryByShortOrBase62Cached(
-  ctx.store.id,
-  decision.code,
-);
+  if (decision.type === "short_category") {
+    const rawCategory = await loadCategoryByShortOrBase62Cached(
+      ctx.store.id,
+      decision.code,
+    );
 
     if (!rawCategory) return notFound();
 
@@ -3175,10 +3048,10 @@ const rawCategory = await loadCategoryByShortOrBase62Cached(
   }
 
   if (decision.type === "short") {
- const product = await loadProductByShortOrBase62Cached(
-  ctx.store.id,
-  decision.code,
-);
+    const product = await loadProductByShortOrBase62Cached(
+      ctx.store.id,
+      decision.code,
+    );
 
     if (product) {
       const seoMode = await getSeoUrlModeCached(ctx.store.id);
@@ -3186,25 +3059,27 @@ const rawCategory = await loadCategoryByShortOrBase62Cached(
       const title = s(row?.seo?.seo_title) || s(row?.name) || storeName;
       const description = getProductDescription(row, storeDescription);
       const canonicalPath = getProductCanonicalPath(product, seoMode);
-     const image = getProductImage(row);
-      const bootstrapForJsonLd = isMalakTheme(ctx)
-        ? await buildMalakBootstrap({
+      const image = getProductImage(row);
+
+      const malakShellData = isMalakTheme(ctx)
+        ? await buildMalakShellData({
             ctx,
             seoMode,
           })
         : null;
 
-      const productVmForJsonLd = bootstrapForJsonLd
+      const productVmForJsonLd = malakShellData
         ? buildProductJsonLdVm({
             product: row,
-            bootstrap: bootstrapForJsonLd,
+            bootstrap: malakShellData.bootstrap,
           })
         : null;
+
       const jsonLdEntries = buildProductJsonLdEntries({
         origin,
         canonicalPath,
         product: row,
-                productVm: productVmForJsonLd,
+        productVm: productVmForJsonLd,
         title,
         description,
         image,
@@ -3212,11 +3087,13 @@ const rawCategory = await loadCategoryByShortOrBase62Cached(
         seoMode,
       });
 
-      if (isMalakTheme(ctx)) {
+      if (malakShellData) {
         const content = await renderMalakProductPage({
           ctx,
           data: product,
           preview,
+          seoMode,
+          shellData: malakShellData,
         });
 
         return withJsonLd(content, jsonLdEntries);
@@ -3232,10 +3109,10 @@ const rawCategory = await loadCategoryByShortOrBase62Cached(
       return withJsonLd(content, jsonLdEntries);
     }
 
- const rawCategory = await loadCategoryByShortOrBase62Cached(
-  ctx.store.id,
-  decision.code,
-);
+    const rawCategory = await loadCategoryByShortOrBase62Cached(
+      ctx.store.id,
+      decision.code,
+    );
 
     if (rawCategory) {
       const category = await attachCatalogFiltersToCategoryData({
@@ -3243,6 +3120,7 @@ const rawCategory = await loadCategoryByShortOrBase62Cached(
         data: rawCategory,
         searchParams: sp,
       });
+
       const seoMode = await getSeoUrlModeCached(ctx.store.id);
       const row = category.category;
       const title = s(row?.seo_title) || s(row?.name) || storeName;

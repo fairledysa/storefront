@@ -1,6 +1,7 @@
 // FILE: apps/storefront/src/themes/malak/app-shell/DesktopShell.tsx
 "use client";
 
+import dynamic from "next/dynamic";
 import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
@@ -8,7 +9,6 @@ import { usePathname } from "next/navigation";
 import DesktopHeader from "./_components/DesktopHeader";
 import Footer from "./Footer";
 import ScreenContainer from "./ScreenContainer";
-import AuthModal from "./_components/AuthModal";
 
 import type { ThemeAdapterOutput } from "../types";
 import type { SeoUrlMode } from "@/data/store/settings";
@@ -16,6 +16,11 @@ import type { MalakBootstrap } from "../bootstrap/types";
 
 import { useNavStack } from "../app-navigation/stack";
 import { ROUTES } from "../app-navigation/routes";
+
+const AuthModal = dynamic(() => import("./_components/AuthModal"), {
+  ssr: false,
+  loading: () => null,
+});
 
 type Props = {
   theme: ThemeAdapterOutput;
@@ -25,6 +30,20 @@ type Props = {
   bootstrap?: MalakBootstrap;
   initialCartCount?: number;
 };
+
+type AuthCacheValue = {
+  authed: boolean;
+  customer: any;
+  expiresAt: number;
+};
+
+let authCache: AuthCacheValue | null = null;
+let authPending: Promise<AuthCacheValue> | null = null;
+
+const AUTH_CACHE_TTL = 60_000;
+const AUTH_ERROR_CACHE_TTL = 10_000;
+const AUTH_IDLE_TIMEOUT = 1800;
+const AUTH_FALLBACK_DELAY = 700;
 
 function boolAttr(value: any, fallback = false) {
   if (typeof value === "boolean") return value ? "true" : "false";
@@ -77,14 +96,6 @@ function isHomePath(pathname: string | null) {
 
   return path === "/" || path === "";
 }
-type AuthCacheValue = {
-  authed: boolean;
-  customer: any;
-  expiresAt: number;
-};
-
-let authCache: AuthCacheValue | null = null;
-let authPending: Promise<AuthCacheValue> | null = null;
 
 function scheduleIdleTask(callback: () => void) {
   if (typeof window === "undefined") return () => {};
@@ -92,7 +103,7 @@ function scheduleIdleTask(callback: () => void) {
   const w = window as any;
 
   if (typeof w.requestIdleCallback === "function") {
-    const id = w.requestIdleCallback(callback, { timeout: 1500 });
+    const id = w.requestIdleCallback(callback, { timeout: AUTH_IDLE_TIMEOUT });
 
     return () => {
       if (typeof w.cancelIdleCallback === "function") {
@@ -101,19 +112,27 @@ function scheduleIdleTask(callback: () => void) {
     };
   }
 
-  const id = window.setTimeout(callback, 450);
+  const id = window.setTimeout(callback, AUTH_FALLBACK_DELAY);
 
   return () => {
     window.clearTimeout(id);
   };
 }
 
-async function loadAuthState(force = false): Promise<AuthCacheValue> {
+function getCachedAuthState() {
   const now = Date.now();
 
-  if (!force && authCache && authCache.expiresAt > now) {
+  if (authCache && authCache.expiresAt > now) {
     return authCache;
   }
+
+  return null;
+}
+
+async function loadAuthState(force = false): Promise<AuthCacheValue> {
+  const cached = force ? null : getCachedAuthState();
+
+  if (cached) return cached;
 
   if (authPending) {
     return authPending;
@@ -129,7 +148,7 @@ async function loadAuthState(force = false): Promise<AuthCacheValue> {
       const next: AuthCacheValue = {
         authed: Boolean(json?.authed),
         customer: json?.customer ?? null,
-        expiresAt: Date.now() + 60_000,
+        expiresAt: Date.now() + AUTH_CACHE_TTL,
       };
 
       authCache = next;
@@ -140,7 +159,7 @@ async function loadAuthState(force = false): Promise<AuthCacheValue> {
       const next: AuthCacheValue = {
         authed: false,
         customer: null,
-        expiresAt: Date.now() + 10_000,
+        expiresAt: Date.now() + AUTH_ERROR_CACHE_TTL,
       };
 
       authCache = next;
@@ -153,6 +172,12 @@ async function loadAuthState(force = false): Promise<AuthCacheValue> {
 
   return authPending;
 }
+
+function clearAuthCache() {
+  authCache = null;
+  authPending = null;
+}
+
 export default function DesktopShell({
   theme,
   seoMode,
@@ -166,9 +191,12 @@ export default function DesktopShell({
   const setRoutes = useNavStack((state) => state.setRoutes);
   const setFromPath = useNavStack((state) => state.setFromPath);
 
+  const cachedAuth = getCachedAuthState();
+
   const [authOpen, setAuthOpen] = useState(false);
-const [authed, setAuthed] = useState(() => Boolean(authCache?.authed));
-const [customer, setCustomer] = useState<any>(() => authCache?.customer ?? null);
+  const [authModalMounted, setAuthModalMounted] = useState(false);
+  const [authed, setAuthed] = useState(() => Boolean(cachedAuth?.authed));
+  const [customer, setCustomer] = useState<any>(() => cachedAuth?.customer ?? null);
 
   const storefront: any = (theme as any)?.storefront || {};
   const themeHeader: any = (theme as any)?.header || {};
@@ -628,24 +656,44 @@ const [customer, setCustomer] = useState<any>(() => authCache?.customer ?? null)
     ],
   );
 
- const fetchMe = useCallback(
-  async (options?: { signal?: AbortSignal; force?: boolean }) => {
-    try {
-      const next = await loadAuthState(Boolean(options?.force));
+  const openAuth = useCallback(() => {
+    setAuthModalMounted(true);
+    setAuthOpen(true);
+  }, []);
 
-      if (options?.signal?.aborted) return;
+  const closeAuth = useCallback(() => {
+    setAuthOpen(false);
+  }, []);
 
-      setAuthed(Boolean(next.authed));
-      setCustomer(next.customer ?? null);
-    } catch {
-      if (options?.signal?.aborted) return;
+  const fetchMe = useCallback(
+    async (options?: { signal?: AbortSignal; force?: boolean }) => {
+      try {
+        const next = await loadAuthState(Boolean(options?.force));
 
-      setAuthed(false);
-      setCustomer(null);
-    }
-  },
-  [],
-);
+        if (options?.signal?.aborted) return;
+
+        setAuthed(Boolean(next.authed));
+        setCustomer(next.customer ?? null);
+      } catch {
+        if (options?.signal?.aborted) return;
+
+        setAuthed(false);
+        setCustomer(null);
+      }
+    },
+    [],
+  );
+
+  const handleAuthChanged = useCallback(() => {
+    clearAuthCache();
+    void fetchMe({ force: true });
+  }, [fetchMe]);
+
+  const handleAuthed = useCallback(() => {
+    clearAuthCache();
+    void fetchMe({ force: true });
+    window.dispatchEvent(new CustomEvent("auth:changed"));
+  }, [fetchMe]);
 
   useEffect(() => {
     setRoutes(ROUTES as any);
@@ -656,29 +704,33 @@ const [customer, setCustomer] = useState<any>(() => authCache?.customer ?? null)
     setFromPath(pathname);
   }, [pathname, setFromPath]);
 
- useEffect(() => {
-  const controller = new AbortController();
+  useEffect(() => {
+    const cached = getCachedAuthState();
 
-  const cancelIdle = scheduleIdleTask(() => {
-    void fetchMe({
-      signal: controller.signal,
+    if (cached) {
+      setAuthed(Boolean(cached.authed));
+      setCustomer(cached.customer ?? null);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const cancelIdle = scheduleIdleTask(() => {
+      void fetchMe({
+        signal: controller.signal,
+      });
     });
-  });
 
-  return () => {
-    controller.abort();
-    cancelIdle();
-  };
-}, [fetchMe]);
+    return () => {
+      controller.abort();
+      cancelIdle();
+    };
+  }, [fetchMe]);
 
   useEffect(() => {
     function handleAuthOpen() {
-      setAuthOpen(true);
+      openAuth();
     }
-
-  function handleAuthChanged() {
-  void fetchMe({ force: true });
-}
 
     window.addEventListener("auth:open", handleAuthOpen);
     window.addEventListener("auth:changed", handleAuthChanged);
@@ -687,21 +739,21 @@ const [customer, setCustomer] = useState<any>(() => authCache?.customer ?? null)
       window.removeEventListener("auth:open", handleAuthOpen);
       window.removeEventListener("auth:changed", handleAuthChanged);
     };
-  }, [fetchMe]);
+  }, [handleAuthChanged, openAuth]);
 
   const screenData = useMemo(() => {
-  const base =
-    data && typeof data === "object" && !Array.isArray(data) ? data : {};
+    const base =
+      data && typeof data === "object" && !Array.isArray(data) ? data : {};
 
-  const bootstrapAnyForScreen: any = bootstrap || {};
+    const bootstrapAnyForScreen: any = bootstrap || {};
 
-  return {
-    ...base,
-    bootstrap: base.bootstrap ?? bootstrap ?? null,
-    currencies: base.currencies ?? bootstrapAnyForScreen.currencies ?? null,
-    tax: base.tax ?? bootstrapAnyForScreen.tax ?? null,
-  };
-}, [data, bootstrap]);
+    return {
+      ...base,
+      bootstrap: base.bootstrap ?? bootstrap ?? null,
+      currencies: base.currencies ?? bootstrapAnyForScreen.currencies ?? null,
+      tax: base.tax ?? bootstrapAnyForScreen.tax ?? null,
+    };
+  }, [data, bootstrap]);
 
   return (
     <>
@@ -715,7 +767,7 @@ const [customer, setCustomer] = useState<any>(() => authCache?.customer ?? null)
           bootstrap={bootstrap}
           authed={authed}
           customer={customer}
-          onOpenAuth={() => setAuthOpen(true)}
+          onOpenAuth={openAuth}
           seoMode={seoMode}
           initialCartCount={initialCartCount}
         />
@@ -729,14 +781,9 @@ const [customer, setCustomer] = useState<any>(() => authCache?.customer ?? null)
         <Footer theme={theme} bootstrap={bootstrap} />
       </div>
 
-      <AuthModal
-        open={authOpen}
-        onClose={() => setAuthOpen(false)}
-      onAuthed={() => {
-  void fetchMe({ force: true });
-  window.dispatchEvent(new CustomEvent("auth:changed"));
-}}
-      />
+      {authModalMounted ? (
+        <AuthModal open={authOpen} onClose={closeAuth} onAuthed={handleAuthed} />
+      ) : null}
     </>
   );
 }

@@ -1,3 +1,5 @@
+// FILE: apps/storefront/src/app/(store)/api/cart/items/route.ts
+
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/data/store/supabase.server";
 import { isProductVisibleInWeb } from "@/data/catalog/products";
@@ -5,6 +7,8 @@ import { isProductVisibleInWeb } from "@/data/catalog/products";
 import {
   cartSessionCookie,
   getCartSessionId,
+  getCartSessionIdFromCookie,
+  getExistingOpenCart,
   getOrCreateOpenCart,
   getStoreIdOrThrow,
   buildLineKey,
@@ -460,6 +464,25 @@ function mergeCustomSelectedOptions(
   return next;
 }
 
+function setCartCookieIfPresent(res: NextResponse, sid: string | null | undefined) {
+  const cleanSid = String(sid ?? "").trim();
+
+  if (!cleanSid) return res;
+
+  const c = cartSessionCookie(cleanSid);
+
+  res.cookies.set(c.name, c.value, {
+    httpOnly: c.httpOnly,
+    sameSite: c.sameSite,
+    path: c.path,
+    secure: c.secure,
+    maxAge: c.maxAge,
+    ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
+  });
+
+  return res;
+}
+
 async function parseAddItemRequest(req: Request): Promise<{
   product_id: string;
   variant_id: string | null;
@@ -768,14 +791,16 @@ async function syncCartActivityAndCount(sb: any, cartId: string) {
 
   if (itemsR.error) throw new Error(itemsR.error.message);
 
-const rows: Array<{ qty?: number | string | null }> = Array.isArray(itemsR.data)
-  ? itemsR.data
-  : [];
+  const rows: Array<{ qty?: number | string | null }> = Array.isArray(
+    itemsR.data,
+  )
+    ? itemsR.data
+    : [];
 
-const item_count = rows.reduce((sum: number, row) => {
-  const qty = Number(row?.qty ?? 0);
-  return sum + (Number.isFinite(qty) ? Math.max(0, Math.floor(qty)) : 0);
-}, 0);
+  const item_count = rows.reduce((sum: number, row) => {
+    const qty = Number(row?.qty ?? 0);
+    return sum + (Number.isFinite(qty) ? Math.max(0, Math.floor(qty)) : 0);
+  }, 0);
 
   const upR = await sb
     .from("carts")
@@ -1090,6 +1115,16 @@ function buildVariantChangedQtyLimitedMessage(args: {
   return `تم تغيير الخيارات، وتم تحديث الكمية إلى ${finalQty}.`;
 }
 
+function cartNotFoundResponse() {
+  return NextResponse.json(
+    {
+      error: "CART_NOT_FOUND",
+      message: "السلة غير موجودة.",
+    },
+    { status: 404 },
+  );
+}
+
 export async function POST(req: Request) {
   try {
     const parsed = await parseAddItemRequest(req);
@@ -1293,18 +1328,7 @@ export async function POST(req: Request) {
         },
       });
 
-      const c = cartSessionCookie(sid);
-
-      res.cookies.set(c.name, c.value, {
-        httpOnly: c.httpOnly,
-        sameSite: c.sameSite,
-        path: c.path,
-        secure: c.secure,
-        maxAge: c.maxAge,
-        ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
-      });
-
-      return res;
+      return setCartCookieIfPresent(res, sid);
     }
 
     let selected_options: Array<{ name: string; value: string }> = [];
@@ -1405,18 +1429,7 @@ export async function POST(req: Request) {
       },
     });
 
-    const c = cartSessionCookie(sid);
-
-    res.cookies.set(c.name, c.value, {
-      httpOnly: c.httpOnly,
-      sameSite: c.sameSite,
-      path: c.path,
-      secure: c.secure,
-      maxAge: c.maxAge,
-      ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
-    });
-
-    return res;
+    return setCartCookieIfPresent(res, sid);
   } catch (e: any) {
     const msg = e?.message ?? "Unknown error";
 
@@ -1436,8 +1449,12 @@ export async function PATCH(req: Request) {
     const sb: any = supabaseAdmin();
 
     const store_id = await getStoreIdOrThrow();
-    const sid = await getCartSessionId();
-    const cart = await getOrCreateOpenCart({ store_id, session_id: sid });
+    const sid = await getCartSessionIdFromCookie();
+    const cart = await getExistingOpenCart({ store_id, session_id: sid });
+
+    if (!cart?.id) {
+      return cartNotFoundResponse();
+    }
 
     if (!body || typeof (body as any).op !== "string") {
       return NextResponse.json({ error: "Invalid body" }, { status: 400 });
@@ -1547,18 +1564,7 @@ export async function PATCH(req: Request) {
           },
         });
 
-        const c = cartSessionCookie(sid);
-
-        res.cookies.set(c.name, c.value, {
-          httpOnly: c.httpOnly,
-          sameSite: c.sameSite,
-          path: c.path,
-          secure: c.secure,
-          maxAge: c.maxAge,
-          ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
-        });
-
-        return res;
+        return setCartCookieIfPresent(res, sid);
       }
 
       const upR = await sb
@@ -1598,18 +1604,7 @@ export async function PATCH(req: Request) {
         },
       });
 
-      const c = cartSessionCookie(sid);
-
-      res.cookies.set(c.name, c.value, {
-        httpOnly: c.httpOnly,
-        sameSite: c.sameSite,
-        path: c.path,
-        secure: c.secure,
-        maxAge: c.maxAge,
-        ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
-      });
-
-      return res;
+      return setCartCookieIfPresent(res, sid);
     }
 
     if (op === "set_variant") {
@@ -1784,18 +1779,7 @@ export async function PATCH(req: Request) {
             },
           });
 
-          const c = cartSessionCookie(sid);
-
-          res.cookies.set(c.name, c.value, {
-            httpOnly: c.httpOnly,
-            sameSite: c.sameSite,
-            path: c.path,
-            secure: c.secure,
-            maxAge: c.maxAge,
-            ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
-          });
-
-          return res;
+          return setCartCookieIfPresent(res, sid);
         }
 
         if (wasLimited && finalQty < desiredMergedQty && !confirmQtyReduction) {
@@ -1826,18 +1810,7 @@ export async function PATCH(req: Request) {
             },
           });
 
-          const c = cartSessionCookie(sid);
-
-          res.cookies.set(c.name, c.value, {
-            httpOnly: c.httpOnly,
-            sameSite: c.sameSite,
-            path: c.path,
-            secure: c.secure,
-            maxAge: c.maxAge,
-            ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
-          });
-
-          return res;
+          return setCartCookieIfPresent(res, sid);
         }
 
         const upOther = await sb
@@ -1893,18 +1866,7 @@ export async function PATCH(req: Request) {
           },
         });
 
-        const c = cartSessionCookie(sid);
-
-        res.cookies.set(c.name, c.value, {
-          httpOnly: c.httpOnly,
-          sameSite: c.sameSite,
-          path: c.path,
-          secure: c.secure,
-          maxAge: c.maxAge,
-          ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
-        });
-
-        return res;
+        return setCartCookieIfPresent(res, sid);
       }
 
       const { finalQty, hardMax, wasLimited, available, max_per_order } =
@@ -1938,18 +1900,7 @@ export async function PATCH(req: Request) {
           },
         });
 
-        const c = cartSessionCookie(sid);
-
-        res.cookies.set(c.name, c.value, {
-          httpOnly: c.httpOnly,
-          sameSite: c.sameSite,
-          path: c.path,
-          secure: c.secure,
-          maxAge: c.maxAge,
-          ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
-        });
-
-        return res;
+        return setCartCookieIfPresent(res, sid);
       }
 
       if (wasLimited && finalQty < currentQty && !confirmQtyReduction) {
@@ -1980,18 +1931,7 @@ export async function PATCH(req: Request) {
           },
         });
 
-        const c = cartSessionCookie(sid);
-
-        res.cookies.set(c.name, c.value, {
-          httpOnly: c.httpOnly,
-          sameSite: c.sameSite,
-          path: c.path,
-          secure: c.secure,
-          maxAge: c.maxAge,
-          ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
-        });
-
-        return res;
+        return setCartCookieIfPresent(res, sid);
       }
 
       const upSelf = await sb
@@ -2043,18 +1983,7 @@ export async function PATCH(req: Request) {
         },
       });
 
-      const c = cartSessionCookie(sid);
-
-      res.cookies.set(c.name, c.value, {
-        httpOnly: c.httpOnly,
-        sameSite: c.sameSite,
-        path: c.path,
-        secure: c.secure,
-        maxAge: c.maxAge,
-        ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
-      });
-
-      return res;
+      return setCartCookieIfPresent(res, sid);
     }
 
     return NextResponse.json({ error: "Unsupported op" }, { status: 400 });
@@ -2086,8 +2015,12 @@ export async function DELETE(req: Request) {
     const sb: any = supabaseAdmin();
 
     const store_id = await getStoreIdOrThrow();
-    const sid = await getCartSessionId();
-    const cart = await getOrCreateOpenCart({ store_id, session_id: sid });
+    const sid = await getCartSessionIdFromCookie();
+    const cart = await getExistingOpenCart({ store_id, session_id: sid });
+
+    if (!cart?.id) {
+      return cartNotFoundResponse();
+    }
 
     const item0 = await getCartItemOrThrow(sb, cart.id, cart_item_id);
 
@@ -2108,18 +2041,7 @@ export async function DELETE(req: Request) {
       },
     });
 
-    const c = cartSessionCookie(sid);
-
-    res.cookies.set(c.name, c.value, {
-      httpOnly: c.httpOnly,
-      sameSite: c.sameSite,
-      path: c.path,
-      secure: c.secure,
-      maxAge: c.maxAge,
-      ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
-    });
-
-    return res;
+    return setCartCookieIfPresent(res, sid);
   } catch (e: any) {
     const msg = e?.message ?? "Unknown error";
 

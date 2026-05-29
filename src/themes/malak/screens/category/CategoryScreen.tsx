@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { buildProductHref } from "@/lib/seo/build-store-href";
@@ -14,6 +14,7 @@ import {
 } from "@/data/viewmodels/product.vm";
 import ProductCard from "@/themes/malak/components/product-card/ProductCard";
 import LoadingOverlay from "../../components/LoadingOverlay";
+
 type Props = {
   data?: any;
   mode: SeoUrlMode;
@@ -402,6 +403,8 @@ export default function CategoryScreen({ data, mode }: Props) {
   );
   const [optimisticSearch, setOptimisticSearch] = useState<string | null>(null);
 
+  const priceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const searchParamsText = searchParams.toString();
   const effectiveSearchString = optimisticSearch ?? searchParamsText;
 
@@ -427,7 +430,10 @@ export default function CategoryScreen({ data, mode }: Props) {
       ? Math.ceil(Number(rawPriceMax))
       : priceBoundMin + 1;
 
-  const priceStep = Math.max(1, Math.round((priceBoundMax - priceBoundMin) / 100));
+  const priceStep = Math.max(
+    1,
+    Math.round((priceBoundMax - priceBoundMin) / 100),
+  );
 
   const effectiveCategoryIds = useMemo(
     () =>
@@ -530,6 +536,15 @@ export default function CategoryScreen({ data, mode }: Props) {
   useEffect(() => {
     setOptimisticSearch(null);
   }, [searchParamsText]);
+
+  useEffect(() => {
+    return () => {
+      if (priceTimerRef.current) {
+        clearTimeout(priceTimerRef.current);
+        priceTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const currencies = useMemo(() => resolveCurrenciesFromData(data), [data]);
   const tax = useMemo(() => resolveTaxFromData(data), [data]);
@@ -902,6 +917,11 @@ export default function CategoryScreen({ data, mode }: Props) {
   };
 
   const applyPriceRange = (range = priceRange) => {
+    if (priceTimerRef.current) {
+      clearTimeout(priceTimerRef.current);
+      priceTimerRef.current = null;
+    }
+
     const safeMin = roundPrice(
       clampNumber(Math.min(range.min, range.max), priceBoundMin, priceBoundMax),
     );
@@ -933,7 +953,23 @@ export default function CategoryScreen({ data, mode }: Props) {
     });
   };
 
+  const schedulePriceApply = (nextRange: PriceRange) => {
+    if (priceTimerRef.current) {
+      clearTimeout(priceTimerRef.current);
+      priceTimerRef.current = null;
+    }
+
+    priceTimerRef.current = setTimeout(() => {
+      applyPriceRange(nextRange);
+    }, 520);
+  };
+
   const resetPriceRange = () => {
+    if (priceTimerRef.current) {
+      clearTimeout(priceTimerRef.current);
+      priceTimerRef.current = null;
+    }
+
     const nextRange = {
       min: priceBoundMin,
       max: priceBoundMax,
@@ -963,6 +999,11 @@ export default function CategoryScreen({ data, mode }: Props) {
   };
 
   const resetFilters = () => {
+    if (priceTimerRef.current) {
+      clearTimeout(priceTimerRef.current);
+      priceTimerRef.current = null;
+    }
+
     navigateWithParams((params) => {
       clearFilterParams(params);
     });
@@ -1270,9 +1311,10 @@ export default function CategoryScreen({ data, mode }: Props) {
     );
   }
 
-return (
-  <div dir="rtl" className="mk-dcat mk-dcat--filters">
-    <LoadingOverlay show={isPending} mode="page" />
+  return (
+    <div dir="rtl" className="mk-dcat mk-dcat--filters">
+      <LoadingOverlay show={isPending} mode="page" />
+
       <button
         type="button"
         className="mk-dcat-filterOverlay"
@@ -1353,28 +1395,28 @@ return (
         </div>
 
         <div className="mk-dcat-layout">
-<section
-  className="mk-dcat-products"
-  data-pending={isPending ? "true" : "false"}
-  aria-busy={isPending ? "true" : "false"}
->
-  {products.length === 0 ? (
-    <div className="mk-dcat__empty">
-      لا توجد منتجات مطابقة للفلاتر الحالية
-    </div>
-  ) : (
-    <div className="mk-dcat__grid">
-      {products.map((product: ProductCardVM, index: number) => (
-        <ProductCard
-          key={`${product.id || product.publicNo || index}_${
-            product.publicNo ?? index
-          }`}
-          item={product as any}
-        />
-      ))}
-    </div>
-  )}
-</section>
+          <section
+            className="mk-dcat-products"
+            data-pending={isPending ? "true" : "false"}
+            aria-busy={isPending ? "true" : "false"}
+          >
+            {products.length === 0 ? (
+              <div className="mk-dcat__empty">
+                لا توجد منتجات مطابقة للفلاتر الحالية
+              </div>
+            ) : (
+              <div className="mk-dcat__grid">
+                {products.map((product: ProductCardVM, index: number) => (
+                  <ProductCard
+                    key={`${product.id || product.publicNo || index}_${
+                      product.publicNo ?? index
+                    }`}
+                    item={product as any}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
 
           <aside
             className="mk-dcat-filterPanel"
@@ -1476,7 +1518,9 @@ return (
                             type="button"
                             className="mk-dcat-categoryList__toggle"
                             disabled={!hasChildren}
-                            aria-label={isOpen ? "إخفاء الفروع" : "إظهار الفروع"}
+                            aria-label={
+                              isOpen ? "إخفاء الفروع" : "إظهار الفروع"
+                            }
                             onClick={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
@@ -1534,15 +1578,14 @@ return (
                     onChange={(event) => {
                       const value = Number(event.target.value);
 
-                      setPriceRange((prev) => ({
-                        min: Math.min(value, prev.max),
-                        max: prev.max,
-                      }));
+                      const nextRange = {
+                        min: Math.min(value, priceRange.max),
+                        max: priceRange.max,
+                      };
+
+                      setPriceRange(nextRange);
+                      schedulePriceApply(nextRange);
                     }}
-                    onPointerUp={() => applyPriceRange()}
-                    onTouchEnd={() => applyPriceRange()}
-                    onKeyUp={() => applyPriceRange()}
-                    onBlur={() => applyPriceRange()}
                   />
 
                   <input
@@ -1555,15 +1598,14 @@ return (
                     onChange={(event) => {
                       const value = Number(event.target.value);
 
-                      setPriceRange((prev) => ({
-                        min: prev.min,
-                        max: Math.max(value, prev.min),
-                      }));
+                      const nextRange = {
+                        min: priceRange.min,
+                        max: Math.max(value, priceRange.min),
+                      };
+
+                      setPriceRange(nextRange);
+                      schedulePriceApply(nextRange);
                     }}
-                    onPointerUp={() => applyPriceRange()}
-                    onTouchEnd={() => applyPriceRange()}
-                    onKeyUp={() => applyPriceRange()}
-                    onBlur={() => applyPriceRange()}
                   />
                 </div>
 

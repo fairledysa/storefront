@@ -13,7 +13,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Icon from "@/components/icon/Icon";
-import { toProductCardVM } from "@/data/viewmodels/product.vm";
+
 type LegacyBrand = {
   name: string;
   href: string;
@@ -100,15 +100,6 @@ type CurrencyItem = {
   name_ar?: string | null;
   name_en?: string | null;
 
-  /**
-   * rate معناها:
-   * قيمة 1 من العملة الأساسية بعملة هذا الصف.
-   *
-   * مثال:
-   * العملة الأساسية YER
-   * EUR rate = 0.004
-   * 200 YER => 200 * 0.004 = 0.8 EUR
-   */
   rate: number;
 
   decimals: number;
@@ -125,6 +116,7 @@ type CurrencyItem = {
 type CurrencyRuntimeItem = {
   code?: string | null;
   currency_code?: string | null;
+  currencyCode?: string | null;
 
   symbol?: string | null;
 
@@ -169,30 +161,14 @@ type CurrencyContext = {
 
 type Props = {
   placeholder?: string;
-
-  /**
-   * الجديد من الإدارة:
-   * bootstrap.marketing.search.groups
-   */
   groups?: SearchGroup[];
-
-  /**
-   * عملات المتجر من bootstrap.currencies
-   */
   currencies?: CurrencyRuntime | null;
-tax?: any;
-  /**
-   * القديم: يشتغل فقط إذا مررته صراحة.
-   * لا يوجد fallback hardcoded هنا.
-   */
+  tax?: any;
   popularSearches?: Array<{ label: string; href: string }>;
   popularBrands?: LegacyBrand[];
-
   className?: string;
-
   value?: string;
   onChange?: (v: string) => void;
-
   onOpenChange?: (open: boolean) => void;
 };
 
@@ -228,7 +204,20 @@ type NormalizedProductResult = {
   comparePriceText: string;
 };
 
+type SearchCacheEntry = {
+  suggestions: unknown;
+  rows: SearchProductResult[];
+  expiresAt: number;
+};
+
 const FALLBACK_CURRENCY_COOKIE = "mk_selected_currency";
+const SEARCH_DEBOUNCE_MS = 260;
+const SEARCH_CACHE_TTL = 25_000;
+const SEARCH_CACHE_MAX = 40;
+const MAX_PRODUCTS = 8;
+const MAX_SUGGESTIONS = 5;
+
+const searchCache = new Map<string, SearchCacheEntry>();
 
 function s(value: unknown) {
   return String(value ?? "").trim();
@@ -485,7 +474,6 @@ function useCurrencyRuntime(currencies?: CurrencyRuntime | null) {
     sync();
 
     window.addEventListener("storage", sync);
-    window.addEventListener("focus", sync);
     window.addEventListener("currency:changed", onCurrencyEvent as EventListener);
     window.addEventListener("currency-changed", onCurrencyEvent as EventListener);
     window.addEventListener("mk:currency:changed", onCurrencyEvent as EventListener);
@@ -501,7 +489,6 @@ function useCurrencyRuntime(currencies?: CurrencyRuntime | null) {
 
     return () => {
       window.removeEventListener("storage", sync);
-      window.removeEventListener("focus", sync);
       window.removeEventListener(
         "currency:changed",
         onCurrencyEvent as EventListener,
@@ -542,18 +529,7 @@ function useCurrencyRuntime(currencies?: CurrencyRuntime | null) {
   };
 }
 
-/**
- * أسعار المنتجات محفوظة بعملة المنتج الأصلية.
- *
- * rate هنا معناه:
- * 1 من العملة الأساسية = rate من العملة الهدف.
- *
- * مثال:
- * العملة الأساسية YER
- * EUR rate = 0.004
- * 200 YER => 200 * 0.004 = 0.8 EUR
- */
- function convertMoney(args: {
+function convertMoney(args: {
   amount: unknown;
   sourceCode?: string | null;
   targetCode: string;
@@ -589,24 +565,6 @@ function useCurrencyRuntime(currencies?: CurrencyRuntime | null) {
   const sourceRate = source.code === defaultCode ? 1 : positiveRate(source.rate, 1);
   const targetRate = target.code === defaultCode ? 1 : positiveRate(target.rate, 1);
 
-  /*
-    rate عندك معناها:
-    1 من العملة = rate من العملة الأساسية
-
-    مثال:
-    العملة الأساسية YER
-    EUR rate = 400
-    يعني 1 EUR = 400 YER
-
-    التحويل:
-    - من عملة المنتج إلى الأساسية:
-      لو المنتج YER يبقى كما هو
-      لو المنتج EUR نضرب في 400
-
-    - من الأساسية إلى العملة المختارة:
-      لو المختارة EUR نقسم على 400
-  */
-
   const amountInDefault =
     source.code === defaultCode ? amount : amount * sourceRate;
 
@@ -618,6 +576,7 @@ function useCurrencyRuntime(currencies?: CurrencyRuntime | null) {
     currency: target,
   };
 }
+
 function formatMoneyWithCurrency(args: {
   amount: unknown;
   sourceCode?: string | null;
@@ -734,57 +693,14 @@ function getProductComparePrice(
   return null;
 }
 
-function formatPriceFromProduct(
-  row: SearchProductResult,
-  ctx: CurrencyContext,
-  selectedCurrencyCode: string,
-) {
-  const finalPrice = getProductPrice(row);
-
-  return formatMoneyWithCurrency({
-    amount: finalPrice,
-    sourceCode: getProductCurrencyCode(row),
-    targetCode: selectedCurrencyCode,
-    ctx,
-  });
-}
-
-function formatComparePriceFromProduct(
-  row: SearchProductResult,
-  ctx: CurrencyContext,
-  selectedCurrencyCode: string,
-) {
-  const finalPrice = getProductPrice(row);
-  const comparePrice = getProductComparePrice(row, finalPrice);
-
-  return formatMoneyWithCurrency({
-    amount: comparePrice,
-    sourceCode: getProductCurrencyCode(row),
-    targetCode: selectedCurrencyCode,
-    ctx,
-  });
-}
-
- function normalizeProductResult(
+function normalizeProductResult(
   row: SearchProductResult,
   index: number,
   ctx: CurrencyContext,
   selectedCurrencyCode: string,
-  tax?: any,
 ): NormalizedProductResult | null {
-  const currencyCode = getProductCurrencyCode(row) || ctx.defaultCode;
-
-  const rowPrice = toMoneyNumber(row.price);
-  const rowRegular =
-    toMoneyNumber(row.regular_price) ??
-    toMoneyNumber(row.regularPrice) ??
-    rowPrice ??
-    0;
-
-  const rowSale =
-    toMoneyNumber(row.sale_price) ??
-    toMoneyNumber(row.salePrice) ??
-    null;
+  const title = s(row.title) || s(row.name);
+  const description = s(row.description);
 
   const imageUrl =
     s(row.image_url) ||
@@ -793,150 +709,35 @@ function formatComparePriceFromProduct(
     s(row.thumbnail_url) ||
     s(row.thumbnailUrl);
 
-  const href = s(row.href) || s(row.url);
+  const href = normalizeHref(s(row.href) || s(row.url), title);
+  const id = s(row.id) || `search-product-${index + 1}`;
 
-  const productForVm = {
-    ...row,
+  if (!id || !title || !href) return null;
 
-    title: s(row.title) || s(row.name),
-    name: s(row.name) || s(row.title),
+  const finalPrice = getProductPrice(row);
+  const comparePrice = getProductComparePrice(row, finalPrice);
+  const sourceCode = getProductCurrencyCode(row) || ctx.defaultCode;
 
-    href,
-    url: href,
+  const priceText = formatMoneyWithCurrency({
+    amount: finalPrice,
+    sourceCode,
+    targetCode: selectedCurrencyCode,
+    ctx,
+  });
 
-    image_url: imageUrl,
-    imageUrl,
-    thumbnail_url: imageUrl,
-    thumbnailUrl: imageUrl,
-
-    price: rowRegular,
-    regular_price: rowRegular,
-    regularPrice: rowRegular,
-
-    sale_price: rowSale,
-    salePrice: rowSale,
-
-    currency: currencyCode,
-    currency_code: currencyCode,
-    currencyCode,
-
-    currency_symbol:
-      s(row.currency_symbol) ||
-      s(row.currencySymbol) ||
-      s(row.symbol) ||
-      currencyCode,
-
-    currencySymbol:
-      s(row.currencySymbol) ||
-      s(row.currency_symbol) ||
-      s(row.symbol) ||
-      currencyCode,
-
-    decimal_digits:
-      row.decimal_digits ?? row.decimalDigits ?? row.decimals ?? 2,
-
-    decimalDigits:
-      row.decimalDigits ?? row.decimal_digits ?? row.decimals ?? 2,
-
-    pricing: {
-      price: rowRegular,
-      regular_price: rowRegular,
-      regularPrice: rowRegular,
-
-      sale_price: rowSale,
-      salePrice: rowSale,
-
-      currency: currencyCode,
-      currency_code: currencyCode,
-      currencyCode,
-
-      currency_symbol:
-        s(row.currency_symbol) ||
-        s(row.currencySymbol) ||
-        s(row.symbol) ||
-        currencyCode,
-
-      currencySymbol:
-        s(row.currencySymbol) ||
-        s(row.currency_symbol) ||
-        s(row.symbol) ||
-        currencyCode,
-
-      decimal_digits:
-        row.decimal_digits ?? row.decimalDigits ?? row.decimals ?? 2,
-
-      decimalDigits:
-        row.decimalDigits ?? row.decimal_digits ?? row.decimals ?? 2,
-    },
-  };
-
-  const vmCurrencies = {
-    default_code: ctx.defaultCode,
-    active_code: selectedCurrencyCode,
-    selected_code: selectedCurrencyCode,
-    selectedCurrencyCode,
-    items: ctx.items.map((item) => ({
-      code: item.code,
-      currency_code: item.code,
-      currencyCode: item.code,
-      symbol: item.symbol,
-      name: item.name,
-      name_ar: item.name_ar,
-      name_en: item.name_en,
-      rate: item.rate,
-      rate_to_default: item.rate,
-      exchange_rate: item.rate,
-      exchangeRate: item.rate,
-      decimal_digits: item.decimals,
-      decimalDigits: item.decimals,
-      is_default: item.code === ctx.defaultCode,
-      isDefault: item.code === ctx.defaultCode,
-      enabled: item.enabled,
-      is_enabled: item.enabled,
-    })),
-  };
-
-  const vm = toProductCardVM({
-    storeSlug: "",
-    currencies: vmCurrencies as any,
-    tax,
-    product: productForVm,
-  } as any);
-
-  const id = s(vm.id) || s(row.id) || `search-product-${index + 1}`;
-  const title = s(vm.title) || s(row.title) || s(row.name);
-  const description = s(row.description);
-
-  const finalHref =
-    s(vm.href) && s(vm.href) !== "#" ? s(vm.href) : href;
-
-  if (!id || !title || !finalHref) return null;
-
-  const decimals = clampDecimals(vm.currencyDecimals, 2);
-
-  const priceText =
-    Number(vm.price) > 0
-      ? `${s(vm.currencySymbol)} ${new Intl.NumberFormat("ar-SA-u-nu-latn", {
-          minimumFractionDigits: 0,
-          maximumFractionDigits: decimals,
-        }).format(Number(vm.price))}`.trim()
-      : "";
-
-  const comparePriceText =
-    typeof vm.compareAtPrice === "number" &&
-    vm.compareAtPrice > vm.price
-      ? `${s(vm.currencySymbol)} ${new Intl.NumberFormat("ar-SA-u-nu-latn", {
-          minimumFractionDigits: 0,
-          maximumFractionDigits: decimals,
-        }).format(Number(vm.compareAtPrice))}`.trim()
-      : "";
+  const comparePriceText = formatMoneyWithCurrency({
+    amount: comparePrice,
+    sourceCode,
+    targetCode: selectedCurrencyCode,
+    ctx,
+  });
 
   return {
     id,
     title,
     description,
-    href: normalizeHref(finalHref),
-    imageUrl: vm.imageUrl || imageUrl,
+    href,
+    imageUrl,
     priceText,
     comparePriceText,
   };
@@ -978,11 +779,11 @@ function normalizeSuggestions(
   add(query);
 
   for (const product of products) {
-    if (out.size >= 5) break;
+    if (out.size >= MAX_SUGGESTIONS) break;
     add(product.title);
   }
 
-  return Array.from(out).slice(0, 5);
+  return Array.from(out).slice(0, MAX_SUGGESTIONS);
 }
 
 function normalizeItem(
@@ -1162,7 +963,7 @@ function SmartSearchLink({
   className: string;
   title?: string;
   onNavigate: () => void;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   if (isExternalHref(href)) {
     return (
@@ -1180,7 +981,13 @@ function SmartSearchLink({
   }
 
   return (
-    <Link href={href} className={className} title={title} onClick={onNavigate}>
+    <Link
+      href={href}
+      prefetch={false}
+      className={className}
+      title={title}
+      onClick={onNavigate}
+    >
       {children}
     </Link>
   );
@@ -1323,6 +1130,36 @@ function ProductResultItem({
   );
 }
 
+function getCachedSearch(query: string) {
+  const key = s(query).toLowerCase();
+  if (!key) return null;
+
+  const cached = searchCache.get(key);
+  if (!cached) return null;
+
+  if (cached.expiresAt <= Date.now()) {
+    searchCache.delete(key);
+    return null;
+  }
+
+  return cached;
+}
+
+function setCachedSearch(query: string, entry: Omit<SearchCacheEntry, "expiresAt">) {
+  const key = s(query).toLowerCase();
+  if (!key) return;
+
+  if (searchCache.size >= SEARCH_CACHE_MAX) {
+    const firstKey = searchCache.keys().next().value;
+    if (firstKey) searchCache.delete(firstKey);
+  }
+
+  searchCache.set(key, {
+    ...entry,
+    expiresAt: Date.now() + SEARCH_CACHE_TTL,
+  });
+}
+
 export default function SearchOverlay({
   placeholder = "مالذي تبحث عنه ؟",
   groups,
@@ -1336,6 +1173,8 @@ export default function SearchOverlay({
   onOpenChange,
 }: Props) {
   const router = useRouter();
+
+  void tax;
 
   const { currencyContext, selectedCurrencyCode } =
     useCurrencyRuntime(currencies);
@@ -1357,6 +1196,7 @@ export default function SearchOverlay({
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const latestQueryRef = useRef("");
 
   const finalGroups = useMemo(() => {
     if (Array.isArray(groups)) {
@@ -1369,27 +1209,26 @@ export default function SearchOverlay({
     });
   }, [groups, popularSearches, popularBrands]);
 
- const productResults = useMemo(() => {
-  if (!shouldShowProductSearch) return [];
+  const productResults = useMemo(() => {
+    if (!shouldShowProductSearch) return [];
 
-  return rawProductRows
-    .map((row, index) =>
-      normalizeProductResult(
-        row,
-        index,
-        currencyContext,
-        selectedCurrencyCode,
-        tax,
-      ),
-    )
-    .filter(Boolean) as NormalizedProductResult[];
-}, [
-  rawProductRows,
-  shouldShowProductSearch,
-  currencyContext,
-  selectedCurrencyCode,
-  tax,
-]);
+    return rawProductRows
+      .slice(0, MAX_PRODUCTS)
+      .map((row, index) =>
+        normalizeProductResult(
+          row,
+          index,
+          currencyContext,
+          selectedCurrencyCode,
+        ),
+      )
+      .filter(Boolean) as NormalizedProductResult[];
+  }, [
+    rawProductRows,
+    shouldShowProductSearch,
+    currencyContext,
+    selectedCurrencyCode,
+  ]);
 
   const liveSuggestions = useMemo(() => {
     if (!shouldShowProductSearch) return [];
@@ -1445,6 +1284,7 @@ export default function SearchOverlay({
 
   useEffect(() => {
     if (!open || !shouldShowProductSearch) {
+      latestQueryRef.current = "";
       setApiSuggestions([]);
       setRawProductRows([]);
       setProductLoading(false);
@@ -1452,12 +1292,22 @@ export default function SearchOverlay({
       return;
     }
 
+    const cached = getCachedSearch(query);
+
+    if (cached) {
+      latestQueryRef.current = query;
+      setApiSuggestions(cached.suggestions);
+      setRawProductRows(cached.rows);
+      setProductLoading(false);
+      setProductReady(true);
+      return;
+    }
+
     const controller = new AbortController();
+    latestQueryRef.current = query;
 
     setProductLoading(true);
     setProductReady(false);
-    setApiSuggestions([]);
-    setRawProductRows([]);
 
     const timer = window.setTimeout(async () => {
       try {
@@ -1474,6 +1324,7 @@ export default function SearchOverlay({
         const json: SearchApiResponse = await res.json().catch(() => ({}));
 
         if (controller.signal.aborted) return;
+        if (latestQueryRef.current !== query) return;
 
         const rows = Array.isArray(json?.items)
           ? json.items
@@ -1481,20 +1332,28 @@ export default function SearchOverlay({
             ? json.products
             : [];
 
-        setRawProductRows(rows as SearchProductResult[]);
-        setApiSuggestions(json?.suggestions ?? []);
+        const nextRows = (rows as SearchProductResult[]).slice(0, MAX_PRODUCTS);
+        const nextSuggestions = json?.suggestions ?? [];
+
+        setCachedSearch(query, {
+          suggestions: nextSuggestions,
+          rows: nextRows,
+        });
+
+        setRawProductRows(nextRows);
+        setApiSuggestions(nextSuggestions);
       } catch (error: any) {
         if (error?.name !== "AbortError") {
           setApiSuggestions([]);
           setRawProductRows([]);
         }
       } finally {
-        if (!controller.signal.aborted) {
+        if (!controller.signal.aborted && latestQueryRef.current === query) {
           setProductLoading(false);
           setProductReady(true);
         }
       }
-    }, 220);
+    }, SEARCH_DEBOUNCE_MS);
 
     return () => {
       window.clearTimeout(timer);

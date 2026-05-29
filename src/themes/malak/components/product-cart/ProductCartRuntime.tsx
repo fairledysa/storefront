@@ -91,6 +91,9 @@ type Props = {
 
 const API_URL = "/api/cart/items";
 
+const SUCCESS_NOTICE_MS = 4200;
+const ERROR_NOTICE_MS = 6500;
+
 const FALLBACK_CURRENCY: RuntimeCurrency = {
   code: "SAR",
   symbol: "ر.س",
@@ -396,7 +399,7 @@ function readItemDecimals(item: AddToCartItem) {
   return Number.isFinite(n) ? clampDecimals(n, 0) : null;
 }
 
- function readItemPrice(item: AddToCartItem) {
+function readItemPrice(item: AddToCartItem) {
   const sale = safeNum(
     item.sale_price ??
       item.salePrice ??
@@ -583,6 +586,19 @@ function emitOptimisticAdd(args: {
   );
 }
 
+function emitCartCountSet(count: number) {
+  window.dispatchEvent(
+    new CustomEvent("cart:count:set", {
+      detail: {
+        count,
+        cartCount: count,
+        cart_count: count,
+        total: count,
+      },
+    }),
+  );
+}
+
 function emitCartSync() {
   window.dispatchEvent(new CustomEvent("cart:changed"));
 }
@@ -606,6 +622,42 @@ function emitAddToCartError(args: {
       },
     }),
   );
+}
+
+function readExactCartCount(json: any): number | null {
+  const direct =
+    safeNum(json?.cart_count) ??
+    safeNum(json?.cartCount) ??
+    safeNum(json?.count) ??
+    safeNum(json?.total) ??
+    safeNum(json?.data?.cart_count) ??
+    safeNum(json?.data?.cartCount) ??
+    safeNum(json?.data?.count) ??
+    safeNum(json?.data?.total) ??
+    safeNum(json?.data?.cart?.item_count) ??
+    safeNum(json?.data?.cart?.itemCount) ??
+    safeNum(json?.cart?.item_count) ??
+    safeNum(json?.cart?.itemCount);
+
+  if (direct !== null) return Math.max(0, Math.floor(direct));
+
+  const items = Array.isArray(json?.items)
+    ? json.items
+    : Array.isArray(json?.data?.items)
+      ? json.data.items
+      : Array.isArray(json?.cart?.items)
+        ? json.cart.items
+        : Array.isArray(json?.data?.cart?.items)
+          ? json.data.cart.items
+          : [];
+
+  if (!items.length) return null;
+
+  const total = items.reduce((sum: number, item: any) => {
+    return sum + Number(item?.qty ?? item?.quantity ?? item?.count ?? 0);
+  }, 0);
+
+  return Math.max(0, Math.floor(Number(total) || 0));
 }
 
 function cssEscape(value: string) {
@@ -1165,10 +1217,13 @@ export default function ProductCartRuntime({ currencies = null }: Props) {
       window.clearTimeout(noticeTimerRef.current);
     }
 
-    noticeTimerRef.current = window.setTimeout(() => {
-      setAddedNotice(null);
-      noticeTimerRef.current = null;
-    }, notice.tone === "error" ? 6500 : 5200);
+    noticeTimerRef.current = window.setTimeout(
+      () => {
+        setAddedNotice(null);
+        noticeTimerRef.current = null;
+      },
+      notice.tone === "error" ? ERROR_NOTICE_MS : SUCCESS_NOTICE_MS,
+    );
   }, []);
 
   useEffect(() => {
@@ -1313,13 +1368,17 @@ export default function ProductCartRuntime({ currencies = null }: Props) {
           return;
         }
 
-        await playAddToCartAnimation(item, productId).catch(() => undefined);
+        const exactCartCount = readExactCartCount(json);
 
-        emitOptimisticAdd({
-          productId,
-          qty: addedQty,
-          item,
-        });
+        if (exactCartCount !== null) {
+          emitCartCountSet(exactCartCount);
+        } else {
+          emitOptimisticAdd({
+            productId,
+            qty: addedQty,
+            item,
+          });
+        }
 
         emitCartSync();
 
@@ -1345,6 +1404,8 @@ export default function ProductCartRuntime({ currencies = null }: Props) {
             currencies,
           }),
         );
+
+        void playAddToCartAnimation(item, productId).catch(() => undefined);
       } catch {
         const message = "تعذر إضافة المنتج للسلة";
 

@@ -1,5 +1,6 @@
 // FILE: apps/storefront/src/data/pages/category-filters.loader.ts
 import { unstable_cache } from "next/cache";
+import { createHash } from "node:crypto";
 
 import { supabaseAdmin } from "@/data/store/supabase.server";
 
@@ -11,6 +12,10 @@ function s(value: unknown) {
 
 function normalizeCacheKey(value: unknown) {
   return s(value).toLowerCase();
+}
+
+function hashText(value: string) {
+  return createHash("sha1").update(value).digest("hex");
 }
 
 function looksLikeUuid(value: unknown) {
@@ -195,6 +200,7 @@ export type CategoryBrandFacetValue = {
   count: number;
   active: boolean;
 };
+
 export type CategoryTreeFacetValue = {
   id: string;
   label: string;
@@ -203,6 +209,7 @@ export type CategoryTreeFacetValue = {
   count: number;
   active: boolean;
 };
+
 export type CategoryPriceFacet = {
   min: number | null;
   max: number | null;
@@ -830,8 +837,7 @@ function optionSelectionGroups(filters: CategoryPageFilters) {
   }));
 }
 
- 
- async function resolveOptionFilteredProductIds(args: {
+async function resolveOptionFilteredProductIds(args: {
   store_id: string;
   filters: CategoryPageFilters;
 }) {
@@ -900,6 +906,7 @@ async function queryIndexedProductIds(args: {
   if (!storeId) {
     return {
       ids: [] as string[],
+      rows: [] as any[],
       total: 0,
     };
   }
@@ -921,6 +928,7 @@ async function queryIndexedProductIds(args: {
   ) {
     return {
       ids: [] as string[],
+      rows: [] as any[],
       total: 0,
     };
   }
@@ -929,7 +937,7 @@ async function queryIndexedProductIds(args: {
 
   let query: any = sb
     .from("product_filter_index")
-    .select("product_id,price_min,price_max,updated_at", { count: "exact" })
+    .select("product_id,price_min,price_max,brand_id,brand_name,category_ids,updated_at", { count: "exact" })
     .eq("store_id", storeId)
     .in("status", VISIBLE_PRODUCT_STATUSES)
     .contains("channels", ["web"]);
@@ -980,12 +988,15 @@ async function queryIndexedProductIds(args: {
 
   if (error) throw new Error(error.message);
 
-  const ids = (Array.isArray(data) ? (data as any[]) : [])
+  const rows = Array.isArray(data) ? (data as any[]) : [];
+
+  const ids = rows
     .map((row: any) => s(row?.product_id))
     .filter((value: string) => Boolean(value));
 
   return {
     ids,
+    rows,
     total: Number(count ?? ids.length),
   };
 }
@@ -1202,6 +1213,7 @@ function buildBrandFacets(args: {
       return a.label.localeCompare(b.label, "ar");
     });
 }
+
 async function loadCategoryFacets(args: {
   store_id: string;
   categoryIds: string[];
@@ -1361,6 +1373,7 @@ async function loadCategoryFacets(args: {
 
   return out;
 }
+
 async function loadPriceFacet(args: {
   store_id: string;
   productIds: string[];
@@ -1551,6 +1564,323 @@ function loadCatalogFiltersSetting(store_id: string) {
   return fn();
 }
 
+/* ------------------------- cached facet rows ------------------------ */
+
+const CATEGORY_FILTERS_FACETS_CACHE_VERSION = "v2-derived-facet-rows";
+
+function normalizedIdsHash(values: unknown[]) {
+  const ids = uniqueUuid(values).sort();
+  return {
+    ids,
+    hash: hashText(ids.join(",")),
+  };
+}
+
+const optionFacetRowsCache = new Map<string, () => Promise<any[]>>();
+
+function loadOptionFacetRowsCached(args: {
+  store_id: string;
+  productIds: string[];
+}) {
+  const storeId = s(args.store_id);
+  const { ids, hash } = normalizedIdsHash(args.productIds);
+
+  if (!storeId || !ids.length) return Promise.resolve([]);
+
+  const cacheKey = [
+    CATEGORY_FILTERS_FACETS_CACHE_VERSION,
+    "options",
+    storeId,
+    hash,
+  ].join(":");
+
+  let fn = optionFacetRowsCache.get(cacheKey);
+
+  if (!fn) {
+    fn = unstable_cache(
+      () =>
+        loadOptionFacetRows({
+          store_id: storeId,
+          productIds: ids,
+        }),
+      [
+        "category-filter-option-facet-rows",
+        CATEGORY_FILTERS_FACETS_CACHE_VERSION,
+        storeId,
+        hash,
+      ],
+      {
+        revalidate: 120,
+      },
+    );
+
+    optionFacetRowsCache.set(cacheKey, fn);
+  }
+
+  return fn();
+}
+
+const categoryFacetsCache = new Map<
+  string,
+  () => Promise<CategoryTreeFacetValue[]>
+>();
+
+function loadCategoryFacetsCached(args: {
+  store_id: string;
+  categoryIds: string[];
+  active: CategoryPageFilters;
+}) {
+  const storeId = s(args.store_id);
+  const scope = normalizedIdsHash(args.categoryIds);
+  const activeCategories = normalizedIdsHash(args.active.categories);
+
+  if (!storeId || !scope.ids.length) return Promise.resolve([]);
+
+  const cacheKey = [
+    CATEGORY_FILTERS_FACETS_CACHE_VERSION,
+    "categories",
+    storeId,
+    scope.hash,
+    activeCategories.hash,
+  ].join(":");
+
+  let fn = categoryFacetsCache.get(cacheKey);
+
+  if (!fn) {
+    fn = unstable_cache(
+      () =>
+        loadCategoryFacets({
+          store_id: storeId,
+          categoryIds: scope.ids,
+          active: args.active,
+        }),
+      [
+        "category-filter-category-facets",
+        CATEGORY_FILTERS_FACETS_CACHE_VERSION,
+        storeId,
+        scope.hash,
+        activeCategories.hash,
+      ],
+      {
+        revalidate: 120,
+      },
+    );
+
+    categoryFacetsCache.set(cacheKey, fn);
+  }
+
+  return fn();
+}
+
+function buildPriceFacetFromIndexedRows(args: {
+  rows: any[];
+  active: CategoryPageFilters;
+}): CategoryPriceFacet {
+  const prices: number[] = [];
+
+  for (const row of Array.isArray(args.rows) ? args.rows : []) {
+    const min = toNumber(row?.price_min);
+    const max = toNumber(row?.price_max);
+
+    if (min !== null) prices.push(min);
+    if (max !== null) prices.push(max);
+  }
+
+  return {
+    min: prices.length ? Math.min(...prices) : null,
+    max: prices.length ? Math.max(...prices) : null,
+    selectedMin: args.active.priceMin,
+    selectedMax: args.active.priceMax,
+  };
+}
+
+/* ------------------------- full result cache ------------------------ */
+
+const CATEGORY_FILTERS_RESULT_CACHE_VERSION = "v5-full-result-cache";
+
+const categoryFiltersResultCache = new Map<
+  string,
+  () => Promise<CategoryFiltersResult>
+>();
+
+function emptyCategoryFiltersResult(filters: CategoryPageFilters): CategoryFiltersResult {
+  return {
+    enabled: false,
+    filters,
+    productIds: null,
+    resultCount: 0,
+    visibleCount: 0,
+    facets: [],
+    categories: [],
+    brands: [],
+    price: {
+      min: null,
+      max: null,
+      selectedMin: null,
+      selectedMax: null,
+    },
+  };
+}
+
+async function loadCategoryFiltersComputed(args: {
+  store_id: string;
+  category_id: string;
+  filters: CategoryPageFilters;
+  limit: number;
+}): Promise<CategoryFiltersResult> {
+  const storeId = s(args.store_id);
+  const categoryId = s(args.category_id);
+  const filters = args.filters;
+  const limit = Math.max(1, Math.min(120, Math.floor(Number(args.limit) || 60)));
+
+  if (!storeId || !categoryId || !filters.enabled) {
+    return emptyCategoryFiltersResult(filters);
+  }
+
+  const categoryIds = await loadCategoryScopeIds({
+    store_id: storeId,
+    category_id: categoryId,
+  });
+
+  const baseFiltersForFacets: CategoryPageFilters = {
+    ...filters,
+    optionSelections: [],
+    key: "",
+  };
+
+  const baseForFacets = await queryIndexedProductIds({
+    store_id: storeId,
+    categoryIds,
+    filters: baseFiltersForFacets,
+    limit: 2000,
+    includeOptionSelections: false,
+  });
+
+  const hasPriceFilter = filters.priceMin !== null || filters.priceMax !== null;
+
+  const priceBoundsBase = hasPriceFilter
+    ? await queryIndexedProductIds({
+        store_id: storeId,
+        categoryIds,
+        filters: {
+          ...filters,
+          optionSelections: [],
+          priceMin: null,
+          priceMax: null,
+          key: "",
+        },
+        limit: 2000,
+        includeOptionSelections: false,
+      })
+    : baseForFacets;
+
+  const productResult = filters.hasActiveFilters
+    ? await queryIndexedProductIds({
+        store_id: storeId,
+        categoryIds,
+        filters,
+        limit,
+        includeOptionSelections: true,
+      })
+    : {
+        ids: null as string[] | null,
+        total: baseForFacets.total,
+      };
+
+  const [optionRows, categoryFacets] = await Promise.all([
+    loadOptionFacetRowsCached({
+      store_id: storeId,
+      productIds: baseForFacets.ids,
+    }),
+
+    loadCategoryFacetsCached({
+      store_id: storeId,
+      categoryIds,
+      active: filters,
+    }),
+  ]);
+
+  const brandRows = Array.isArray(baseForFacets.rows)
+    ? baseForFacets.rows
+    : [];
+
+  const price = buildPriceFacetFromIndexedRows({
+    rows: Array.isArray(priceBoundsBase.rows) ? priceBoundsBase.rows : [],
+    active: filters,
+  });
+
+  const productIds = Array.isArray(productResult.ids) ? productResult.ids : null;
+
+  return {
+    enabled: true,
+    filters,
+    productIds,
+    resultCount: productResult.total,
+    visibleCount: productIds ? productIds.length : 0,
+    facets: buildOptionFacets({
+      rows: optionRows,
+      active: filters,
+    }),
+    categories: categoryFacets,
+    brands: buildBrandFacets({
+      rows: brandRows,
+      active: filters,
+    }),
+    price,
+  };
+}
+
+function loadCategoryFiltersCached(args: {
+  store_id: string;
+  category_id: string;
+  filters: CategoryPageFilters;
+  limit: number;
+}) {
+  const storeId = s(args.store_id);
+  const categoryId = s(args.category_id);
+  const limit = Math.max(1, Math.min(120, Math.floor(Number(args.limit) || 60)));
+  const filtersHash = hashText(args.filters.key || "{}");
+
+  const cacheKey = [
+    CATEGORY_FILTERS_RESULT_CACHE_VERSION,
+    storeId,
+    categoryId,
+    String(limit),
+    filtersHash,
+  ].join(":");
+
+  let fn = categoryFiltersResultCache.get(cacheKey);
+
+  if (!fn) {
+    fn = unstable_cache(
+      () =>
+        loadCategoryFiltersComputed({
+          store_id: storeId,
+          category_id: categoryId,
+          filters: args.filters,
+          limit,
+        }),
+      [
+        "category-filters-result",
+        CATEGORY_FILTERS_RESULT_CACHE_VERSION,
+        storeId,
+        categoryId,
+        String(limit),
+        filtersHash,
+      ],
+      {
+        revalidate: 60,
+      },
+    );
+
+    categoryFiltersResultCache.set(cacheKey, fn);
+  }
+
+  return fn();
+}
+
+/* ------------------------- public loaders ------------------------ */
+
 export async function loadCategoryFiltersForPage(args: {
   store_id: string;
   category_id: string;
@@ -1576,8 +1906,6 @@ export async function loadCategoryFiltersForPage(args: {
   });
 }
 
-/* ------------------------- public loader ------------------------ */
-
 export async function loadCategoryFilters(args: {
   store_id: string;
   category_id: string;
@@ -1588,6 +1916,7 @@ export async function loadCategoryFilters(args: {
   const storeId = s(args.store_id);
   const categoryId = s(args.category_id);
   const enabled = Boolean(args.enabled && storeId && categoryId);
+  const limit = Math.max(1, Math.min(120, Math.floor(Number(args.limit) || 60)));
 
   const filters = normalizeCategoryPageFilters({
     searchParams: args.searchParams,
@@ -1595,105 +1924,13 @@ export async function loadCategoryFilters(args: {
   });
 
   if (!enabled) {
- return {
-  enabled: false,
-  filters,
-  productIds: null,
-  resultCount: 0,
-  visibleCount: 0,
-  facets: [],
-  categories: [],
-  brands: [],
-  price: {
-    min: null,
-    max: null,
-    selectedMin: null,
-    selectedMax: null,
-  },
-};
+    return emptyCategoryFiltersResult(filters);
   }
 
-  const categoryIds = await loadCategoryScopeIds({
+  return loadCategoryFiltersCached({
     store_id: storeId,
     category_id: categoryId,
-  });
-   const baseForFacets = await queryIndexedProductIds({
-    store_id: storeId,
-    categoryIds,
-    filters: {
-      ...filters,
-      optionSelections: [],
-      key: "",
-    },
-    limit: 2000,
-    includeOptionSelections: false,
-  });
-
-  const priceBoundsBase = await queryIndexedProductIds({
-    store_id: storeId,
-    categoryIds,
-    filters: {
-      ...filters,
-      optionSelections: [],
-      priceMin: null,
-      priceMax: null,
-      key: "",
-    },
-    limit: 2000,
-    includeOptionSelections: false,
-  });
-
-  const productResult = filters.hasActiveFilters
-    ? await queryIndexedProductIds({
-        store_id: storeId,
-        categoryIds,
-        filters,
-        limit: args.limit ?? 60,
-        includeOptionSelections: true,
-      })
-    : {
-        ids: null as string[] | null,
-        total: baseForFacets.total,
-      };
-
-  const [optionRows, categoryFacets, brandRows, price] = await Promise.all([
-    loadOptionFacetRows({
-      store_id: storeId,
-      productIds: baseForFacets.ids,
-    }),
-    loadCategoryFacets({
-      store_id: storeId,
-      categoryIds,
-      active: filters,
-    }),
-    loadBrandFacetRows({
-      store_id: storeId,
-      productIds: baseForFacets.ids,
-    }),
-    loadPriceFacet({
-      store_id: storeId,
-      productIds: priceBoundsBase.ids,
-      active: filters,
-    }),
-  ]);
-
-  const productIds = Array.isArray(productResult.ids) ? productResult.ids : null;
-
-  return {
-    enabled: true,
     filters,
-    productIds,
-    resultCount: productResult.total,
-    visibleCount: productIds ? productIds.length : 0,
-    facets: buildOptionFacets({
-      rows: optionRows,
-      active: filters,
-    }),
-    categories: categoryFacets,
-    brands: buildBrandFacets({
-      rows: brandRows,
-      active: filters,
-    }),
-    price,
-  };
+    limit,
+  });
 }

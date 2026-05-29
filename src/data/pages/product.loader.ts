@@ -4,10 +4,10 @@ import { unstable_cache } from "next/cache";
 import { cookies } from "next/headers";
 
 import {
-  getProductById,
   getProductByPublicNo,
   getProductByShortUrl,
   getProductsByCategory,
+  getProductsByIds,
   getProductsForGrid,
   isProductVisibleInWeb,
 } from "@/data/catalog/products";
@@ -510,6 +510,8 @@ function createCurrencyRuntime(currencies: StoreCurrencyForProductPage[]) {
   };
 }
 
+type CurrencyRuntimeForProductPage = ReturnType<typeof createCurrencyRuntime>;
+
 function pickCurrencyByCode(args: {
   code: string;
   currencies: StoreCurrencyForProductPage[];
@@ -589,11 +591,12 @@ function convertMoney(args: {
   sourceCode: any;
   targetCode: any;
   currencies: StoreCurrencyForProductPage[];
+  runtime?: CurrencyRuntimeForProductPage;
 }) {
   const amount = Number(args.amount ?? 0);
   if (!Number.isFinite(amount) || amount <= 0) return 0;
 
-  const runtime = createCurrencyRuntime(args.currencies);
+  const runtime = args.runtime ?? createCurrencyRuntime(args.currencies);
 
   const sourceCode = normalizeCurrencyCode(args.sourceCode, runtime.defaultCode);
   const targetCode = normalizeCurrencyCode(args.targetCode, runtime.defaultCode);
@@ -630,6 +633,7 @@ function convertNumberField(
     sourceCode: string;
     targetCode: string;
     currencies: StoreCurrencyForProductPage[];
+    runtime?: CurrencyRuntimeForProductPage;
   },
 ) {
   if (value === undefined) return undefined;
@@ -644,6 +648,7 @@ function convertNumberField(
     sourceCode: args.sourceCode,
     targetCode: args.targetCode,
     currencies: args.currencies,
+    runtime: args.runtime,
   });
 }
 
@@ -653,6 +658,7 @@ function convertMoneyObject<T extends Record<string, any> | null | undefined>(
     sourceCode: string;
     targetCode: string;
     currencies: StoreCurrencyForProductPage[];
+    runtime?: CurrencyRuntimeForProductPage;
   },
 ): T {
   if (!obj || typeof obj !== "object") return obj;
@@ -679,6 +685,7 @@ function convertOptionsMoney(
     sourceCode: string;
     targetCode: string;
     currencies: StoreCurrencyForProductPage[];
+    runtime?: CurrencyRuntimeForProductPage;
   },
 ) {
   if (!Array.isArray(options)) return options;
@@ -701,6 +708,7 @@ function convertVariantsMoney(
     sourceCode: string;
     targetCode: string;
     currencies: StoreCurrencyForProductPage[];
+    runtime?: CurrencyRuntimeForProductPage;
   },
 ) {
   if (!Array.isArray(variants)) return variants;
@@ -741,6 +749,7 @@ function attachCurrencyToProduct(args: {
     sourceCode,
     targetCode,
     currencies,
+    runtime,
   };
 
   const metadata =
@@ -1058,16 +1067,21 @@ async function loadRecommendedByBrandRaw(args: {
 
   if (!ids.length) return [];
 
-  const products = await Promise.all(
-    ids.map((id: string) =>
-      getProductById({
-        store_id: args.store_id,
-        id,
-      }),
-    ),
-  );
+  const products = await getProductsByIds({
+    store_id: args.store_id,
+    ids,
+    limit: ids.length,
+  });
 
-  return products
+  const byId = new Map<string, any>();
+
+  for (const product of Array.isArray(products) ? products : []) {
+    const id = s(product?.id);
+    if (id) byId.set(id, product);
+  }
+
+  return ids
+    .map((id) => byId.get(id))
     .filter(Boolean)
     .filter((product: any) => s(product?.id) !== args.currentProductId)
     .slice(0, args.limit);
@@ -1162,16 +1176,21 @@ async function loadRecommendedByTagRaw(args: {
 
   if (!collectedIds.length) return [];
 
-  const products = await Promise.all(
-    collectedIds.map((id) =>
-      getProductById({
-        store_id: args.store_id,
-        id,
-      }),
-    ),
-  );
+  const products = await getProductsByIds({
+    store_id: args.store_id,
+    ids: collectedIds,
+    limit: collectedIds.length,
+  });
 
-  return products
+  const byId = new Map<string, any>();
+
+  for (const product of Array.isArray(products) ? products : []) {
+    const id = s(product?.id);
+    if (id) byId.set(id, product);
+  }
+
+  return collectedIds
+    .map((id) => byId.get(id))
     .filter(Boolean)
     .filter((product: any) => s(product?.id) !== args.currentProductId)
     .slice(0, args.limit);
@@ -1382,6 +1401,7 @@ async function enrichProductFullRaw(args: {
 
   const sb: any = supabaseAdmin();
   const product_id = product.id as string;
+  const brandId = s(product?.brand_id);
   const meta = (product?.metadata ?? {}) as any;
 
   const [
@@ -1445,12 +1465,14 @@ async function enrichProductFullRaw(args: {
 
     sb.from("product_tag_links").select("tag_id").eq("product_id", product_id),
 
-    sb
-      .from("brands")
-      .select("id,name,logo_url,banner_url,description,metadata")
-      .eq("store_id", store_id)
-      .eq("id", product?.brand_id ?? "")
-      .maybeSingle(),
+    brandId
+      ? sb
+          .from("brands")
+          .select("id,name,logo_url,banner_url,description,metadata")
+          .eq("store_id", store_id)
+          .eq("id", brandId)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null } as any),
 
     loadProductPurchaseCount(store_id, product_id),
 

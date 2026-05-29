@@ -2,7 +2,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   useEffect,
   useRef,
@@ -14,17 +13,28 @@ import Icon from "@/components/icon/Icon";
 
 type IconName = ComponentProps<typeof Icon>["icon"];
 
-export default function AccountMenu({
-  authed,
-  customer,
-  onOpenAuth,
-}: {
+type Props = {
   authed: boolean;
   customer: any;
   onOpenAuth: () => void;
-}) {
-  const router = useRouter();
+};
 
+const OPEN_DELAY = 60;
+const CLOSE_DELAY = 120;
+
+function s(value: unknown) {
+  return String(value ?? "").trim();
+}
+
+function customerName(customer: any) {
+  return s(customer?.full_name) || s(customer?.name) || "مستخدم";
+}
+
+function customerEmail(customer: any) {
+  return s(customer?.email);
+}
+
+export default function AccountMenu({ authed, customer, onOpenAuth }: Props) {
   const [open, setOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [overlayTop, setOverlayTop] = useState(0);
@@ -33,15 +43,16 @@ export default function AccountMenu({
   const openTimer = useRef<number | null>(null);
   const closeTimer = useRef<number | null>(null);
 
-  const OPEN_DELAY = 60;
-  const CLOSE_DELAY = 120;
-
   function clearTimers() {
-    if (openTimer.current) window.clearTimeout(openTimer.current);
-    if (closeTimer.current) window.clearTimeout(closeTimer.current);
+    if (openTimer.current) {
+      window.clearTimeout(openTimer.current);
+      openTimer.current = null;
+    }
 
-    openTimer.current = null;
-    closeTimer.current = null;
+    if (closeTimer.current) {
+      window.clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
   }
 
   function calcOverlayTop() {
@@ -55,10 +66,6 @@ export default function AccountMenu({
   }
 
   function openSoon() {
-    /**
-     * لا نفتح القائمة بالهوفر إلا لو المستخدم مسجل.
-     * لو غير مسجل، الضغط فقط يفتح مودال الدخول.
-     */
     if (!authed) return;
 
     clearTimers();
@@ -66,6 +73,7 @@ export default function AccountMenu({
     openTimer.current = window.setTimeout(() => {
       calcOverlayTop();
       setOpen(true);
+      openTimer.current = null;
     }, OPEN_DELAY);
   }
 
@@ -74,7 +82,13 @@ export default function AccountMenu({
 
     closeTimer.current = window.setTimeout(() => {
       setOpen(false);
+      closeTimer.current = null;
     }, CLOSE_DELAY);
+  }
+
+  function closeNow() {
+    clearTimers();
+    setOpen(false);
   }
 
   async function handleLogout() {
@@ -83,33 +97,40 @@ export default function AccountMenu({
     setLoggingOut(true);
 
     try {
-      const r = await fetch("/api/auth/logout", {
+      const response = await fetch("/api/auth/logout", {
         method: "POST",
         credentials: "include",
       });
 
-      if (!r.ok) {
+      if (!response.ok) {
         setLoggingOut(false);
         return;
       }
 
-      setOpen(false);
+      closeNow();
+
       window.dispatchEvent(new CustomEvent("auth:changed"));
-      window.location.href = "/";
+      window.location.assign("/");
     } catch {
       setLoggingOut(false);
     }
   }
 
   useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
+    if (!open) return;
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        closeNow();
+      }
     }
 
     window.addEventListener("keydown", onKeyDown);
 
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -128,7 +149,17 @@ export default function AccountMenu({
     };
   }, [open]);
 
-  useEffect(() => () => clearTimers(), []);
+  useEffect(() => {
+    if (authed) return;
+
+    closeNow();
+  }, [authed]);
+
+  useEffect(() => {
+    return () => {
+      clearTimers();
+    };
+  }, []);
 
   return (
     <div
@@ -144,23 +175,18 @@ export default function AccountMenu({
     >
       <button
         type="button"
-        aria-expanded={open}
-        aria-haspopup="menu"
+        aria-expanded={authed ? open : false}
+        aria-haspopup={authed ? "menu" : undefined}
         className="mk-account-menu__trigger"
         onClick={() => {
-          /**
-           * مهم:
-           * النص ثابت "حسابي" دائمًا.
-           * إذا لم يكن مسجلًا نفتح مودال الدخول.
-           */
           if (!authed) {
-            setOpen(false);
+            closeNow();
             onOpenAuth();
             return;
           }
 
           calcOverlayTop();
-          setOpen((v) => !v);
+          setOpen((value) => !value);
         }}
         onFocus={() => {
           if (!authed) return;
@@ -185,7 +211,7 @@ export default function AccountMenu({
             <button
               type="button"
               aria-label="Close overlay"
-              onClick={() => setOpen(false)}
+              onClick={closeNow}
               className="mk-account-menu__overlay"
             />
           ) : null}
@@ -208,19 +234,17 @@ export default function AccountMenu({
                 <div className="mk-account-menu__headRow">
                   <div className="mk-account-menu__user">
                     <div className="mk-account-menu__name">
-                      {(customer?.full_name &&
-                        String(customer.full_name).trim()) ||
-                        "مستخدم"}
+                      {customerName(customer)}
                     </div>
 
                     <div className="mk-account-menu__email">
-                      {customer?.email ?? ""}
+                      {customerEmail(customer)}
                     </div>
                   </div>
 
                   <button
                     type="button"
-                    onClick={() => setOpen(false)}
+                    onClick={closeNow}
                     className="mk-account-menu__back"
                     aria-label="Back"
                   >
@@ -232,40 +256,32 @@ export default function AccountMenu({
               <div className="mk-account-menu__quickWrap">
                 <div className="mk-account-menu__quickGrid">
                   <Quick
+                    href="/account/favorites"
                     icon="FavouriteSquare"
                     label="المفضلات"
-                    onClick={() => {
-                      setOpen(false);
-                      router.push("/account/favorites");
-                    }}
+                    onNav={closeNow}
                     active
                   />
 
                   <Quick
+                    href="/account/tickets"
                     icon="Ticket02"
                     label="تذاكر"
-                    onClick={() => {
-                      setOpen(false);
-                      router.push("/account/tickets");
-                    }}
+                    onNav={closeNow}
                   />
 
                   <Quick
+                    href="/account/wallet"
                     icon="Wallet03"
                     label="الرصيد"
-                    onClick={() => {
-                      setOpen(false);
-                      router.push("/account/wallet");
-                    }}
+                    onNav={closeNow}
                   />
 
                   <Quick
+                    href="/account/orders"
                     icon="ShoppingBag02"
                     label="الطلبات"
-                    onClick={() => {
-                      setOpen(false);
-                      router.push("/account/orders");
-                    }}
+                    onNav={closeNow}
                   />
                 </div>
               </div>
@@ -277,28 +293,28 @@ export default function AccountMenu({
                   href="/account/gift-balance"
                   label="إهداء رصيد"
                   icon="GiftCard"
-                  onNav={() => setOpen(false)}
+                  onNav={closeNow}
                 />
 
                 <RowItem
                   href="/account/rewards"
                   label="مكافأتي"
                   icon="StarCircle"
-                  onNav={() => setOpen(false)}
+                  onNav={closeNow}
                 />
 
                 <RowItem
                   href="/account/addresses"
                   label="عناويني"
                   icon="Location01"
-                  onNav={() => setOpen(false)}
+                  onNav={closeNow}
                 />
 
                 <RowItem
                   href="/account/refer"
                   label="أدع صديقاً"
                   icon="UserAdd01"
-                  onNav={() => setOpen(false)}
+                  onNav={closeNow}
                 />
               </div>
 
@@ -329,31 +345,41 @@ export default function AccountMenu({
 }
 
 function Quick({
+  href,
   icon,
   label,
-  onClick,
+  onNav,
   active,
 }: {
+  href: string;
   icon: IconName;
   label: string;
-  onClick: () => void;
+  onNav: () => void;
   active?: boolean;
 }) {
   return (
-    <button type="button" onClick={onClick} className="mk-account-quick">
+    <Link
+      href={href}
+      prefetch={false}
+      onClick={onNav}
+      className="mk-account-quick"
+      role="menuitem"
+    >
       <span className="mk-account-quick__outer">
         <span
           className={[
             "mk-account-quick__inner",
             active ? "is-active" : "",
-          ].join(" ")}
+          ]
+            .filter(Boolean)
+            .join(" ")}
         >
           <Icon icon={icon} size={25} />
         </span>
       </span>
 
       <span className="mk-account-quick__label">{label}</span>
-    </button>
+    </Link>
   );
 }
 
@@ -371,6 +397,7 @@ function RowItem({
   return (
     <Link
       href={href}
+      prefetch={false}
       onClick={onNav}
       role="menuitem"
       className="mk-account-row"

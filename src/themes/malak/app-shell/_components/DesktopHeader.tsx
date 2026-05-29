@@ -2,14 +2,19 @@
 
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import Icon from "@/components/icon/Icon";
-import SearchOverlay from "./SearchOverlay";
 import DesktopMegaNav from "./DesktopMegaNav";
 import type { SeoUrlMode } from "@/data/store/settings";
 import type { MalakBootstrap } from "../../bootstrap/types";
+
+const SearchOverlay = dynamic(() => import("./SearchOverlay"), {
+  ssr: false,
+  loading: () => null,
+});
 
 type Props = {
   theme: any;
@@ -294,7 +299,7 @@ function AnnouncementBar({ bootstrap }: { bootstrap?: MalakBootstrap }) {
         {inner}
       </a>
     ) : (
-      <Link href={href} prefetch={true} className="mk-announcement__contentWrap">
+      <Link href={href} prefetch={false} className="mk-announcement__contentWrap">
         {inner}
       </Link>
     )
@@ -511,7 +516,19 @@ export default function DesktopHeader({
 
   const showCompactOriginalLogo = compact && showOriginalLogoOnScroll;
 
+  const shouldTrackScroll =
+    stickyHeader ||
+    transparentHeader ||
+    sliderOverlay ||
+    showOriginalLogoOnScroll ||
+    Boolean(reversedLogoUrl);
+
   useEffect(() => {
+    if (!shouldTrackScroll) {
+      setCompact(false);
+      return;
+    }
+
     let ticking = false;
 
     const onScroll = () => {
@@ -540,7 +557,7 @@ export default function DesktopHeader({
     return () => {
       window.removeEventListener("scroll", onScroll);
     };
-  }, []);
+  }, [shouldTrackScroll]);
 
   return (
     <>
@@ -570,7 +587,7 @@ export default function DesktopHeader({
               <div className="mk-header__logoBox">
                 <Link
                   href="/"
-                  prefetch={true}
+                  prefetch={false}
                   className={[
                     "mk-header__logoLink",
                     searchOpen ? "mk-header__logoLink--searchOpen" : "",
@@ -591,13 +608,13 @@ export default function DesktopHeader({
               {showSearch ? (
                 <div className="mk-header__searchBox">
                   <div className="mk-header__searchInner">
-<SearchOverlay
-  placeholder={searchPlaceholder}
-  groups={searchGroups}
-  currencies={bootstrap?.currencies}
-  tax={bootstrap?.tax}
-  onOpenChange={setSearchOpen}
-/>
+                    <SearchOverlay
+                      placeholder={searchPlaceholder}
+                      groups={searchGroups}
+                      currencies={bootstrap?.currencies}
+                      tax={bootstrap?.tax}
+                      onOpenChange={setSearchOpen}
+                    />
                   </div>
                 </div>
               ) : null}
@@ -625,7 +642,7 @@ export default function DesktopHeader({
                 {showCompactOriginalLogo ? (
                   <Link
                     href="/"
-                    prefetch={true}
+                    prefetch={false}
                     className="mk-header__compactLogoLink"
                     aria-label={finalLogoAlt}
                   >
