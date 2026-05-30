@@ -1,6 +1,9 @@
 // FILE: apps/storefront/src/app/(store)/api/search/route.ts
 import { NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 
+import { cacheKey } from "@/data/cache/cache-keys";
+import { redisCached } from "@/data/cache/redis-cache.server";
 import { getProductsBySearch } from "@/data/catalog/products";
 import { getStoreDb } from "@/data/db/store-db.server";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
@@ -29,6 +32,11 @@ type SearchIndexRow = {
   suggestion_terms: string[] | null;
   suggestion_terms_text: string | null;
   updated_at: string | null;
+};
+
+type RankedSearchRow = {
+  row: SearchIndexRow;
+  score: number;
 };
 
 type StoreCurrencyDisplay = {
@@ -75,6 +83,10 @@ function setCached<T>(
 
 function s(value: unknown) {
   return String(value ?? "").trim();
+}
+
+function hashText(value: string) {
+  return createHash("sha1").update(value).digest("hex");
 }
 
 function firstDefined(...values: any[]) {
@@ -200,24 +212,23 @@ function makeCurrencyCandidate(
 
   if (!code && !symbol && !label) return null;
 
-  const activeBoost =
-    readBool(
-      firstDefined(
-        parsed.is_default,
-        parsed.isDefault,
-        parsed.default,
-        parsed.is_base,
-        parsed.isBase,
-        parsed.is_active,
-        parsed.isActive,
-        parsed.active,
-        parsed.enabled,
-        parsed.selected,
-      ),
-      false,
-    )
-      ? 80
-      : 0;
+  const activeBoost = readBool(
+    firstDefined(
+      parsed.is_default,
+      parsed.isDefault,
+      parsed.default,
+      parsed.is_base,
+      parsed.isBase,
+      parsed.is_active,
+      parsed.isActive,
+      parsed.active,
+      parsed.enabled,
+      parsed.selected,
+    ),
+    false,
+  )
+    ? 80
+    : 0;
 
   return {
     code,
@@ -336,17 +347,12 @@ function collectCurrencyCandidates(
   return out;
 }
 
-async function resolveStoreCurrencyDisplay(args: {
+async function resolveStoreCurrencyDisplayRaw(args: {
   storeId: string;
   store?: any;
 }): Promise<StoreCurrencyDisplay | null> {
   const storeId = s(args.storeId);
   if (!storeId) return null;
-
-  const cacheKey = `store-currency:${storeId}`;
-  const cached = getCached(currencyCache, cacheKey);
-
-  if (cached !== null) return cached;
 
   const candidates: CurrencyCandidate[] = [];
 
@@ -396,7 +402,7 @@ async function resolveStoreCurrencyDisplay(args: {
       .filter((item) => item.label || item.symbol || item.code)
       .sort((a, b) => b.score - a.score)[0] ?? null;
 
-  const currency = best
+  return best
     ? {
         code: best.code,
         symbol: best.symbol,
@@ -404,8 +410,31 @@ async function resolveStoreCurrencyDisplay(args: {
         decimals: best.decimals,
       }
     : null;
+}
 
-  setCached(currencyCache, cacheKey, currency, CURRENCY_CACHE_TTL);
+async function resolveStoreCurrencyDisplay(args: {
+  storeId: string;
+  store?: any;
+}): Promise<StoreCurrencyDisplay | null> {
+  const storeId = s(args.storeId);
+  if (!storeId) return null;
+
+  const memoryKey = `store-currency:${storeId}`;
+  const cached = getCached(currencyCache, memoryKey);
+
+  if (cached !== null) return cached;
+
+  const currency = await redisCached(
+    cacheKey("api-search", "currency-display", storeId),
+    { ttlSeconds: 300 },
+    () =>
+      resolveStoreCurrencyDisplayRaw({
+        storeId,
+        store: args.store,
+      }),
+  );
+
+  setCached(currencyCache, memoryKey, currency, CURRENCY_CACHE_TTL);
 
   return currency;
 }
@@ -742,7 +771,10 @@ async function queryIndexByTerm(args: {
   return result.data as SearchIndexRow[];
 }
 
-async function collectRows(storeId: string, query: string) {
+async function collectRowsRaw(
+  storeId: string,
+  query: string,
+): Promise<RankedSearchRow[]> {
   const store_id = s(storeId);
   if (!store_id) return [];
 
@@ -791,14 +823,26 @@ async function collectRows(storeId: string, query: string) {
     });
 }
 
-async function loadVocabulary(storeId: string) {
+async function collectRows(
+  storeId: string,
+  query: string,
+): Promise<RankedSearchRow[]> {
   const store_id = s(storeId);
-  if (!store_id) return new Map<string, string>();
+  const cleanQuery = normalizeDbSearchTerm(query);
+  if (!store_id || cleanQuery.length < 2) return [];
 
-  const cacheKey = `product-search-index-vocab:${store_id}`;
-  const cached = getCached(vocabularyCache, cacheKey);
+  const qHash = hashText(`${normalizeArabic(cleanQuery)}:${cleanQuery}`);
 
-  if (cached) return cached;
+  return await redisCached(
+    cacheKey("api-search", "ranked-rows", store_id, qHash),
+    { ttlSeconds: 60 },
+    () => collectRowsRaw(store_id, cleanQuery),
+  );
+}
+
+async function loadVocabularyEntriesRaw(storeId: string) {
+  const store_id = s(storeId);
+  if (!store_id) return [] as Array<[string, string]>;
 
   const sb = (await getStoreDb(store_id)) as any;
 
@@ -824,7 +868,29 @@ async function loadVocabulary(storeId: string) {
     }
   }
 
-  setCached(vocabularyCache, cacheKey, candidates, VOCAB_CACHE_TTL);
+  return Array.from(candidates.entries());
+}
+
+async function loadVocabulary(storeId: string) {
+  const store_id = s(storeId);
+  if (!store_id) return new Map<string, string>();
+
+  const memoryKey = `product-search-index-vocab:${store_id}`;
+  const cached = getCached(vocabularyCache, memoryKey);
+
+  if (cached) return cached;
+
+  const entries = await redisCached(
+    cacheKey("api-search", "vocabulary", store_id),
+    { ttlSeconds: 300 },
+    () => loadVocabularyEntriesRaw(store_id),
+  );
+
+  const candidates = new Map<string, string>(
+    Array.isArray(entries) ? entries : [],
+  );
+
+  setCached(vocabularyCache, memoryKey, candidates, VOCAB_CACHE_TTL);
 
   return candidates;
 }
@@ -886,7 +952,9 @@ function getProductHref(product: any) {
   return pickText(
     product?.href,
     product?.url,
-    product?.short_url ? `/${String(product.short_url).replace(/^\/+/, "")}` : "",
+    product?.short_url
+      ? `/${String(product.short_url).replace(/^\/+/, "")}`
+      : "",
     product?.public_no ? `/p/${product.public_no}` : "",
   );
 }
@@ -928,7 +996,11 @@ function serializeRow(
 
     priceFormatted: formatPrice(price, rawCurrency, displayCurrency),
     price_formatted: formatPrice(price, rawCurrency, displayCurrency),
-    comparePriceFormatted: formatPrice(comparePrice, rawCurrency, displayCurrency),
+    comparePriceFormatted: formatPrice(
+      comparePrice,
+      rawCurrency,
+      displayCurrency,
+    ),
     compare_price_formatted: formatPrice(
       comparePrice,
       rawCurrency,
@@ -999,7 +1071,11 @@ function serializeProductFallback(
 
     priceFormatted: formatPrice(finalPrice, rawCurrency, displayCurrency),
     price_formatted: formatPrice(finalPrice, rawCurrency, displayCurrency),
-    comparePriceFormatted: formatPrice(comparePrice, rawCurrency, displayCurrency),
+    comparePriceFormatted: formatPrice(
+      comparePrice,
+      rawCurrency,
+      displayCurrency,
+    ),
     compare_price_formatted: formatPrice(
       comparePrice,
       rawCurrency,
@@ -1089,7 +1165,7 @@ export async function GET(req: Request) {
       const correctedRanked = await collectRows(storeId, didYouMean.query);
 
       if (correctedRanked.length > ranked.length || topScore < 120) {
-        const merged = new Map<string, { row: SearchIndexRow; score: number }>();
+        const merged = new Map<string, RankedSearchRow>();
 
         for (const item of correctedRanked) {
           merged.set(s(item.row.product_id), item);
