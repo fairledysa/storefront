@@ -8,10 +8,15 @@ import { getProductsBySearch } from "@/data/catalog/products";
 import { getStoreDb } from "@/data/db/store-db.server";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
 
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 const SEARCH_LIMIT = 10;
 const DB_FETCH_LIMIT = 45;
 const VOCAB_CACHE_TTL = 120_000;
 const CURRENCY_CACHE_TTL = 30_000;
+const API_SEARCH_REDIS_TTL_SECONDS = 45;
+const API_SEARCH_CACHE_SCHEMA = "v1";
 
 type TimedCache<T> = {
   expiresAt: number;
@@ -34,11 +39,6 @@ type SearchIndexRow = {
   updated_at: string | null;
 };
 
-type RankedSearchRow = {
-  row: SearchIndexRow;
-  score: number;
-};
-
 type StoreCurrencyDisplay = {
   code: string;
   symbol: string;
@@ -48,6 +48,12 @@ type StoreCurrencyDisplay = {
 
 type CurrencyCandidate = StoreCurrencyDisplay & {
   score: number;
+};
+
+type SearchApiResponse = {
+  suggestions: string[];
+  didYouMean: { query: string; confidence: number } | null;
+  items: any[];
 };
 
 const vocabularyCache = new Map<string, TimedCache<Map<string, string>>>();
@@ -87,6 +93,22 @@ function s(value: unknown) {
 
 function hashText(value: string) {
   return createHash("sha1").update(value).digest("hex");
+}
+
+function emptySearchResponse(): SearchApiResponse {
+  return {
+    suggestions: [],
+    didYouMean: null,
+    items: [],
+  };
+}
+
+function jsonSearch(data: SearchApiResponse) {
+  return NextResponse.json(data, {
+    headers: {
+      "Cache-Control": "private, no-store",
+    },
+  });
 }
 
 function firstDefined(...values: any[]) {
@@ -212,23 +234,24 @@ function makeCurrencyCandidate(
 
   if (!code && !symbol && !label) return null;
 
-  const activeBoost = readBool(
-    firstDefined(
-      parsed.is_default,
-      parsed.isDefault,
-      parsed.default,
-      parsed.is_base,
-      parsed.isBase,
-      parsed.is_active,
-      parsed.isActive,
-      parsed.active,
-      parsed.enabled,
-      parsed.selected,
-    ),
-    false,
-  )
-    ? 80
-    : 0;
+  const activeBoost =
+    readBool(
+      firstDefined(
+        parsed.is_default,
+        parsed.isDefault,
+        parsed.default,
+        parsed.is_base,
+        parsed.isBase,
+        parsed.is_active,
+        parsed.isActive,
+        parsed.active,
+        parsed.enabled,
+        parsed.selected,
+      ),
+      false,
+    )
+      ? 80
+      : 0;
 
   return {
     code,
@@ -347,12 +370,17 @@ function collectCurrencyCandidates(
   return out;
 }
 
-async function resolveStoreCurrencyDisplayRaw(args: {
+async function resolveStoreCurrencyDisplay(args: {
   storeId: string;
   store?: any;
 }): Promise<StoreCurrencyDisplay | null> {
   const storeId = s(args.storeId);
   if (!storeId) return null;
+
+  const cacheKey = `store-currency:${storeId}`;
+  const cached = getCached(currencyCache, cacheKey);
+
+  if (cached !== null) return cached;
 
   const candidates: CurrencyCandidate[] = [];
 
@@ -402,7 +430,7 @@ async function resolveStoreCurrencyDisplayRaw(args: {
       .filter((item) => item.label || item.symbol || item.code)
       .sort((a, b) => b.score - a.score)[0] ?? null;
 
-  return best
+  const currency = best
     ? {
         code: best.code,
         symbol: best.symbol,
@@ -410,31 +438,8 @@ async function resolveStoreCurrencyDisplayRaw(args: {
         decimals: best.decimals,
       }
     : null;
-}
 
-async function resolveStoreCurrencyDisplay(args: {
-  storeId: string;
-  store?: any;
-}): Promise<StoreCurrencyDisplay | null> {
-  const storeId = s(args.storeId);
-  if (!storeId) return null;
-
-  const memoryKey = `store-currency:${storeId}`;
-  const cached = getCached(currencyCache, memoryKey);
-
-  if (cached !== null) return cached;
-
-  const currency = await redisCached(
-    cacheKey("api-search", "currency-display", storeId),
-    { ttlSeconds: 300 },
-    () =>
-      resolveStoreCurrencyDisplayRaw({
-        storeId,
-        store: args.store,
-      }),
-  );
-
-  setCached(currencyCache, memoryKey, currency, CURRENCY_CACHE_TTL);
+  setCached(currencyCache, cacheKey, currency, CURRENCY_CACHE_TTL);
 
   return currency;
 }
@@ -771,10 +776,7 @@ async function queryIndexByTerm(args: {
   return result.data as SearchIndexRow[];
 }
 
-async function collectRowsRaw(
-  storeId: string,
-  query: string,
-): Promise<RankedSearchRow[]> {
+async function collectRows(storeId: string, query: string) {
   const store_id = s(storeId);
   if (!store_id) return [];
 
@@ -823,26 +825,14 @@ async function collectRowsRaw(
     });
 }
 
-async function collectRows(
-  storeId: string,
-  query: string,
-): Promise<RankedSearchRow[]> {
+async function loadVocabulary(storeId: string) {
   const store_id = s(storeId);
-  const cleanQuery = normalizeDbSearchTerm(query);
-  if (!store_id || cleanQuery.length < 2) return [];
+  if (!store_id) return new Map<string, string>();
 
-  const qHash = hashText(`${normalizeArabic(cleanQuery)}:${cleanQuery}`);
+  const cacheKey = `product-search-index-vocab:${store_id}`;
+  const cached = getCached(vocabularyCache, cacheKey);
 
-  return await redisCached(
-    cacheKey("api-search", "ranked-rows", store_id, qHash),
-    { ttlSeconds: 60 },
-    () => collectRowsRaw(store_id, cleanQuery),
-  );
-}
-
-async function loadVocabularyEntriesRaw(storeId: string) {
-  const store_id = s(storeId);
-  if (!store_id) return [] as Array<[string, string]>;
+  if (cached) return cached;
 
   const sb = (await getStoreDb(store_id)) as any;
 
@@ -868,29 +858,7 @@ async function loadVocabularyEntriesRaw(storeId: string) {
     }
   }
 
-  return Array.from(candidates.entries());
-}
-
-async function loadVocabulary(storeId: string) {
-  const store_id = s(storeId);
-  if (!store_id) return new Map<string, string>();
-
-  const memoryKey = `product-search-index-vocab:${store_id}`;
-  const cached = getCached(vocabularyCache, memoryKey);
-
-  if (cached) return cached;
-
-  const entries = await redisCached(
-    cacheKey("api-search", "vocabulary", store_id),
-    { ttlSeconds: 300 },
-    () => loadVocabularyEntriesRaw(store_id),
-  );
-
-  const candidates = new Map<string, string>(
-    Array.isArray(entries) ? entries : [],
-  );
-
-  setCached(vocabularyCache, memoryKey, candidates, VOCAB_CACHE_TTL);
+  setCached(vocabularyCache, cacheKey, candidates, VOCAB_CACHE_TTL);
 
   return candidates;
 }
@@ -952,9 +920,7 @@ function getProductHref(product: any) {
   return pickText(
     product?.href,
     product?.url,
-    product?.short_url
-      ? `/${String(product.short_url).replace(/^\/+/, "")}`
-      : "",
+    product?.short_url ? `/${String(product.short_url).replace(/^\/+/, "")}` : "",
     product?.public_no ? `/p/${product.public_no}` : "",
   );
 }
@@ -996,11 +962,7 @@ function serializeRow(
 
     priceFormatted: formatPrice(price, rawCurrency, displayCurrency),
     price_formatted: formatPrice(price, rawCurrency, displayCurrency),
-    comparePriceFormatted: formatPrice(
-      comparePrice,
-      rawCurrency,
-      displayCurrency,
-    ),
+    comparePriceFormatted: formatPrice(comparePrice, rawCurrency, displayCurrency),
     compare_price_formatted: formatPrice(
       comparePrice,
       rawCurrency,
@@ -1071,11 +1033,7 @@ function serializeProductFallback(
 
     priceFormatted: formatPrice(finalPrice, rawCurrency, displayCurrency),
     price_formatted: formatPrice(finalPrice, rawCurrency, displayCurrency),
-    comparePriceFormatted: formatPrice(
-      comparePrice,
-      rawCurrency,
-      displayCurrency,
-    ),
+    comparePriceFormatted: formatPrice(comparePrice, rawCurrency, displayCurrency),
     compare_price_formatted: formatPrice(
       comparePrice,
       rawCurrency,
@@ -1122,36 +1080,17 @@ function buildSuggestions(
   return Array.from(out).slice(0, 5);
 }
 
-export async function GET(req: Request) {
-  const url = new URL(req.url);
-  const q = normalizeDbSearchTerm(url.searchParams.get("q"));
-
-  if (!q || q.length < 2) {
-    return NextResponse.json({
-      suggestions: [],
-      didYouMean: null,
-      items: [],
-    });
-  }
-
-  const ctx = await resolveStoreContext();
-
-  if (!ctx.store) {
-    return NextResponse.json({
-      suggestions: [],
-      didYouMean: null,
-      items: [],
-    });
-  }
-
-  const storeId = ctx.store.id;
-
+async function buildSearchResponse(args: {
+  storeId: string;
+  store: any;
+  q: string;
+}): Promise<SearchApiResponse> {
   const displayCurrency = await resolveStoreCurrencyDisplay({
-    storeId,
-    store: ctx.store,
+    storeId: args.storeId,
+    store: args.store,
   });
 
-  let ranked = await collectRows(storeId, q);
+  let ranked = await collectRows(args.storeId, args.q);
 
   let didYouMean: { query: string; confidence: number } | null = null;
 
@@ -1159,13 +1098,13 @@ export async function GET(req: Request) {
   const shouldTryCorrection = ranked.length === 0 || topScore < 160;
 
   if (shouldTryCorrection) {
-    didYouMean = await resolveDidYouMean(storeId, q);
+    didYouMean = await resolveDidYouMean(args.storeId, args.q);
 
     if (didYouMean?.query) {
-      const correctedRanked = await collectRows(storeId, didYouMean.query);
+      const correctedRanked = await collectRows(args.storeId, didYouMean.query);
 
       if (correctedRanked.length > ranked.length || topScore < 120) {
-        const merged = new Map<string, RankedSearchRow>();
+        const merged = new Map<string, { row: SearchIndexRow; score: number }>();
 
         for (const item of correctedRanked) {
           merged.set(s(item.row.product_id), item);
@@ -1190,16 +1129,16 @@ export async function GET(req: Request) {
   if (rows.length > 0) {
     const items = rows.map((row) => serializeRow(row, displayCurrency));
 
-    return NextResponse.json({
-      suggestions: buildSuggestions(q, rows, items, didYouMean?.query),
+    return {
+      suggestions: buildSuggestions(args.q, rows, items, didYouMean?.query),
       didYouMean,
       items,
-    });
+    };
   }
 
   const fallbackProducts = await getProductsBySearch({
-    store_id: storeId,
-    q,
+    store_id: args.storeId,
+    q: args.q,
     limit: SEARCH_LIMIT,
   });
 
@@ -1207,9 +1146,40 @@ export async function GET(req: Request) {
     .map((product) => serializeProductFallback(product, displayCurrency))
     .filter((item) => item.id && item.title && item.href);
 
-  return NextResponse.json({
-    suggestions: buildSuggestions(q, [], fallbackItems, didYouMean?.query),
+  return {
+    suggestions: buildSuggestions(args.q, [], fallbackItems, didYouMean?.query),
     didYouMean,
     items: fallbackItems,
-  });
+  };
+}
+
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const q = normalizeDbSearchTerm(url.searchParams.get("q"));
+
+  if (!q || q.length < 2) {
+    return jsonSearch(emptySearchResponse());
+  }
+
+  const ctx = await resolveStoreContext();
+
+  if (!ctx.store) {
+    return jsonSearch(emptySearchResponse());
+  }
+
+  const storeId = ctx.store.id;
+  const qHash = hashText(q);
+
+  const response = await redisCached<SearchApiResponse>(
+    cacheKey("api-search", API_SEARCH_CACHE_SCHEMA, storeId, qHash),
+    { ttlSeconds: API_SEARCH_REDIS_TTL_SECONDS },
+    () =>
+      buildSearchResponse({
+        storeId,
+        store: ctx.store,
+        q,
+      }),
+  );
+
+  return jsonSearch(response);
 }
