@@ -1,8 +1,10 @@
-//app/(store)/api/reviews/reply/route.ts
+// FILE: apps/storefront/src/app/(store)/api/reviews/reply/route.ts
 import { NextRequest, NextResponse } from "next/server";
+
 import { createReviewReply } from "@/data/reviews/reviews";
+import { controlDb } from "@/data/db/control-db.server";
+import { getStoreDb } from "@/data/db/store-db.server";
 import { getStoreOptions } from "@/data/store/options";
-import { supabaseAdmin } from "@/data/store/supabase.server";
 
 function s(v: unknown) {
   return String(v ?? "").trim();
@@ -22,7 +24,7 @@ function normalizeHost(raw: string) {
 }
 
 async function resolveStoreId(req: NextRequest) {
-  const sb = supabaseAdmin();
+  const sb = (await controlDb()) as any;
 
   const host =
     req.headers.get("x-forwarded-host") ||
@@ -68,8 +70,15 @@ async function resolveStoreId(req: NextRequest) {
   return storeR.data?.id ? String(storeR.data.id) : null;
 }
 
-async function resolveCustomerIdFromRequest(req: NextRequest) {
-  const sb = supabaseAdmin();
+async function resolveCustomerIdFromRequest(args: {
+  req: NextRequest;
+  storeId: string;
+}) {
+  const storeId = s(args.storeId);
+  if (!storeId) return null;
+
+  const sb = (await getStoreDb(storeId)) as any;
+  const req = args.req;
 
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.startsWith("Bearer ")
@@ -114,15 +123,17 @@ export async function POST(req: NextRequest) {
 
     if (!reviewId) return bad("REVIEW_ID_REQUIRED");
     if (!text) return bad("BODY_REQUIRED");
+
     if (!["admin", "customer"].includes(authorType)) {
       return bad("INVALID_AUTHOR_TYPE");
     }
 
-    // =========================
-    // رد العميل
-    // =========================
     if (authorType === "customer") {
-      const customerId = await resolveCustomerIdFromRequest(req);
+      const customerId = await resolveCustomerIdFromRequest({
+        req,
+        storeId,
+      });
+
       if (!customerId) return bad("LOGIN_REQUIRED", 401);
 
       const reply = await createReviewReply({
@@ -134,12 +145,12 @@ export async function POST(req: NextRequest) {
         status: "published",
       });
 
-      return NextResponse.json({ ok: true, item: reply });
+      return NextResponse.json({
+        ok: true,
+        item: reply,
+      });
     }
 
-    // =========================
-    // رد الادمن
-    // =========================
     const adminUserId = s(body?.admin_user_id) || null;
 
     const reply = await createReviewReply({
@@ -151,7 +162,10 @@ export async function POST(req: NextRequest) {
       status: "published",
     });
 
-    return NextResponse.json({ ok: true, item: reply });
+    return NextResponse.json({
+      ok: true,
+      item: reply,
+    });
   } catch (error: any) {
     return bad(error?.message || "FAILED_TO_CREATE_REPLY", 500);
   }

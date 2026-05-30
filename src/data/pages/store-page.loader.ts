@@ -2,7 +2,7 @@
 
 import "server-only";
 
-import { supabaseAdmin } from "@/data/store/supabase.server";
+import { getStoreDb } from "@/data/db/store-db.server";
 
 export type StorePageRow = {
   id: string;
@@ -119,9 +119,9 @@ export async function loadFooterStorePages(
   const store_id = s(storeId);
   if (!store_id) return [];
 
-  const sb: any = supabaseAdmin();
+  const sb = await getStoreDb(store_id);
 
-  const { data, error } = await sb
+  const result = await sb
     .from("store_pages")
     .select("id,title,seo_slug,sort_order,created_at")
     .eq("store_id", store_id)
@@ -130,12 +130,14 @@ export async function loadFooterStorePages(
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true });
 
-  if (error || !Array.isArray(data)) {
+  if (result.error || !Array.isArray(result.data)) {
     return [];
   }
 
-  return data
-    .map((row: any) => mapFooterPage(row))
+  const rows = result.data as any[];
+
+  return rows
+    .map((row) => mapFooterPage(row))
     .filter(Boolean) as FooterStorePageLink[];
 }
 
@@ -148,9 +150,9 @@ export async function loadStorePageBySlug(args: {
 
   if (!storeId || !slug) return null;
 
-  const sb: any = supabaseAdmin();
+  const sb = await getStoreDb(storeId);
 
-  const { data, error } = await sb
+  const result = await sb
     .from("store_pages")
     .select(PAGE_SELECT)
     .eq("store_id", storeId)
@@ -159,9 +161,15 @@ export async function loadStorePageBySlug(args: {
     .limit(1)
     .maybeSingle();
 
-  if (error || !data?.id) {
+  if (result.error) {
     return null;
   }
 
-  return mapStorePage(data);
+  const page = result.data as any | null;
+
+  if (!page?.id) {
+    return null;
+  }
+
+  return mapStorePage(page);
 }

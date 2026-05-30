@@ -1,8 +1,10 @@
 // FILE: apps/storefront/src/app/(store)/api/auth/me/route.ts
+
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+
+import { getStoreDb } from "@/data/db/store-db.server";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
-import { supabaseAdmin } from "@/data/store/supabase.server";
 import { verifySession } from "@/lib/auth/session";
 
 export async function GET() {
@@ -26,6 +28,7 @@ export async function GET() {
   }
 
   let payload: any = null;
+
   try {
     payload = await verifySession(token);
   } catch {
@@ -39,7 +42,8 @@ export async function GET() {
     );
   }
 
-  const sb: any = supabaseAdmin();
+  const storeId = ctx.store.id;
+  const sb: any = await getStoreDb(storeId);
 
   const customerR = await sb
     .from("customers")
@@ -71,7 +75,7 @@ export async function GET() {
   return NextResponse.json(
     {
       authed: true,
-      store_id: ctx.store.id,
+      store_id: storeId,
       customer: {
         id: customerR.data.id,
         email: customerR.data.email ?? null,

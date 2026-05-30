@@ -1,7 +1,7 @@
 // FILE: apps/storefront/src/app/(store)/api/checkout/submit/route.ts
 
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/data/store/supabase.server";
+import { getOrdersDb } from "@/data/db/orders-db.server";
 import {
   cartSessionCookie,
   getCartSessionId,
@@ -1851,9 +1851,27 @@ async function buildOrderItemStockModeMap(
 /* ---------------------------------- POST ---------------------------------- */
 
 export async function POST(req: Request) {
-  const sb: any = supabaseAdmin();
-
   const store_id = await getStoreIdOrThrow();
+
+  const sb: any = await Promise.resolve(getOrdersDb(store_id) as any);
+
+  if (!sb || typeof sb.from !== "function") {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "ORDERS_DB_INVALID",
+        message_ar: "اتصال قاعدة بيانات الطلبات غير صحيح.",
+        debug: {
+          typeof_getOrdersDb: typeof getOrdersDb,
+          typeof_sb: typeof sb,
+          typeof_sb_from: typeof sb?.from,
+          keys: sb && typeof sb === "object" ? Object.keys(sb).slice(0, 20) : [],
+        },
+      },
+      { status: 500 },
+    );
+  }
+
   const session_id = await getCartSessionId();
   const cart = await getOrCreateOpenCart({ store_id, session_id });
 
@@ -1938,43 +1956,43 @@ export async function POST(req: Request) {
     );
   }
 
- try {
-  const paymentCheck = await validateSelectedPaymentMethod({
-    sb,
-    store_id,
-    cart,
-    body_payment_method: bodyPaymentMethod,
-  });
-
-  if (!paymentCheck.ok) {
-    const paymentExtra: Record<string, any> = {};
-
-    if ("extra" in paymentCheck && paymentCheck.extra) {
-      Object.assign(paymentExtra, paymentCheck.extra);
-    }
-
-    if ("debug" in paymentCheck && paymentCheck.debug) {
-      paymentExtra.debug = paymentCheck.debug;
-    }
-
-    return paymentValidationError({
-      error: paymentCheck.error,
-      message_ar: paymentCheck.message_ar,
-      status: paymentCheck.status,
-      extra: Object.keys(paymentExtra).length > 0 ? paymentExtra : undefined,
+  try {
+    const paymentCheck = await validateSelectedPaymentMethod({
+      sb,
+      store_id,
+      cart,
+      body_payment_method: bodyPaymentMethod,
     });
+
+    if (!paymentCheck.ok) {
+      const paymentExtra: Record<string, any> = {};
+
+      if ("extra" in paymentCheck && paymentCheck.extra) {
+        Object.assign(paymentExtra, paymentCheck.extra);
+      }
+
+      if ("debug" in paymentCheck && paymentCheck.debug) {
+        paymentExtra.debug = paymentCheck.debug;
+      }
+
+      return paymentValidationError({
+        error: paymentCheck.error,
+        message_ar: paymentCheck.message_ar,
+        status: paymentCheck.status,
+        extra: Object.keys(paymentExtra).length > 0 ? paymentExtra : undefined,
+      });
+    }
+  } catch (e: any) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "PAYMENT_VALIDATION_FAILED",
+        message_ar: "تعذر التحقق من طريقة الدفع. حاول مرة أخرى.",
+        debug: toStr(e?.message),
+      },
+      { status: 500 },
+    );
   }
-} catch (e: any) {
-  return NextResponse.json(
-    {
-      ok: false,
-      error: "PAYMENT_VALIDATION_FAILED",
-      message_ar: "تعذر التحقق من طريقة الدفع. حاول مرة أخرى.",
-      debug: toStr(e?.message),
-    },
-    { status: 500 },
-  );
-}
 
   const ccR = await sb
     .from("cart_coupons")

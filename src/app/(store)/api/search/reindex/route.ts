@@ -1,7 +1,8 @@
 // FILE: apps/storefront/src/app/(store)/api/search/reindex/route.ts
 import { NextResponse } from "next/server";
-import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
+
 import { syncStoreSearchIndex } from "@/data/catalog/product-search-index";
+import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
 
 function canRunReindex(req: Request) {
   if (process.env.NODE_ENV !== "production") return true;

@@ -2,8 +2,9 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
+
+import { getStoreDb } from "@/data/db/store-db.server";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
-import { supabaseAdmin } from "@/data/store/supabase.server";
 import { verifySession } from "@/lib/auth/session";
 import { isProductVisibleInWeb } from "@/data/catalog/products";
 import { buildProductHref } from "@/lib/seo/build-store-href";
@@ -209,10 +210,7 @@ function currencyInfoFromRuntime(args: {
     };
   }
 
-  const fallbackCode = cleanCurrencyCode(
-    args.fallbackInfo?.code,
-    code || "SAR",
-  );
+  const fallbackCode = cleanCurrencyCode(args.fallbackInfo?.code, code || "SAR");
 
   return {
     code: fallbackCode,
@@ -365,9 +363,7 @@ async function readJson(req: NextRequest) {
 async function resolveOwner(): Promise<Owner> {
   const cookieStore = await cookies();
 
-  const existingSessionId = s(
-    cookieStore.get(FAVORITES_SESSION_COOKIE)?.value,
-  );
+  const existingSessionId = s(cookieStore.get(FAVORITES_SESSION_COOKIE)?.value);
 
   const sessionId = existingSessionId || createSessionId();
 
@@ -514,10 +510,7 @@ async function hydrateFavorites(args: {
       "",
     ) || "SAR";
 
-  const currencyRuntime = buildCurrencyRuntime(
-    currencyRows,
-    ctxDefaultCurrency,
-  );
+  const currencyRuntime = buildCurrencyRuntime(currencyRows, ctxDefaultCurrency);
 
   const targetCurrency = resolveTargetCurrencyCode({
     selectedCode: selectedCookieCurrency,
@@ -905,24 +898,25 @@ export async function GET() {
     return noStoreJson({ ok: false, items: [], ids: [] }, 404);
   }
 
-  const sb: any = supabaseAdmin();
+  const storeId = ctx.store.id;
+  const sb: any = await getStoreDb(storeId);
   const owner = await resolveOwner();
 
   await mergeSessionFavorites({
     sb,
-    storeId: ctx.store.id,
+    storeId,
     owner,
   });
 
   const favorites = await loadFavoriteRows({
     sb,
-    storeId: ctx.store.id,
+    storeId,
     owner,
   });
 
   const items = await hydrateFavorites({
     sb,
-    storeId: ctx.store.id,
+    storeId,
     ctx,
     favorites,
   });
@@ -947,6 +941,7 @@ export async function POST(req: NextRequest) {
     return noStoreJson({ ok: false, error: "STORE_NOT_FOUND" }, 404);
   }
 
+  const storeId = ctx.store.id;
   const body = await readJson(req);
   const productId =
     s(body?.product_id) ||
@@ -958,18 +953,18 @@ export async function POST(req: NextRequest) {
     return noStoreJson({ ok: false, error: "PRODUCT_ID_REQUIRED" }, 400);
   }
 
-  const sb: any = supabaseAdmin();
+  const sb: any = await getStoreDb(storeId);
   const owner = await resolveOwner();
 
   await mergeSessionFavorites({
     sb,
-    storeId: ctx.store.id,
+    storeId,
     owner,
   });
 
   const exists = await productExists({
     sb,
-    storeId: ctx.store.id,
+    storeId,
     productId,
   });
 
@@ -979,7 +974,7 @@ export async function POST(req: NextRequest) {
 
   const current = await findFavorite({
     sb,
-    storeId: ctx.store.id,
+    storeId,
     owner,
     productId,
   });
@@ -999,13 +994,13 @@ export async function POST(req: NextRequest) {
 
   const payload = owner.customerId
     ? {
-        store_id: ctx.store.id,
+        store_id: storeId,
         customer_id: owner.customerId,
         session_id: null,
         product_id: productId,
       }
     : {
-        store_id: ctx.store.id,
+        store_id: storeId,
         customer_id: null,
         session_id: owner.sessionId,
         product_id: productId,
@@ -1031,7 +1026,7 @@ export async function POST(req: NextRequest) {
       (
         await findFavorite({
           sb,
-          storeId: ctx.store.id,
+          storeId,
           owner,
           productId,
         })
@@ -1058,6 +1053,7 @@ export async function DELETE(req: NextRequest) {
     return noStoreJson({ ok: false, error: "STORE_NOT_FOUND" }, 404);
   }
 
+  const storeId = ctx.store.id;
   const body = await readJson(req);
   const productId =
     s(req.nextUrl.searchParams.get("product_id")) ||
@@ -1069,13 +1065,13 @@ export async function DELETE(req: NextRequest) {
     return noStoreJson({ ok: false, error: "PRODUCT_ID_REQUIRED" }, 400);
   }
 
-  const sb: any = supabaseAdmin();
+  const sb: any = await getStoreDb(storeId);
   const owner = await resolveOwner();
 
   const base = sb
     .from("customer_favorites")
     .delete()
-    .eq("store_id", ctx.store.id)
+    .eq("store_id", storeId)
     .eq("product_id", productId);
 
   const r = await applyOwnerFilter(base, owner);

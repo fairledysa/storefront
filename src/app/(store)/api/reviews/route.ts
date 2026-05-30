@@ -1,13 +1,15 @@
 // FILE: apps/storefront/src/app/(store)/api/reviews/route.ts
 import { NextRequest, NextResponse } from "next/server";
+
 import {
   createReview,
   listReviews,
   type ReviewTargetType,
   type ReviewType,
 } from "@/data/reviews/reviews";
+import { controlDb } from "@/data/db/control-db.server";
+import { getStoreDb } from "@/data/db/store-db.server";
 import { getStoreOptions } from "@/data/store/options";
-import { supabaseAdmin } from "@/data/store/supabase.server";
 import { verifySession } from "@/lib/auth/session";
 
 type RatingPublishSettings = {
@@ -73,7 +75,9 @@ function asBool(value: unknown, fallback: boolean) {
       return true;
     }
 
-    if (["false", "0", "no", "inactive", "off", "disabled"].includes(normalized)) {
+    if (
+      ["false", "0", "no", "inactive", "off", "disabled"].includes(normalized)
+    ) {
       return false;
     }
   }
@@ -122,22 +126,27 @@ function normalizeRatingPublishSettings(raw: any): RatingPublishSettings {
 async function loadRatingPublishSettings(
   storeId: string,
 ): Promise<RatingPublishSettings> {
-  const sb = supabaseAdmin();
+  const store_id = s(storeId);
+  if (!store_id) return { ...DEFAULT_RATING_PUBLISH_SETTINGS };
 
-  const { data, error } = await sb
+  const sb = (await getStoreDb(store_id)) as any;
+
+  const result = await sb
     .from("store_settings")
     .select("slug,value,created_at,updated_at")
-    .eq("store_id", storeId)
+    .eq("store_id", store_id)
     .in("slug", ["rating_settings", "store.rating_settings", "rating.settings"])
     .order("updated_at", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(1);
 
-  if (error || !Array.isArray(data) || !data[0]) {
+  const rows = Array.isArray(result.data) ? result.data : [];
+
+  if (result.error || !rows[0]) {
     return { ...DEFAULT_RATING_PUBLISH_SETTINGS };
   }
 
-  return normalizeRatingPublishSettings(data[0]?.value);
+  return normalizeRatingPublishSettings(rows[0]?.value);
 }
 
 function resolveFinalStatus(args: {
@@ -164,7 +173,7 @@ function resolveFinalStatus(args: {
 }
 
 async function resolveStoreId(req: NextRequest) {
-  const sb = supabaseAdmin();
+  const sb = (await controlDb()) as any;
 
   const host =
     req.headers.get("x-forwarded-host") ||
@@ -335,7 +344,8 @@ async function listStoreReviewsFromDb(args: {
   limit: number;
   offset: number;
 }) {
-  const sb = supabaseAdmin();
+  const storeId = s(args.storeId);
+  const sb = (await getStoreDb(storeId)) as any;
 
   let query: any = sb
     .from("review_entries")
@@ -375,7 +385,7 @@ async function listStoreReviewsFromDb(args: {
     `,
       { count: "exact" },
     )
-    .eq("store_id", args.storeId)
+    .eq("store_id", storeId)
     .eq("target_type", "store")
     .eq("status", "published")
     .not("rating", "is", null);
@@ -434,14 +444,15 @@ async function listStoreReviewsFromDb(args: {
   const from = args.offset;
   const to = args.offset + args.limit - 1;
 
-  const { data, error, count } = await query.range(from, to);
+  const result = await query.range(from, to);
 
-  if (error) {
-    throw new Error(error.message || "FAILED_TO_FETCH_STORE_REVIEWS");
+  if (result.error) {
+    throw new Error(result.error.message || "FAILED_TO_FETCH_STORE_REVIEWS");
   }
 
-  const items = Array.isArray(data) ? data.map(normalizeReviewRow) : [];
-  const total = Number(count ?? 0);
+  const rows = Array.isArray(result.data) ? result.data : [];
+  const items = rows.map(normalizeReviewRow);
+  const total = Number(result.count ?? 0);
 
   return {
     items,
@@ -458,14 +469,29 @@ async function listStoreReviewsFromDb(args: {
   };
 }
 
-async function getCustomerById(customerId: string) {
-  const sb = supabaseAdmin();
+async function getCustomerById(args: {
+  storeId: string;
+  customerId: string;
+}) {
+  const storeId = s(args.storeId);
+  const customerId = s(args.customerId);
 
-  const { data: customer } = await sb
+  if (!storeId || !customerId) {
+    return {
+      customerId: null,
+      customerName: null,
+    };
+  }
+
+  const sb = (await getStoreDb(storeId)) as any;
+
+  const result = await sb
     .from("customers")
     .select("id, full_name")
     .eq("id", customerId)
     .maybeSingle();
+
+  const customer = result.data;
 
   return {
     customerId: customer?.id ? String(customer.id) : null,
@@ -473,8 +499,13 @@ async function getCustomerById(customerId: string) {
   };
 }
 
-async function resolveCustomerFromRequest(req: NextRequest) {
-  const sb = supabaseAdmin();
+async function resolveCustomerFromRequest(args: {
+  req: NextRequest;
+  storeId: string;
+}) {
+  const storeId = s(args.storeId);
+  const req = args.req;
+  const sb = (await getStoreDb(storeId)) as any;
 
   const appSessionToken = req.cookies.get("elyaia_session")?.value || "";
 
@@ -488,7 +519,10 @@ async function resolveCustomerFromRequest(req: NextRequest) {
     }
 
     if (payload?.customer_id) {
-      const customer = await getCustomerById(payload.customer_id);
+      const customer = await getCustomerById({
+        storeId,
+        customerId: payload.customer_id,
+      });
 
       if (customer.customerId) {
         return customer;
@@ -538,11 +572,13 @@ async function resolveCustomerFromRequest(req: NextRequest) {
     };
   }
 
-  const { data: customer } = await sb
+  const result = await sb
     .from("customers")
     .select("id, full_name")
     .eq("auth_user_id", authUserId)
     .maybeSingle();
+
+  const customer = result.data;
 
   return {
     customerId: customer?.id ? String(customer.id) : null,
@@ -692,7 +728,11 @@ export async function POST(req: NextRequest) {
       return bad("INVALID_REVIEW_TYPE");
     }
 
-    const { customerId, customerName } = await resolveCustomerFromRequest(req);
+    const { customerId, customerName } = await resolveCustomerFromRequest({
+      req,
+      storeId,
+    });
+
     const isGuest = !customerId;
 
     if (reviewType === "review") {

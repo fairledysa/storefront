@@ -3,7 +3,8 @@
 import "server-only";
 
 import { cache } from "react";
-import { supabaseAdmin } from "@/data/store/supabase.server";
+
+import { getStoreDb } from "@/data/db/store-db.server";
 
 export type StoreMaintenanceSettings = {
   enabled: boolean;
@@ -20,12 +21,17 @@ const DEFAULT_MAINTENANCE_SETTINGS: StoreMaintenanceSettings = {
   show_contact_methods: true,
 };
 
+function s(value: unknown) {
+  return String(value ?? "").trim();
+}
+
 function safeObject(value: any): Record<string, any> {
   if (value && typeof value === "object" && !Array.isArray(value)) return value;
 
   if (typeof value === "string") {
     try {
       const parsed = JSON.parse(value);
+
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
         return parsed;
       }
@@ -36,7 +42,7 @@ function safeObject(value: any): Record<string, any> {
 }
 
 function text(value: unknown, fallback: string, max: number) {
-  const out = String(value ?? "").trim();
+  const out = s(value);
   return (out || fallback).slice(0, max);
 }
 
@@ -56,10 +62,11 @@ function normalizeMaintenanceSettings(value: any): StoreMaintenanceSettings {
 
 export const getStoreMaintenanceSettings = cache(
   async (storeId: string): Promise<StoreMaintenanceSettings> => {
-    const id = String(storeId ?? "").trim();
+    const id = s(storeId);
+
     if (!id) return DEFAULT_MAINTENANCE_SETTINGS;
 
-    const sb: any = supabaseAdmin();
+    const sb = (await getStoreDb(id)) as any;
 
     const { data, error } = await sb
       .from("store_settings")

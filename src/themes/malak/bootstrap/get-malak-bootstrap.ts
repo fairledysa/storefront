@@ -10,7 +10,7 @@ import {
   buildCategoryHref,
   buildProductHref as buildStoreProductHref,
 } from "@/lib/seo/build-store-href";
-import { supabaseAdmin } from "@/data/store/supabase.server";
+import { getStoreDb } from "@/data/db/store-db.server";
 import type { SeoUrlMode } from "@/data/store/settings";
 import { createDefaultMalakBootstrap } from "./defaults";
 import { sanitizeThemeCustomCode } from "@/theme-engine/injectors/custom-code";
@@ -1094,7 +1094,7 @@ function normalizeStoreTax(args: {
 }
 
 async function loadStoreTaxRaw(storeId: string): Promise<MalakBootstrapTax> {
-  const sb: any = supabaseAdmin();
+  const sb: any = await getStoreDb(storeId);
 
   const [
     { data: settings, error: settingsError },
@@ -1170,7 +1170,7 @@ async function loadThemeVersionMainInfoRaw(args: {
 
   if (!versionId) return {};
 
-  const sb: any = supabaseAdmin();
+  const sb: any = await getStoreDb(args.storeId);
 
   const { data, error } = await sb
     .from("store_settings")
@@ -1407,7 +1407,7 @@ function findCategoryHrefInIndex(
 }
 
 async function loadActiveThemeOptionsRaw(storeId: string) {
-  const sb: any = supabaseAdmin();
+  const sb: any = await getStoreDb(storeId);
 
   const { data, error } = await sb
     .from("store_themes")
@@ -1448,7 +1448,7 @@ function loadActiveThemeOptions(storeId: string) {
 }
 
 async function resolvePublishedThemeVersionIdRaw(storeId: string) {
-  const sb: any = supabaseAdmin();
+  const sb: any = await getStoreDb(storeId);
 
   const { data: themeRow, error: themeError } = await sb
     .from("themes")
@@ -1509,7 +1509,7 @@ async function loadThemeVersionOptionsRaw(args: {
 
   if (!versionId) return {};
 
-  const sb: any = supabaseAdmin();
+  const sb: any = await getStoreDb(args.storeId);
 
   const { data, error } = await sb
     .from("store_settings")
@@ -1560,7 +1560,7 @@ function loadThemeVersionOptions(args: {
 async function loadStoreSettingsMapRaw(
   storeId: string,
 ): Promise<StoreSettingsMap> {
-  const sb: any = supabaseAdmin();
+  const sb: any = await getStoreDb(storeId);
 
   const { data, error } = await sb
     .from("store_settings")
@@ -1643,7 +1643,7 @@ function loadStoreSettingsMap(storeId: string): Promise<StoreSettingsMap> {
 async function loadStoreCurrenciesRaw(
   storeId: string,
 ): Promise<StoreCurrencyRow[]> {
-  const sb: any = supabaseAdmin();
+  const sb: any = await getStoreDb(storeId);
 
   const { data, error } = await sb
     .from("store_currencies")
@@ -1685,7 +1685,7 @@ function loadStoreCurrencies(storeId: string): Promise<StoreCurrencyRow[]> {
 }
 
 async function loadFooterPagesRaw(storeId: string): Promise<FooterPageRow[]> {
-  const sb: any = supabaseAdmin();
+  const sb: any = await getStoreDb(storeId);
 
   const { data, error } = await sb
     .from("store_pages")
@@ -1731,7 +1731,7 @@ function loadFooterPages(storeId: string): Promise<FooterPageRow[]> {
 async function loadMegaMenuSettingsRaw(
   storeId: string,
 ): Promise<Record<string, any>> {
-  const sb: any = supabaseAdmin();
+  const sb: any = await getStoreDb(storeId);
 
   const { data, error } = await sb
     .from("store_settings")
@@ -1787,7 +1787,7 @@ async function resolveCategoryHref(args: {
   const indexedHref = findCategoryHrefInIndex(args.categoryHrefIndex, value);
   if (indexedHref) return indexedHref;
 
-  const sb: any = supabaseAdmin();
+  const sb: any = await getStoreDb(args.storeId);
 
   let query = sb
     .from("categories")
@@ -1829,7 +1829,7 @@ async function resolveProductHref(args: {
   const value = s(args.value);
   if (!value) return "";
 
-  const sb: any = supabaseAdmin();
+  const sb: any = await getStoreDb(args.storeId);
 
   async function findProduct(selectColumns: string, withShortUrl: boolean) {
     if (isUuid(value)) {

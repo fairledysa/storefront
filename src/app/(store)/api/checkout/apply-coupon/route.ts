@@ -1,11 +1,12 @@
 // FILE: apps/storefront/src/app/(store)/api/checkout/apply-coupon/route.ts
 
 import { NextResponse } from "next/server";
+
 import { supabaseAdmin } from "@/data/store/supabase.server";
 import {
   cartSessionCookie,
-  getCartSessionId,
-  getOrCreateOpenCart,
+  getCartSessionIdFromCookie,
+  getExistingOpenCart,
   getStoreIdOrThrow,
 } from "../../_cart/cart.server";
 import { buildCartSummary } from "../lib/summary";
@@ -94,6 +95,25 @@ function jsonError(code: string, status = 400, extra?: any) {
   );
 }
 
+function jsonOk(args: {
+  payload: Record<string, any>;
+  session_id?: string | null;
+}) {
+  const res = NextResponse.json(args.payload, {
+    headers: {
+      "Cache-Control": "no-store",
+    },
+  });
+
+  const sessionId = s(args.session_id);
+
+  if (sessionId) {
+    res.cookies.set(cartSessionCookie(sessionId));
+  }
+
+  return res;
+}
+
 /* --------------------------------- Logic -------------------------------- */
 
 async function getCouponUsageCounts(
@@ -174,6 +194,8 @@ async function clearCouponFromCart(args: {
   store_id: string;
   cart_id: string;
 }) {
+  const now = new Date().toISOString();
+
   await Promise.all([
     args.sb
       .from("cart_coupons")
@@ -186,7 +208,8 @@ async function clearCouponFromCart(args: {
       .update({
         coupon_id: null,
         coupon_discount: 0,
-        last_activity_at: new Date().toISOString(),
+        last_activity_at: now,
+        updated_at: now,
       })
       .eq("id", args.cart_id)
       .eq("store_id", args.store_id),
@@ -212,8 +235,13 @@ export async function POST(req: Request) {
     const sb: any = supabaseAdmin();
 
     const store_id = await getStoreIdOrThrow();
-    const session_id = await getCartSessionId();
-    const cart = await getOrCreateOpenCart({ store_id, session_id });
+    const session_id = await getCartSessionIdFromCookie();
+
+    const cart = await getExistingOpenCart({
+      store_id,
+      session_id,
+    });
+
     const cart_id = s(cart?.id);
 
     if (!cart_id) {
@@ -289,6 +317,8 @@ export async function POST(req: Request) {
       }
     }
 
+    const now = new Date().toISOString();
+
     const up = await sb
       .from("cart_coupons")
       .upsert(
@@ -298,7 +328,7 @@ export async function POST(req: Request) {
           coupon_id: coupon.id,
           code: String(coupon.code),
           discount_amount: 0,
-          updated_at: new Date().toISOString(),
+          updated_at: now,
         },
         { onConflict: "cart_id" },
       )
@@ -316,7 +346,8 @@ export async function POST(req: Request) {
       .update({
         coupon_id: coupon.id,
         coupon_discount: 0,
-        last_activity_at: new Date().toISOString(),
+        last_activity_at: now,
+        updated_at: now,
       })
       .eq("id", cart_id)
       .eq("store_id", store_id);
@@ -352,24 +383,18 @@ export async function POST(req: Request) {
       });
     }
 
-    const res = NextResponse.json(
-      {
+    return jsonOk({
+      session_id,
+      payload: {
         ok: true,
         summary,
       },
-      {
-        headers: {
-          "Cache-Control": "no-store",
-        },
-      },
-    );
-
-    res.cookies.set(cartSessionCookie(session_id));
-
-    return res;
+    });
   } catch (e: any) {
     console.error("[checkout/apply-coupon]", e);
 
-    return jsonError("APPLY_COUPON_FAILED", 500);
+    return jsonError("APPLY_COUPON_FAILED", 500, {
+      message: e?.message || "Unknown error",
+    });
   }
 }

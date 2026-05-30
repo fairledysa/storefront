@@ -1,8 +1,9 @@
 // FILE: apps/storefront/src/app/(store)/api/search/route.ts
 import { NextResponse } from "next/server";
-import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
-import { supabaseAdmin } from "@/data/store/supabase.server";
+
 import { getProductsBySearch } from "@/data/catalog/products";
+import { getStoreDb } from "@/data/db/store-db.server";
+import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
 
 const SEARCH_LIMIT = 10;
 const DB_FETCH_LIMIT = 45;
@@ -145,7 +146,10 @@ function parseJsonMaybe(value: any) {
   return value;
 }
 
-function makeCurrencyCandidate(value: any, baseScore = 0): CurrencyCandidate | null {
+function makeCurrencyCandidate(
+  value: any,
+  baseScore = 0,
+): CurrencyCandidate | null {
   const parsed = parseJsonMaybe(value);
 
   if (typeof parsed === "string") {
@@ -290,7 +294,9 @@ function collectCurrencyCandidates(
         );
 
         const matchBoost =
-          selectedCode && itemCode && selectedCode.toLowerCase() === itemCode.toLowerCase()
+          selectedCode &&
+          itemCode &&
+          selectedCode.toLowerCase() === itemCode.toLowerCase()
             ? 120
             : 0;
 
@@ -346,7 +352,7 @@ async function resolveStoreCurrencyDisplay(args: {
 
   candidates.push(...collectCurrencyCandidates(args.store, 120));
 
-  const sb = supabaseAdmin() as any;
+  const sb = (await getStoreDb(storeId)) as any;
 
   const settingsR = await sb
     .from("store_settings")
@@ -711,42 +717,60 @@ function mergeRows(rows: SearchIndexRow[]) {
   return Array.from(map.values());
 }
 
-async function queryIndexByTerm(
-  storeId: string,
-  term: string,
-  limit = DB_FETCH_LIMIT,
-) {
-  const clean = normalizeArabic(term);
+async function queryIndexByTerm(args: {
+  sb: any;
+  storeId: string;
+  term: string;
+  limit?: number;
+}) {
+  const clean = normalizeArabic(args.term);
   if (!clean || clean.length < 2) return [];
 
-  const sb = supabaseAdmin() as any;
-
-  const { data, error } = await sb
+  const result = await args.sb
     .from("product_search_index")
     .select(
       "product_id,title,description,href,image_url,price,compare_price,currency,search_text,search_text_normalized,suggestion_terms,suggestion_terms_text,updated_at",
     )
-    .eq("store_id", storeId)
+    .eq("store_id", args.storeId)
     .eq("is_visible", true)
     .ilike("search_text_normalized", `%${clean}%`)
     .order("updated_at", { ascending: false })
-    .limit(limit);
+    .limit(args.limit ?? DB_FETCH_LIMIT);
 
-  if (error || !Array.isArray(data)) return [];
+  if (result.error || !Array.isArray(result.data)) return [];
 
-  return data as SearchIndexRow[];
+  return result.data as SearchIndexRow[];
 }
 
 async function collectRows(storeId: string, query: string) {
+  const store_id = s(storeId);
+  if (!store_id) return [];
+
+  const sb = (await getStoreDb(store_id)) as any;
+
   const variants = makeArabicVariants(query);
   const tokens = tokenize(query);
 
   const phraseResults = await Promise.all(
-    variants.map((term) => queryIndexByTerm(storeId, term, DB_FETCH_LIMIT)),
+    variants.map((term) =>
+      queryIndexByTerm({
+        sb,
+        storeId: store_id,
+        term,
+        limit: DB_FETCH_LIMIT,
+      }),
+    ),
   );
 
   const tokenResults = await Promise.all(
-    tokens.map((token) => queryIndexByTerm(storeId, token, 24)),
+    tokens.map((token) =>
+      queryIndexByTerm({
+        sb,
+        storeId: store_id,
+        term: token,
+        limit: 24,
+      }),
+    ),
   );
 
   const rows = mergeRows([...phraseResults.flat(), ...tokenResults.flat()]);
@@ -768,24 +792,27 @@ async function collectRows(storeId: string, query: string) {
 }
 
 async function loadVocabulary(storeId: string) {
-  const cacheKey = `product-search-index-vocab:${storeId}`;
+  const store_id = s(storeId);
+  if (!store_id) return new Map<string, string>();
+
+  const cacheKey = `product-search-index-vocab:${store_id}`;
   const cached = getCached(vocabularyCache, cacheKey);
 
   if (cached) return cached;
 
-  const sb = supabaseAdmin() as any;
+  const sb = (await getStoreDb(store_id)) as any;
 
-  const { data, error } = await sb
+  const result = await sb
     .from("product_search_index")
     .select("title,search_text,suggestion_terms,suggestion_terms_text")
-    .eq("store_id", storeId)
+    .eq("store_id", store_id)
     .eq("is_visible", true)
     .limit(2000);
 
   const candidates = new Map<string, string>();
 
-  if (!error && Array.isArray(data)) {
-    for (const row of data) {
+  if (!result.error && Array.isArray(result.data)) {
+    for (const row of result.data) {
       addCandidateWordsFromText(row?.title, candidates);
       addCandidateWordsFromText(row?.suggestion_terms_text, candidates);
 

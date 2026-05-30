@@ -1,9 +1,10 @@
 // FILE: apps/storefront/src/app/(store)/api/auth/otp/send/route.ts
+
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 
+import { getStoreDb } from "@/data/db/store-db.server";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
-import { supabaseAdmin } from "@/data/store/supabase.server";
 import { hashOtp } from "@/lib/auth/session";
 
 const emailOtpsTable = "auth_email_otps" as any;
@@ -90,13 +91,8 @@ export async function POST(req: Request) {
 
   const ua = req.headers.get("user-agent") || "";
 
-  const sb: any = supabaseAdmin();
+  const sb: any = await getStoreDb(storeId);
 
-  /**
-   * مهم:
-   * صار التحقق من آخر رمز بناءً على store_id + email
-   * عشان رمز متجر ما يؤثر على متجر ثاني.
-   */
   const recent: any = await sb
     .from(emailOtpsTable)
     .select("id,created_at")

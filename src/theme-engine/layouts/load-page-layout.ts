@@ -1,6 +1,8 @@
-// apps/storefront/src/theme-engine/layouts/load-page-layout.ts
+// FILE: apps/storefront/src/theme-engine/layouts/load-page-layout.ts
+
 import { cache } from "react";
-import { supabaseAdmin } from "@/data/store/supabase.server";
+
+import { getStoreDb } from "@/data/db/store-db.server";
 import { defaultHomeLayout } from "@/theme-engine/layouts/defaults";
 
 export type LayoutSection = {
@@ -22,8 +24,13 @@ type StorePageLayoutRow = {
   updated_at: string;
 };
 
+function s(value: unknown) {
+  return String(value ?? "").trim();
+}
+
 function normalizeSections(input: any): LayoutSection[] {
   const arr = Array.isArray(input) ? input : [];
+
   return arr
     .map((x: any, idx: number) => ({
       id: String(x?.id || `sec_${idx + 1}`),
@@ -33,7 +40,7 @@ function normalizeSections(input: any): LayoutSection[] {
       props: x?.props && typeof x.props === "object" ? x.props : {},
       style: x?.style && typeof x.style === "object" ? x.style : {},
     }))
-    .filter((s) => !!s.type);
+    .filter((section) => Boolean(section.type));
 }
 
 async function fetchLayoutRow(
@@ -41,12 +48,18 @@ async function fetchLayoutRow(
   page_key: string,
   status: "draft" | "published",
 ) {
-  const sb = supabaseAdmin();
+  const storeId = s(store_id);
+  const pageKey = s(page_key);
+
+  if (!storeId || !pageKey) return null;
+
+  const sb = (await getStoreDb(storeId)) as any;
+
   const r = await sb
     .from("store_page_layouts")
     .select("layout,status,updated_at")
-    .eq("store_id", store_id)
-    .eq("page_key", page_key)
+    .eq("store_id", storeId)
+    .eq("page_key", pageKey)
     .eq("status", status)
     .order("updated_at", { ascending: false })
     .limit(1)
@@ -65,13 +78,19 @@ export const loadPageLayout = cache(
     page_key: string;
     preview: boolean;
   }): Promise<PageLayout> => {
-    // ✅ Preview: draft ثم published ثم default
+    const storeId = s(store_id);
+    const pageKey = s(page_key) || "home";
+
+    if (!storeId) {
+      return { sections: pageKey === "home" ? defaultHomeLayout() : [] };
+    }
+
     const row =
-      (preview ? await fetchLayoutRow(store_id, page_key, "draft") : null) ??
-      (await fetchLayoutRow(store_id, page_key, "published"));
+      (preview ? await fetchLayoutRow(storeId, pageKey, "draft") : null) ??
+      (await fetchLayoutRow(storeId, pageKey, "published"));
 
     if (!row?.layout) {
-      return { sections: page_key === "home" ? defaultHomeLayout() : [] };
+      return { sections: pageKey === "home" ? defaultHomeLayout() : [] };
     }
 
     return { sections: normalizeSections(row.layout) };

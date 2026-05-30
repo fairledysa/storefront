@@ -1,7 +1,8 @@
 // FILE: apps/storefront/src/app/(store)/api/cart/items/route.ts
 
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/data/store/supabase.server";
+import { getOrdersDb } from "@/data/db/orders-db.server";
+import { getStoreDb } from "@/data/db/store-db.server";
 import { isProductVisibleInWeb } from "@/data/catalog/products";
 
 import {
@@ -613,13 +614,13 @@ function buildSelectedOptionsFromMetadata(
 }
 
 async function buildSelectedOptionsFromDb(
-  sb: any,
+  storeDb: any,
   optionValueIds: string[],
 ): Promise<Array<{ name: string; value: string }>> {
   const ids = uniqStr(optionValueIds);
   if (!ids.length) return [];
 
-  const povR = await sb
+  const povR = await storeDb
     .from("product_option_values")
     .select("id,option_id,name,display_value")
     .in("id", ids);
@@ -642,7 +643,7 @@ async function buildSelectedOptionsFromDb(
   const optNameMap = new Map<string, string>();
 
   if (optionIds.length) {
-    const optR = await sb
+    const optR = await storeDb
       .from("product_options")
       .select("id,name")
       .in("id", optionIds);
@@ -683,7 +684,7 @@ async function buildSelectedOptionsFromDb(
 }
 
 async function resolveVariantIdFromOptions(
-  sb: any,
+  storeDb: any,
   args: { product_id: string; selected_option_value_ids: string[] },
 ): Promise<string | null> {
   const selected = (
@@ -694,7 +695,7 @@ async function resolveVariantIdFromOptions(
 
   if (selected.length === 0) return null;
 
-  const vR = await sb
+  const vR = await storeDb
     .from("product_variants")
     .select("id")
     .eq("product_id", args.product_id);
@@ -706,7 +707,7 @@ async function resolveVariantIdFromOptions(
 
   const variantIds = variants.map((v: any) => v.id);
 
-  const linksR = await sb
+  const linksR = await storeDb
     .from("variant_option_values")
     .select("variant_id,option_value_id")
     .in("variant_id", variantIds);
@@ -749,8 +750,8 @@ async function resolveVariantIdFromOptions(
   return null;
 }
 
-async function resolveDefaultVariantId(sb: any, product_id: string) {
-  const vR = await sb
+async function resolveDefaultVariantId(storeDb: any, product_id: string) {
+  const vR = await storeDb
     .from("product_variants")
     .select("id,is_default,created_at")
     .eq("product_id", product_id)
@@ -765,13 +766,13 @@ async function resolveDefaultVariantId(sb: any, product_id: string) {
 }
 
 async function resolveDbVariantIdForCart(
-  sb: any,
+  storeDb: any,
   args: { product_id: string; variant_id: string | null },
 ) {
   const variantId = String(args.variant_id ?? "").trim();
   if (!variantId) return null;
 
-  const r = await sb
+  const r = await storeDb
     .from("product_variants")
     .select("id,product_id")
     .eq("id", variantId)
@@ -786,8 +787,8 @@ async function resolveDbVariantIdForCart(
   return String(r.data.id);
 }
 
-async function syncCartActivityAndCount(sb: any, cartId: string) {
-  const itemsR = await sb.from("cart_items").select("qty").eq("cart_id", cartId);
+async function syncCartActivityAndCount(ordersDb: any, cartId: string) {
+  const itemsR = await ordersDb.from("cart_items").select("qty").eq("cart_id", cartId);
 
   if (itemsR.error) throw new Error(itemsR.error.message);
 
@@ -802,7 +803,7 @@ async function syncCartActivityAndCount(sb: any, cartId: string) {
     return sum + (Number.isFinite(qty) ? Math.max(0, Math.floor(qty)) : 0);
   }, 0);
 
-  const upR = await sb
+  const upR = await ordersDb
     .from("carts")
     .update({
       item_count,
@@ -816,14 +817,14 @@ async function syncCartActivityAndCount(sb: any, cartId: string) {
 }
 
 async function getStockInfoFast(
-  sb: any,
+  storeDb: any,
   args: {
     product_id: string;
     variant_id: string | null;
     productMeta: any;
   },
 ): Promise<StockInfo> {
-  const psR = await sb
+  const psR = await storeDb
     .from("product_stock")
     .select("quantity,unlimited_quantity,maximum_quantity_per_order")
     .eq("product_id", args.product_id)
@@ -844,7 +845,7 @@ async function getStockInfoFast(
       : null;
 
   if (args.variant_id) {
-    const vR = await sb
+    const vR = await storeDb
       .from("product_variants")
       .select("id,product_id,stock_quantity,unlimited_quantity")
       .eq("id", args.variant_id)
@@ -902,11 +903,11 @@ async function getStockInfoFast(
 }
 
 async function getCartItemOrThrow(
-  sb: any,
+  ordersDb: any,
   cart_id: string,
   cart_item_id: string,
 ) {
-  const r = await sb
+  const r = await ordersDb
     .from("cart_items")
     .select(
       "id,cart_id,product_id,variant_id,qty,line_key,selected_option_value_ids,selected_options",
@@ -1146,10 +1147,14 @@ export async function POST(req: Request) {
     const store_id = await getStoreIdOrThrow();
     const sid = await getCartSessionId();
 
-    const cart = await getOrCreateOpenCart({ store_id, session_id: sid });
-    const sb: any = supabaseAdmin();
+    const [ordersDb, storeDb] = await Promise.all([
+      getOrdersDb(store_id),
+      getStoreDb(store_id),
+    ]);
 
-    const prodR = await sb
+    const cart = await getOrCreateOpenCart({ store_id, session_id: sid });
+
+    const prodR = await storeDb
       .from("products")
       .select("id,status,metadata")
       .eq("id", product_id)
@@ -1187,7 +1192,7 @@ export async function POST(req: Request) {
     const productMeta = prodR.data?.metadata ?? null;
     const metaVariants = getMetadataVariants(productMeta);
 
-    const variantsCountR = await sb
+    const variantsCountR = await storeDb
       .from("product_variants")
       .select("id", { count: "exact", head: true })
       .eq("product_id", product_id);
@@ -1202,7 +1207,7 @@ export async function POST(req: Request) {
       if (!variant_id && selected_option_value_ids.length > 0) {
         variant_id =
           (hasDbVariants
-            ? await resolveVariantIdFromOptions(sb, {
+            ? await resolveVariantIdFromOptions(storeDb, {
                 product_id,
                 selected_option_value_ids,
               })
@@ -1222,7 +1227,7 @@ export async function POST(req: Request) {
 
       if (!variant_id && selected_option_value_ids.length === 0) {
         variant_id =
-          (hasDbVariants ? await resolveDefaultVariantId(sb, product_id) : null) ||
+          (hasDbVariants ? await resolveDefaultVariantId(storeDb, product_id) : null) ||
           resolveDefaultMetaVariantId(productMeta);
 
         if (!variant_id) {
@@ -1244,7 +1249,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const stock = await getStockInfoFast(sb, {
+    const stock = await getStockInfoFast(storeDb, {
       product_id,
       variant_id,
       productMeta,
@@ -1265,7 +1270,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const cartVariantId = await resolveDbVariantIdForCart(sb, {
+    const cartVariantId = await resolveDbVariantIdForCart(storeDb, {
       product_id,
       variant_id,
     });
@@ -1276,7 +1281,7 @@ export async function POST(req: Request) {
       selected_option_value_ids,
     });
 
-    const existingR = await sb
+    const existingR = await ordersDb
       .from("cart_items")
       .select("id,qty")
       .eq("cart_id", cart.id)
@@ -1335,7 +1340,7 @@ export async function POST(req: Request) {
 
     if (selected_option_value_ids.length) {
       const fromDb = await buildSelectedOptionsFromDb(
-        sb,
+        storeDb,
         selected_option_value_ids,
       );
 
@@ -1360,7 +1365,7 @@ export async function POST(req: Request) {
     let item: any;
 
     if (existingR.data?.id) {
-      const upR = await sb
+      const upR = await ordersDb
         .from("cart_items")
         .update({
           qty: finalQty,
@@ -1374,7 +1379,7 @@ export async function POST(req: Request) {
 
       item = upR.data;
     } else {
-      const insR = await sb
+      const insR = await ordersDb
         .from("cart_items")
         .insert({
           store_id,
@@ -1395,7 +1400,7 @@ export async function POST(req: Request) {
       item = insR.data;
     }
 
-    await syncCartActivityAndCount(sb, cart.id);
+    await syncCartActivityAndCount(ordersDb, cart.id);
 
     const isPartial = canAddNow < qtyToAdd;
 
@@ -1446,10 +1451,14 @@ export async function PATCH(req: Request) {
   try {
     const body = (await req.json()) as PatchBody;
 
-    const sb: any = supabaseAdmin();
-
     const store_id = await getStoreIdOrThrow();
     const sid = await getCartSessionIdFromCookie();
+
+    const [ordersDb, storeDb] = await Promise.all([
+      getOrdersDb(store_id),
+      getStoreDb(store_id),
+    ]);
+
     const cart = await getExistingOpenCart({ store_id, session_id: sid });
 
     if (!cart?.id) {
@@ -1470,9 +1479,9 @@ export async function PATCH(req: Request) {
       );
     }
 
-    const item0 = await getCartItemOrThrow(sb, cart.id, cart_item_id);
+    const item0 = await getCartItemOrThrow(ordersDb, cart.id, cart_item_id);
 
-    const visibleProductR = await sb
+    const visibleProductR = await storeDb
       .from("products")
       .select("id,status,metadata")
       .eq("id", String(item0.product_id))
@@ -1489,8 +1498,8 @@ export async function PATCH(req: Request) {
         metadata: visibleProductR.data?.metadata,
       })
     ) {
-      await sb.from("cart_items").delete().eq("id", item0.id);
-      await syncCartActivityAndCount(sb, cart.id);
+      await ordersDb.from("cart_items").delete().eq("id", item0.id);
+      await syncCartActivityAndCount(ordersDb, cart.id);
 
       return NextResponse.json(
         {
@@ -1510,15 +1519,15 @@ export async function PATCH(req: Request) {
           ? Math.max(1, currentQty + clampDelta((body as any).delta))
           : clampQty((body as any).qty);
 
-      const stock = await getStockInfoFast(sb, {
+      const stock = await getStockInfoFast(storeDb, {
         product_id: String(item0.product_id),
         variant_id: item0.variant_id ? String(item0.variant_id) : null,
         productMeta: visibleProductR.data?.metadata ?? null,
       });
 
       if (!stock.ok) {
-        await sb.from("cart_items").delete().eq("id", item0.id);
-        await syncCartActivityAndCount(sb, cart.id);
+        await ordersDb.from("cart_items").delete().eq("id", item0.id);
+        await syncCartActivityAndCount(ordersDb, cart.id);
 
         return NextResponse.json(
           {
@@ -1541,8 +1550,8 @@ export async function PATCH(req: Request) {
         });
 
       if (hardMax <= 0 || finalQty <= 0) {
-        await sb.from("cart_items").delete().eq("id", item0.id);
-        await syncCartActivityAndCount(sb, cart.id);
+        await ordersDb.from("cart_items").delete().eq("id", item0.id);
+        await syncCartActivityAndCount(ordersDb, cart.id);
 
         const res = NextResponse.json({
           data: {
@@ -1567,7 +1576,7 @@ export async function PATCH(req: Request) {
         return setCartCookieIfPresent(res, sid);
       }
 
-      const upR = await sb
+      const upR = await ordersDb
         .from("cart_items")
         .update({ qty: finalQty })
         .eq("id", item0.id)
@@ -1576,7 +1585,7 @@ export async function PATCH(req: Request) {
 
       if (upR.error) throw new Error(upR.error.message);
 
-      await syncCartActivityAndCount(sb, cart.id);
+      await syncCartActivityAndCount(ordersDb, cart.id);
 
       const res = NextResponse.json({
         data: {
@@ -1630,7 +1639,7 @@ export async function PATCH(req: Request) {
         ? String((body as any).variant_id)
         : null;
 
-      const variantsCountR = await sb
+      const variantsCountR = await storeDb
         .from("product_variants")
         .select("id", { count: "exact", head: true })
         .eq("product_id", product_id);
@@ -1644,7 +1653,7 @@ export async function PATCH(req: Request) {
       if (!variant_id && selected_option_value_ids.length) {
         variant_id =
           (hasDbVariants
-            ? await resolveVariantIdFromOptions(sb, {
+            ? await resolveVariantIdFromOptions(storeDb, {
                 product_id,
                 selected_option_value_ids,
               })
@@ -1669,7 +1678,7 @@ export async function PATCH(req: Request) {
         );
       }
 
-      const cartVariantId = await resolveDbVariantIdForCart(sb, {
+      const cartVariantId = await resolveDbVariantIdForCart(storeDb, {
         product_id,
         variant_id,
       });
@@ -1678,7 +1687,7 @@ export async function PATCH(req: Request) {
 
       if (selected_option_value_ids.length) {
         const fromDb = await buildSelectedOptionsFromDb(
-          sb,
+          storeDb,
           selected_option_value_ids,
         );
 
@@ -1705,7 +1714,7 @@ export async function PATCH(req: Request) {
         selected_option_value_ids,
       });
 
-      const otherR = await sb
+      const otherR = await ordersDb
         .from("cart_items")
         .select("id,qty")
         .eq("cart_id", cart.id)
@@ -1719,15 +1728,15 @@ export async function PATCH(req: Request) {
       const otherId = otherR.data?.id ? String(otherR.data.id) : null;
       const otherQty = Math.max(0, Number(otherR.data?.qty ?? 0));
 
-      const stock = await getStockInfoFast(sb, {
+      const stock = await getStockInfoFast(storeDb, {
         product_id,
         variant_id,
         productMeta,
       });
 
       if (!stock.ok) {
-        await sb.from("cart_items").delete().eq("id", item0.id);
-        await syncCartActivityAndCount(sb, cart.id);
+        await ordersDb.from("cart_items").delete().eq("id", item0.id);
+        await syncCartActivityAndCount(ordersDb, cart.id);
 
         return NextResponse.json(
           {
@@ -1755,8 +1764,8 @@ export async function PATCH(req: Request) {
           });
 
         if (hardMax <= 0 || finalQty <= 0) {
-          await sb.from("cart_items").delete().eq("id", item0.id);
-          await syncCartActivityAndCount(sb, cart.id);
+          await ordersDb.from("cart_items").delete().eq("id", item0.id);
+          await syncCartActivityAndCount(ordersDb, cart.id);
 
           const res = NextResponse.json({
             data: {
@@ -1813,7 +1822,7 @@ export async function PATCH(req: Request) {
           return setCartCookieIfPresent(res, sid);
         }
 
-        const upOther = await sb
+        const upOther = await ordersDb
           .from("cart_items")
           .update({
             qty: finalQty,
@@ -1825,10 +1834,10 @@ export async function PATCH(req: Request) {
 
         if (upOther.error) throw new Error(upOther.error.message);
 
-        const delOld = await sb.from("cart_items").delete().eq("id", item0.id);
+        const delOld = await ordersDb.from("cart_items").delete().eq("id", item0.id);
         if (delOld.error) throw new Error(delOld.error.message);
 
-        await syncCartActivityAndCount(sb, cart.id);
+        await syncCartActivityAndCount(ordersDb, cart.id);
 
         const res = NextResponse.json({
           data: {
@@ -1877,8 +1886,8 @@ export async function PATCH(req: Request) {
         });
 
       if (hardMax <= 0 || finalQty <= 0) {
-        await sb.from("cart_items").delete().eq("id", item0.id);
-        await syncCartActivityAndCount(sb, cart.id);
+        await ordersDb.from("cart_items").delete().eq("id", item0.id);
+        await syncCartActivityAndCount(ordersDb, cart.id);
 
         const res = NextResponse.json({
           data: {
@@ -1934,7 +1943,7 @@ export async function PATCH(req: Request) {
         return setCartCookieIfPresent(res, sid);
       }
 
-      const upSelf = await sb
+      const upSelf = await ordersDb
         .from("cart_items")
         .update({
           variant_id: cartVariantId,
@@ -1949,7 +1958,7 @@ export async function PATCH(req: Request) {
 
       if (upSelf.error) throw new Error(upSelf.error.message);
 
-      await syncCartActivityAndCount(sb, cart.id);
+      await syncCartActivityAndCount(ordersDb, cart.id);
 
       const res = NextResponse.json({
         data: {
@@ -2012,23 +2021,23 @@ export async function DELETE(req: Request) {
       );
     }
 
-    const sb: any = supabaseAdmin();
-
     const store_id = await getStoreIdOrThrow();
     const sid = await getCartSessionIdFromCookie();
+    const ordersDb = await getOrdersDb(store_id);
+
     const cart = await getExistingOpenCart({ store_id, session_id: sid });
 
     if (!cart?.id) {
       return cartNotFoundResponse();
     }
 
-    const item0 = await getCartItemOrThrow(sb, cart.id, cart_item_id);
+    const item0 = await getCartItemOrThrow(ordersDb, cart.id, cart_item_id);
 
-    const delR = await sb.from("cart_items").delete().eq("id", item0.id);
+    const delR = await ordersDb.from("cart_items").delete().eq("id", item0.id);
 
     if (delR.error) throw new Error(delR.error.message);
 
-    await syncCartActivityAndCount(sb, cart.id);
+    await syncCartActivityAndCount(ordersDb, cart.id);
 
     const res = NextResponse.json({
       data: {

@@ -1,8 +1,12 @@
 // FILE: apps/storefront/src/app/(store)/api/_cart/cart.server.ts
+import "server-only";
+
 import crypto from "crypto";
 import { cookies } from "next/headers";
 
-import { supabaseAdmin } from "@/data/store/supabase.server";
+import { controlDb } from "@/data/db/control-db.server";
+import { getOrdersDb } from "@/data/db/orders-db.server";
+import { getStoreDb } from "@/data/db/store-db.server";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
 import { verifySession } from "@/lib/auth/session";
 
@@ -101,10 +105,12 @@ export async function getStoreCurrencyInfo(
   }
 
   try {
-    const sb: any = supabaseAdmin();
+    const storeDb: any = await getStoreDb(storeId);
 
     if (!defaultCode || defaultCode === fallbackCode) {
-      const storeR = await sb
+      const control: any = await controlDb();
+
+      const storeR = await control
         .from("stores")
         .select("default_currency")
         .eq("id", storeId)
@@ -130,7 +136,7 @@ export async function getStoreCurrencyInfo(
     );
 
     for (const code of wantedCodes) {
-      const rowR = await sb
+      const rowR = await storeDb
         .from("store_currencies")
         .select("currency_code,symbol,decimal_digits,name_ar,name_en")
         .eq("store_id", storeId)
@@ -152,7 +158,7 @@ export async function getStoreCurrencyInfo(
       }
     }
 
-    const defaultR = await sb
+    const defaultR = await storeDb
       .from("store_currencies")
       .select("currency_code,symbol,decimal_digits,name_ar,name_en")
       .eq("store_id", storeId)
@@ -198,7 +204,7 @@ export async function getStoreCurrency(store_id?: string) {
 }
 
 async function ensureCartCurrency(
-  sb: any,
+  ordersDb: any,
   cart: any,
   currency: string,
   store_id?: string,
@@ -210,7 +216,7 @@ async function ensureCartCurrency(
 
   if (!id || current === next) return cart;
 
-  let q = sb
+  let q = ordersDb
     .from("carts")
     .update({
       currency: next,
@@ -275,9 +281,9 @@ async function getCustomerIdMaybe(store_id: string): Promise<string | null> {
 
     if (!customerId) return null;
 
-    const sb: any = supabaseAdmin();
+    const ordersDb: any = await getOrdersDb(storeId);
 
-    const linkR = await sb
+    const linkR = await ordersDb
       .from("store_customers")
       .select("store_id,customer_id")
       .eq("store_id", storeId)
@@ -294,11 +300,7 @@ async function getCustomerIdMaybe(store_id: string): Promise<string | null> {
 }
 
 function readCartActivityTime(cart: any) {
-  const values = [
-    cart?.last_activity_at,
-    cart?.updated_at,
-    cart?.created_at,
-  ];
+  const values = [cart?.last_activity_at, cart?.updated_at, cart?.created_at];
 
   for (const value of values) {
     const time = Date.parse(String(value ?? ""));
@@ -340,14 +342,14 @@ export async function getExistingOpenCart(args: {
   store_id: string;
   session_id?: string | null;
 }) {
-  const sb: any = supabaseAdmin();
-
   const storeId = String(args.store_id ?? "").trim();
   const sessionId = String(args.session_id ?? "").trim();
 
   if (!storeId) throw new Error("STORE_NOT_FOUND");
 
+  const ordersDb: any = await getOrdersDb(storeId);
   const customer_id = await getCustomerIdMaybe(storeId);
+
   const carts: any[] = [];
   const seen = new Set<string>();
 
@@ -361,7 +363,7 @@ export async function getExistingOpenCart(args: {
 
   if (customer_id) {
     const [customerCartR, sessionCartR] = await Promise.all([
-      sb
+      ordersDb
         .from("carts")
         .select("*")
         .eq("store_id", storeId)
@@ -374,7 +376,7 @@ export async function getExistingOpenCart(args: {
         .maybeSingle(),
 
       sessionId
-        ? sb
+        ? ordersDb
             .from("carts")
             .select("*")
             .eq("store_id", storeId)
@@ -399,7 +401,7 @@ export async function getExistingOpenCart(args: {
 
   if (!sessionId) return null;
 
-  const sessionCartR = await sb
+  const sessionCartR = await ordersDb
     .from("carts")
     .select("*")
     .eq("store_id", storeId)
@@ -434,10 +436,10 @@ type StockInfo =
     };
 
 async function getStockInfo(
-  sb: any,
+  storeDb: any,
   args: { store_id: string; product_id: string; variant_id: string | null },
 ): Promise<StockInfo> {
-  const pR = await sb
+  const pR = await storeDb
     .from("products")
     .select("id,store_id,metadata")
     .eq("id", args.product_id)
@@ -455,7 +457,7 @@ async function getStockInfo(
   const metaUnlimited = Boolean(meta?.qtyUnlimited ?? false);
 
   if (metaUnlimited) {
-    const psR0 = await sb
+    const psR0 = await storeDb
       .from("product_stock")
       .select("maximum_quantity_per_order")
       .eq("product_id", args.product_id)
@@ -475,7 +477,7 @@ async function getStockInfo(
     };
   }
 
-  const psR = await sb
+  const psR = await storeDb
     .from("product_stock")
     .select("quantity,unlimited_quantity,maximum_quantity_per_order")
     .eq("product_id", args.product_id)
@@ -492,7 +494,7 @@ async function getStockInfo(
       : null;
 
   if (args.variant_id) {
-    const vR = await sb
+    const vR = await storeDb
       .from("product_variants")
       .select("id,product_id,stock_quantity,unlimited_quantity")
       .eq("id", args.variant_id)
@@ -613,7 +615,7 @@ export function buildLineKey(input: {
 /** ---------- resolve variant_id from selected options ---------- */
 
 async function resolveVariantIdFromOptions(
-  sb: any,
+  storeDb: any,
   args: { product_id: string; selected_option_value_ids: string[] },
 ): Promise<string | null> {
   const selected = Array.isArray(args.selected_option_value_ids)
@@ -622,7 +624,7 @@ async function resolveVariantIdFromOptions(
 
   if (!selected.length) return null;
 
-  const vR = await sb
+  const vR = await storeDb
     .from("product_variants")
     .select("id")
     .eq("product_id", args.product_id);
@@ -635,7 +637,7 @@ async function resolveVariantIdFromOptions(
   const variantIds = variants.map((v: any) => v.id).filter(Boolean);
   if (!variantIds.length) return null;
 
-  const linksR = await sb
+  const linksR = await storeDb
     .from("variant_option_values")
     .select("variant_id,option_value_id")
     .in("variant_id", variantIds);
@@ -680,15 +682,17 @@ async function resolveVariantIdFromOptions(
 /** ---------- Cart merge logic ---------- */
 
 async function mergeSessionCartIntoCustomerCart(args: {
-  sb: any;
+  ordersDb: any;
+  storeDb: any;
   store_id: string;
   customer_id: string;
   session_id: string;
   currency: string;
 }) {
-  const { sb, store_id, customer_id, session_id, currency } = args;
+  const { ordersDb, storeDb, store_id, customer_id, session_id, currency } =
+    args;
 
-  const customerCartR = await sb
+  const customerCartR = await ordersDb
     .from("carts")
     .select("*")
     .eq("store_id", store_id)
@@ -702,7 +706,7 @@ async function mergeSessionCartIntoCustomerCart(args: {
   const customerCart = customerCartR.data ?? null;
 
   const sessionCartR = session_id
-    ? await sb
+    ? await ordersDb
         .from("carts")
         .select("*")
         .eq("store_id", store_id)
@@ -717,7 +721,7 @@ async function mergeSessionCartIntoCustomerCart(args: {
   const sessionCart = sessionCartR.data ?? null;
 
   if (sessionCart && !customerCart) {
-    const up = await sb
+    const up = await ordersDb
       .from("carts")
       .update({
         user_id: customer_id,
@@ -737,10 +741,10 @@ async function mergeSessionCartIntoCustomerCart(args: {
 
   if (!sessionCart) {
     if (customerCart) {
-      return await ensureCartCurrency(sb, customerCart, currency, store_id);
+      return await ensureCartCurrency(ordersDb, customerCart, currency, store_id);
     }
 
-    const ins = await sb
+    const ins = await ordersDb
       .from("carts")
       .insert({
         store_id,
@@ -759,11 +763,11 @@ async function mergeSessionCartIntoCustomerCart(args: {
   }
 
   if (customerCart && String(customerCart.id) === String(sessionCart.id)) {
-    return await ensureCartCurrency(sb, customerCart, currency, store_id);
+    return await ensureCartCurrency(ordersDb, customerCart, currency, store_id);
   }
 
   if (!customerCart) {
-    const up = await sb
+    const up = await ordersDb
       .from("carts")
       .update({
         user_id: customer_id,
@@ -781,7 +785,7 @@ async function mergeSessionCartIntoCustomerCart(args: {
     return up.data;
   }
 
-  const sessionItemsR = await sb
+  const sessionItemsR = await ordersDb
     .from("cart_items")
     .select("id,product_id,variant_id,qty,selected_option_value_ids,line_key")
     .eq("cart_id", sessionCart.id);
@@ -792,7 +796,7 @@ async function mergeSessionCartIntoCustomerCart(args: {
     ? sessionItemsR.data
     : [];
 
-  const customerItemsR = await sb
+  const customerItemsR = await ordersDb
     .from("cart_items")
     .select("id,line_key,qty")
     .eq("cart_id", customerCart.id);
@@ -814,7 +818,7 @@ async function mergeSessionCartIntoCustomerCart(args: {
     const product_id = String(item?.product_id ?? "").trim();
 
     if (!product_id) {
-      await sb
+      await ordersDb
         .from("cart_items")
         .delete()
         .eq("id", item.id)
@@ -832,7 +836,7 @@ async function mergeSessionCartIntoCustomerCart(args: {
     let variant_id = item?.variant_id ? String(item.variant_id) : null;
 
     if (!variant_id && selected_option_value_ids.length > 0) {
-      const resolved = await resolveVariantIdFromOptions(sb, {
+      const resolved = await resolveVariantIdFromOptions(storeDb, {
         product_id,
         selected_option_value_ids,
       });
@@ -849,14 +853,14 @@ async function mergeSessionCartIntoCustomerCart(args: {
     const sessionQty = Math.max(1, Number(item?.qty ?? 1));
     const hit = customerByLine.get(line_key);
 
-    const stock = await getStockInfo(sb, {
+    const stock = await getStockInfo(storeDb, {
       store_id,
       product_id,
       variant_id,
     });
 
     if (!stock.ok) {
-      await sb
+      await ordersDb
         .from("cart_items")
         .delete()
         .eq("id", item.id)
@@ -870,11 +874,10 @@ async function mergeSessionCartIntoCustomerCart(args: {
         1,
         Math.floor(Number(hit.qty ?? 1) + sessionQty),
       );
-
       const { finalQty, hardMax } = clampToAllowedQty(desired, stock);
 
       if (hardMax <= 0) {
-        await sb
+        await ordersDb
           .from("cart_items")
           .delete()
           .eq("id", item.id)
@@ -883,7 +886,7 @@ async function mergeSessionCartIntoCustomerCart(args: {
         continue;
       }
 
-      const up = await sb
+      const up = await ordersDb
         .from("cart_items")
         .update({ qty: finalQty })
         .eq("id", hit.id)
@@ -891,7 +894,7 @@ async function mergeSessionCartIntoCustomerCart(args: {
 
       if (up.error) throw new Error(up.error.message);
 
-      const del = await sb
+      const del = await ordersDb
         .from("cart_items")
         .delete()
         .eq("id", item.id)
@@ -902,7 +905,7 @@ async function mergeSessionCartIntoCustomerCart(args: {
       const { finalQty, hardMax } = clampToAllowedQty(sessionQty, stock);
 
       if (hardMax <= 0) {
-        await sb
+        await ordersDb
           .from("cart_items")
           .delete()
           .eq("id", item.id)
@@ -911,7 +914,7 @@ async function mergeSessionCartIntoCustomerCart(args: {
         continue;
       }
 
-      const mv = await sb
+      const mv = await ordersDb
         .from("cart_items")
         .update({
           cart_id: customerCart.id,
@@ -933,7 +936,7 @@ async function mergeSessionCartIntoCustomerCart(args: {
     }
   }
 
-  const close = await sb
+  const close = await ordersDb
     .from("carts")
     .update({
       status: "abandoned",
@@ -948,13 +951,13 @@ async function mergeSessionCartIntoCustomerCart(args: {
   }
 
   const updatedCustomerCart = await ensureCartCurrency(
-    sb,
+    ordersDb,
     customerCart,
     currency,
     store_id,
   );
 
-  await sb
+  await ordersDb
     .from("carts")
     .update({ last_activity_at: new Date().toISOString() })
     .eq("id", updatedCustomerCart.id)
@@ -975,19 +978,21 @@ export async function getOrCreateOpenCart(args: {
   store_id: string;
   session_id: string;
 }) {
-  const sb: any = supabaseAdmin();
-
   const storeId = String(args.store_id ?? "").trim();
   const sessionId = String(args.session_id ?? "").trim();
 
   if (!storeId) throw new Error("STORE_NOT_FOUND");
+
+  const ordersDb: any = await getOrdersDb(storeId);
+  const storeDb: any = await getStoreDb(storeId);
 
   const currency = await getStoreCurrency(storeId);
   const customer_id = await getCustomerIdMaybe(storeId);
 
   if (customer_id) {
     return await mergeSessionCartIntoCustomerCart({
-      sb,
+      ordersDb,
+      storeDb,
       store_id: storeId,
       customer_id,
       session_id: sessionId,
@@ -995,7 +1000,7 @@ export async function getOrCreateOpenCart(args: {
     });
   }
 
-  const r2 = await sb
+  const r2 = await ordersDb
     .from("carts")
     .select("*")
     .eq("store_id", storeId)
@@ -1007,10 +1012,10 @@ export async function getOrCreateOpenCart(args: {
   if (r2.error) throw new Error(r2.error.message);
 
   if (r2.data) {
-    return await ensureCartCurrency(sb, r2.data, currency, storeId);
+    return await ensureCartCurrency(ordersDb, r2.data, currency, storeId);
   }
 
-  const ins = await sb
+  const ins = await ordersDb
     .from("carts")
     .insert({
       store_id: storeId,
@@ -1036,13 +1041,12 @@ export async function getExistingOpenCartsForInitialCount(args: {
   store_id: string;
   session_id: string;
 }) {
-  const sb: any = supabaseAdmin();
-
   const storeId = String(args.store_id ?? "").trim();
   const sessionId = String(args.session_id ?? "").trim();
 
   if (!storeId) return [];
 
+  const ordersDb: any = await getOrdersDb(storeId);
   const customer_id = await getCustomerIdMaybe(storeId);
 
   const carts: any[] = [];
@@ -1059,7 +1063,7 @@ export async function getExistingOpenCartsForInitialCount(args: {
 
   if (customer_id) {
     const [customerCartR, sessionCartR] = await Promise.all([
-      sb
+      ordersDb
         .from("carts")
         .select("id,item_count,updated_at,created_at,last_activity_at")
         .eq("store_id", storeId)
@@ -1072,7 +1076,7 @@ export async function getExistingOpenCartsForInitialCount(args: {
         .maybeSingle(),
 
       sessionId
-        ? sb
+        ? ordersDb
             .from("carts")
             .select("id,item_count,updated_at,created_at,last_activity_at")
             .eq("store_id", storeId)
@@ -1099,7 +1103,7 @@ export async function getExistingOpenCartsForInitialCount(args: {
 
   if (!sessionId) return [];
 
-  const sessionCartR = await sb
+  const sessionCartR = await ordersDb
     .from("carts")
     .select("id,item_count,updated_at,created_at,last_activity_at")
     .eq("store_id", storeId)

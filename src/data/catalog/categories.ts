@@ -1,5 +1,5 @@
 // FILE: apps/storefront/src/data/catalog/categories.ts
-import { supabaseAdmin } from "@/data/store/supabase.server";
+import { getStoreDb } from "@/data/db/store-db.server";
 
 export type CategoryGridItem = {
   id: string;
@@ -22,26 +22,42 @@ export type CategoryNode = CategoryGridItem & { children: CategoryNode[] };
 function pickPrimaryImage(media: any[] | null | undefined) {
   const arr = Array.isArray(media) ? media : [];
   if (!arr.length) return null;
+
   const primary = arr.find((m) => m?.is_primary) ?? arr[0];
+
   if (!primary?.url) return null;
-  return { url: String(primary.url), alt: primary?.alt ?? null };
+
+  return {
+    url: String(primary.url),
+    alt: primary?.alt ?? null,
+  };
 }
 
 function normalizeShortUrl(v: any): string | null {
-  const s = String(v ?? "").trim();
-  if (!s) return null;
+  const value = String(v ?? "").trim();
+
+  if (!value) return null;
 
   // لو مخزن رابط كامل
   try {
-    if (s.startsWith("http://") || s.startsWith("https://")) {
-      const u = new URL(s);
-      const seg = u.pathname.split("/").filter(Boolean).pop() || "";
-      return seg || null;
+    if (value.startsWith("http://") || value.startsWith("https://")) {
+      const url = new URL(value);
+      const segment = url.pathname.split("/").filter(Boolean).pop() || "";
+
+      return segment || null;
     }
   } catch {}
 
   // لو مخزن "/Nmsy"
-  return s.replace(/^\/+/, "") || null;
+  return value.replace(/^\/+/, "") || null;
+}
+
+function normalizeLimit(value: number) {
+  return Number.isFinite(value) ? Math.max(1, Math.min(value, 200)) : 24;
+}
+
+function normalizeMaxDepth(value: number) {
+  return Number.isFinite(value) ? Math.max(1, Math.min(value, 6)) : 6;
 }
 
 // ------------------------- GRID -------------------------
@@ -51,9 +67,10 @@ export async function getCategoriesForGrid(args: {
   source: "top_level" | "by_parent_slug";
   parent_slug?: string;
 }): Promise<CategoryGridItem[]> {
-  const sb = supabaseAdmin();
+  const sb = await getStoreDb(args.store_id);
 
   let parentId: string | null = null;
+
   if (args.source === "by_parent_slug" && args.parent_slug) {
     const parentR = await sb
       .from("categories")
@@ -63,43 +80,51 @@ export async function getCategoriesForGrid(args: {
       .maybeSingle();
 
     parentId = (parentR.data as any)?.id ?? null;
+
     if (!parentId) return [];
   }
 
-  let q = sb
+  let query = sb
     .from("categories")
     .select("id,name,slug,parent_id,sort_order,depth,path,public_no")
     .eq("store_id", args.store_id)
     .eq("status", "active");
 
-  if (args.source === "top_level") q = q.is("parent_id", null);
-  if (args.source === "by_parent_slug" && parentId)
-    q = q.eq("parent_id", parentId);
+  if (args.source === "top_level") {
+    query = query.is("parent_id", null);
+  }
 
-  const r = await q
+  if (args.source === "by_parent_slug" && parentId) {
+    query = query.eq("parent_id", parentId);
+  }
+
+  const categoriesResult = await query
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true })
-    .limit(
-      Number.isFinite(args.limit) ? Math.max(1, Math.min(args.limit, 200)) : 24,
-    );
+    .limit(normalizeLimit(args.limit));
 
-  const base = (r.data || []) as any[];
+  const base = (categoriesResult.data || []) as any[];
+
   if (!base.length) return [];
 
-  const ids = base.map((x) => x.id).filter(Boolean);
+  const ids = base.map((item) => item.id).filter(Boolean);
+
+  if (!ids.length) return [];
 
   // metadata urls
-  const metaR = await sb
+  const metaResult = await sb
     .from("category_metadata")
     .select("category_id,url")
     .in("category_id", ids);
 
-  const metaByCat = new Map<string, any>();
-  for (const m of (metaR.data || []) as any[])
-    metaByCat.set(String(m.category_id), m);
+  const metaByCategory = new Map<string, any>();
+
+  for (const meta of (metaResult.data || []) as any[]) {
+    metaByCategory.set(String(meta.category_id), meta);
+  }
 
   // media
-  const mediaR = await sb
+  const mediaResult = await sb
     .from("category_media")
     .select("category_id,url,alt,is_primary,sort_order")
     .eq("store_id", args.store_id)
@@ -107,28 +132,35 @@ export async function getCategoriesForGrid(args: {
     .order("is_primary", { ascending: false })
     .order("sort_order", { ascending: true });
 
-  const mediaByCat = new Map<string, any[]>();
-  for (const m of (mediaR.data || []) as any[]) {
-    const k = String(m.category_id);
-    if (!mediaByCat.has(k)) mediaByCat.set(k, []);
-    mediaByCat.get(k)!.push(m);
+  const mediaByCategory = new Map<string, any[]>();
+
+  for (const media of (mediaResult.data || []) as any[]) {
+    const key = String(media.category_id);
+
+    if (!mediaByCategory.has(key)) {
+      mediaByCategory.set(key, []);
+    }
+
+    mediaByCategory.get(key)!.push(media);
   }
 
-  return base.map((c) => {
-    const meta = metaByCat.get(String(c.id));
-    return {
-      id: String(c.id),
-      name: String(c.name),
-      slug: String(c.slug),
-      parent_id: c.parent_id ? String(c.parent_id) : null,
-      sort_order: Number(c.sort_order ?? 0),
-      depth: Number(c.depth ?? 1),
-      path: String(c.path ?? "/"),
+  return base.map((category) => {
+    const id = String(category.id);
+    const meta = metaByCategory.get(id);
 
-      public_no: Number(c.public_no),
+    return {
+      id,
+      name: String(category.name),
+      slug: String(category.slug),
+      parent_id: category.parent_id ? String(category.parent_id) : null,
+      sort_order: Number(category.sort_order ?? 0),
+      depth: Number(category.depth ?? 1),
+      path: String(category.path ?? "/"),
+
+      public_no: Number(category.public_no),
       short_url: normalizeShortUrl(meta?.url),
 
-      image: pickPrimaryImage(mediaByCat.get(String(c.id)) || []),
+      image: pickPrimaryImage(mediaByCategory.get(id) || []),
     };
   });
 }
@@ -138,13 +170,11 @@ export async function getCategoriesTree(args: {
   store_id: string;
   max_depth: number;
 }): Promise<CategoryNode[]> {
-  const sb = supabaseAdmin();
+  const sb = await getStoreDb(args.store_id);
 
-  const maxDepth = Number.isFinite(args.max_depth)
-    ? Math.max(1, Math.min(args.max_depth, 6))
-    : 6;
+  const maxDepth = normalizeMaxDepth(args.max_depth);
 
-  const r = await sb
+  const categoriesResult = await sb
     .from("categories")
     .select("id,name,slug,parent_id,sort_order,depth,path,public_no")
     .eq("store_id", args.store_id)
@@ -154,21 +184,26 @@ export async function getCategoriesTree(args: {
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true });
 
-  const base = (r.data || []) as any[];
+  const base = (categoriesResult.data || []) as any[];
+
   if (!base.length) return [];
 
-  const ids = base.map((x) => x.id).filter(Boolean);
+  const ids = base.map((item) => item.id).filter(Boolean);
 
-  const metaR = await sb
+  if (!ids.length) return [];
+
+  const metaResult = await sb
     .from("category_metadata")
     .select("category_id,url")
     .in("category_id", ids);
 
-  const metaByCat = new Map<string, any>();
-  for (const m of (metaR.data || []) as any[])
-    metaByCat.set(String(m.category_id), m);
+  const metaByCategory = new Map<string, any>();
 
-  const mediaR = await sb
+  for (const meta of (metaResult.data || []) as any[]) {
+    metaByCategory.set(String(meta.category_id), meta);
+  }
+
+  const mediaResult = await sb
     .from("category_media")
     .select("category_id,url,alt,is_primary,sort_order")
     .eq("store_id", args.store_id)
@@ -176,34 +211,43 @@ export async function getCategoriesTree(args: {
     .order("is_primary", { ascending: false })
     .order("sort_order", { ascending: true });
 
-  const mediaByCat = new Map<string, any[]>();
-  for (const m of (mediaR.data || []) as any[]) {
-    const k = String(m.category_id);
-    if (!mediaByCat.has(k)) mediaByCat.set(k, []);
-    mediaByCat.get(k)!.push(m);
+  const mediaByCategory = new Map<string, any[]>();
+
+  for (const media of (mediaResult.data || []) as any[]) {
+    const key = String(media.category_id);
+
+    if (!mediaByCategory.has(key)) {
+      mediaByCategory.set(key, []);
+    }
+
+    mediaByCategory.get(key)!.push(media);
   }
 
   const byId = new Map<string, CategoryNode>();
-  for (const c of base) {
-    const meta = metaByCat.get(String(c.id));
-    byId.set(String(c.id), {
-      id: String(c.id),
-      name: String(c.name),
-      slug: String(c.slug),
-      parent_id: c.parent_id ? String(c.parent_id) : null,
-      sort_order: Number(c.sort_order ?? 0),
-      depth: Number(c.depth ?? 1),
-      path: String(c.path ?? "/"),
 
-      public_no: Number(c.public_no),
+  for (const category of base) {
+    const id = String(category.id);
+    const meta = metaByCategory.get(id);
+
+    byId.set(id, {
+      id,
+      name: String(category.name),
+      slug: String(category.slug),
+      parent_id: category.parent_id ? String(category.parent_id) : null,
+      sort_order: Number(category.sort_order ?? 0),
+      depth: Number(category.depth ?? 1),
+      path: String(category.path ?? "/"),
+
+      public_no: Number(category.public_no),
       short_url: normalizeShortUrl(meta?.url),
 
-      image: pickPrimaryImage(mediaByCat.get(String(c.id)) || []),
+      image: pickPrimaryImage(mediaByCategory.get(id) || []),
       children: [],
     });
   }
 
   const roots: CategoryNode[] = [];
+
   for (const node of byId.values()) {
     if (node.parent_id && byId.has(node.parent_id)) {
       byId.get(node.parent_id)!.children.push(node);
@@ -212,9 +256,9 @@ export async function getCategoriesTree(args: {
     }
   }
 
-  function sortNode(n: CategoryNode) {
-    n.children.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
-    n.children.forEach(sortNode);
+  function sortNode(node: CategoryNode) {
+    node.children.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+    node.children.forEach(sortNode);
   }
 
   roots.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));

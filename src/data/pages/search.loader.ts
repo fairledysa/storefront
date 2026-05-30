@@ -2,14 +2,21 @@
 
 import { unstable_cache } from "next/cache";
 import { cookies } from "next/headers";
+import { createHash } from "node:crypto";
 
+import { cacheKey } from "@/data/cache/cache-keys";
+import { redisCached } from "@/data/cache/redis-cache.server";
 import { getProductsBySearch } from "@/data/catalog/products";
-import { supabaseAdmin } from "@/data/store/supabase.server";
+import { getStoreDb } from "@/data/db/store-db.server";
 
 /* ------------------------- helpers ------------------------ */
 
 function s(value: any) {
   return String(value ?? "").trim();
+}
+
+function hashText(value: string) {
+  return createHash("sha1").update(value).digest("hex");
 }
 
 function normalizeSearchQuery(value: any) {
@@ -154,7 +161,7 @@ async function loadStoreCurrencyRowsRaw(store_id: string) {
   const storeId = s(store_id);
   if (!storeId) return [];
 
-  const sb: any = supabaseAdmin();
+  const sb = await getStoreDb(storeId);
 
   const { data, error } = await sb
     .from("store_currencies")
@@ -181,7 +188,12 @@ function loadStoreCurrencyRows(store_id: string) {
 
   if (!fn) {
     fn = unstable_cache(
-      () => loadStoreCurrencyRowsRaw(storeId),
+      () =>
+        redisCached(
+          cacheKey("search", "store-currency-rows", storeId),
+          { ttlSeconds: 300 },
+          () => loadStoreCurrencyRowsRaw(storeId),
+        ),
       ["search-page-store-currency-rows", storeId],
       { revalidate: 120 },
     );
@@ -281,15 +293,6 @@ function currencyInfoFromRuntime(args: {
   };
 }
 
-/**
- * rate في metadata عندك مثل:
- * USD = 238.5
- * يعني 1 USD = 238.5 من العملة الافتراضية.
- *
- * لذلك:
- * default -> USD = amount / 238.5
- * USD -> default = amount * 238.5
- */
 function convertMoney(args: {
   amount: any;
   sourceCode: any;
@@ -311,8 +314,11 @@ function convertMoney(args: {
 
   if (!source || !target) return amount;
 
-  const sourceRate = source.code === defaultCode ? 1 : positiveRate(source.rate, 1);
-  const targetRate = target.code === defaultCode ? 1 : positiveRate(target.rate, 1);
+  const sourceRate =
+    source.code === defaultCode ? 1 : positiveRate(source.rate, 1);
+
+  const targetRate =
+    target.code === defaultCode ? 1 : positiveRate(target.rate, 1);
 
   const amountInDefault =
     source.code === defaultCode ? amount : amount * sourceRate;
@@ -352,12 +358,15 @@ function readPricingCurrency(row: any, fallback: string) {
 /* ------------------------- store options loader ------------------------ */
 
 async function loadStoreOptionsRaw(store_id: string) {
-  const sb: any = supabaseAdmin();
+  const storeId = s(store_id);
+  if (!storeId) return {};
+
+  const sb = await getStoreDb(storeId);
 
   const { data, error } = await sb
     .from("store_settings")
     .select("slug,value")
-    .eq("store_id", store_id)
+    .eq("store_id", storeId)
     .like("slug", "options:%");
 
   if (error || !Array.isArray(data)) return {};
@@ -387,7 +396,12 @@ function loadStoreOptions(store_id: string) {
 
   if (!fn) {
     fn = unstable_cache(
-      () => loadStoreOptionsRaw(storeId),
+      () =>
+        redisCached(
+          cacheKey("search", "store-options", storeId),
+          { ttlSeconds: 300 },
+          () => loadStoreOptionsRaw(storeId),
+        ),
       ["search-page-store-options", storeId],
       { revalidate: 120 },
     );
@@ -418,7 +432,9 @@ function convertPricingObject(args: {
   currencyRuntime: ReturnType<typeof buildCurrencyRuntime>;
 }) {
   const pricing =
-    args.pricing && typeof args.pricing === "object" && !Array.isArray(args.pricing)
+    args.pricing &&
+    typeof args.pricing === "object" &&
+    !Array.isArray(args.pricing)
       ? args.pricing
       : {};
 
@@ -641,20 +657,20 @@ type ProductCardOptionForSearch = {
   values: ProductCardOptionValueForSearch[];
 };
 
-async function attachProductCardOptions(args: {
-  products: any[];
-}): Promise<any[]> {
-  const products = Array.isArray(args.products) ? args.products : [];
+type ProductCardOptionsMap = Record<string, ProductCardOptionForSearch[]>;
 
-  if (!products.length) return products;
-
+async function loadProductCardOptionsMapRaw(args: {
+  store_id: string;
+  productIds: string[];
+}): Promise<ProductCardOptionsMap> {
+  const storeId = s(args.store_id);
   const productIds = Array.from(
-    new Set(products.map((product) => s(product?.id)).filter(Boolean)),
-  );
+    new Set(args.productIds.map(s).filter(Boolean)),
+  ).slice(0, 500);
 
-  if (!productIds.length) return products;
+  if (!storeId || !productIds.length) return {};
 
-  const sb: any = supabaseAdmin();
+  const sb = await getStoreDb(storeId);
 
   const optionsResult = await sb
     .from("product_options")
@@ -666,11 +682,11 @@ async function attachProductCardOptions(args: {
     ? (optionsResult.data as any[])
     : [];
 
-  if (!optionRows.length) return products;
+  if (!optionRows.length) return {};
 
   const optionIds = optionRows.map((option) => s(option?.id)).filter(Boolean);
 
-  if (!optionIds.length) return products;
+  if (!optionIds.length) return {};
 
   const displayTypeByOptionId = new Map<string, string>();
 
@@ -750,9 +766,81 @@ async function attachProductCardOptions(args: {
     optionsByProductId.set(productId, arr);
   }
 
+  const out: ProductCardOptionsMap = {};
+
+  for (const [productId, options] of optionsByProductId.entries()) {
+    out[productId] = options;
+  }
+
+  return out;
+}
+
+const productCardOptionsMapCache = new Map<
+  string,
+  () => Promise<ProductCardOptionsMap>
+>();
+
+function loadProductCardOptionsMap(args: {
+  store_id: string;
+  productIds: string[];
+}): Promise<ProductCardOptionsMap> {
+  const storeId = s(args.store_id);
+  const ids = Array.from(new Set(args.productIds.map(s).filter(Boolean))).sort();
+
+  if (!storeId || !ids.length) {
+    return Promise.resolve({} as ProductCardOptionsMap);
+  }
+
+  const idsHash = hashText(ids.join(","));
+  const key = `${storeId}:${idsHash}`;
+
+  let fn = productCardOptionsMapCache.get(key);
+
+  if (!fn) {
+    fn = unstable_cache(
+      () =>
+        redisCached(
+          cacheKey("search", "product-card-options", storeId, idsHash),
+          { ttlSeconds: 180 },
+          () =>
+            loadProductCardOptionsMapRaw({
+              store_id: storeId,
+              productIds: ids,
+            }),
+        ),
+      ["search-product-card-options-map", storeId, idsHash],
+      { revalidate: 120 },
+    );
+
+    productCardOptionsMapCache.set(key, fn);
+  }
+
+  return fn();
+}
+
+async function attachProductCardOptions(args: {
+  store_id: string;
+  products: any[];
+}): Promise<any[]> {
+  const storeId = s(args.store_id);
+  const products = Array.isArray(args.products) ? args.products : [];
+
+  if (!storeId || !products.length) return products;
+
+  const productIds = Array.from(
+    new Set(products.map((product) => s(product?.id)).filter(Boolean)),
+  );
+
+  if (!productIds.length) return products;
+
+  const optionsMap = await loadProductCardOptionsMap({
+    store_id: storeId,
+    productIds,
+  });
+
   return products.map((product) => {
     const productId = s(product?.id);
-    const options = optionsByProductId.get(productId);
+    const options = productId ? optionsMap[productId] : null;
 
     if (!options?.length) return product;
 
@@ -774,38 +862,36 @@ async function attachProductCardOptions(args: {
 
 /* ------------------------- search page loader ------------------------ */
 
-export async function loadSearchPage(args: {
+async function loadSearchPageRaw(args: {
   store_id: string;
-  q?: string | null;
-  sort?: string | null;
-  limit?: number;
+  query: string;
+  sort: string;
+  limit: number;
+  selectedCurrency: string;
 }) {
   const storeId = s(args.store_id);
-  const query = normalizeSearchQuery(args.q);
+  const query = normalizeSearchQuery(args.query);
   const sort = normalizeSort(args.sort);
   const limit = Math.min(Math.max(Number(args.limit ?? 60), 1), 80);
 
-  const [rawProducts, options, currencyRows, selectedCurrency] =
-    await Promise.all([
-      query.length >= 2
-        ? getProductsBySearch({
-            store_id: storeId,
-            q: query,
-            limit,
-          })
-        : Promise.resolve([]),
+  const [rawProducts, options, currencyRows] = await Promise.all([
+    query.length >= 2
+      ? getProductsBySearch({
+          store_id: storeId,
+          q: query,
+          limit,
+        })
+      : Promise.resolve([]),
 
-      loadStoreOptions(storeId),
+    loadStoreOptions(storeId),
 
-      loadStoreCurrencyRows(storeId),
-
-      readSelectedCurrencyCodeFromCookies(),
-    ]);
+    loadStoreCurrencyRows(storeId),
+  ]);
 
   const currencyRuntime = buildCurrencyRuntime(currencyRows, "SAR");
 
   const targetCurrency = resolveTargetCurrencyCode({
-    selectedCode: selectedCurrency,
+    selectedCode: args.selectedCurrency,
     runtime: currencyRuntime,
   });
 
@@ -815,6 +901,7 @@ export async function loadSearchPage(args: {
   });
 
   const productsWithOptions = await attachProductCardOptions({
+    store_id: storeId,
     products: rawProducts,
   });
 
@@ -833,4 +920,59 @@ export async function loadSearchPage(args: {
     options,
     currency,
   };
+}
+
+const searchPageCache = new Map<string, () => Promise<any>>();
+
+export async function loadSearchPage(args: {
+  store_id: string;
+  q?: string | null;
+  sort?: string | null;
+  limit?: number;
+}) {
+  const storeId = s(args.store_id);
+  const query = normalizeSearchQuery(args.q);
+  const sort = normalizeSort(args.sort);
+  const limit = Math.min(Math.max(Number(args.limit ?? 60), 1), 80);
+  const selectedCurrency = cleanCurrencyCode(
+    await readSelectedCurrencyCodeFromCookies(),
+    "auto",
+  );
+
+  const queryHash = hashText(query);
+  const key = `${storeId}:${queryHash}:${sort}:${limit}:${selectedCurrency}`;
+
+  let fn = searchPageCache.get(key);
+
+  if (!fn) {
+    fn = unstable_cache(
+      () =>
+        redisCached(
+          cacheKey(
+            "search",
+            "page",
+            storeId,
+            queryHash,
+            sort,
+            String(limit),
+            selectedCurrency,
+          ),
+          { ttlSeconds: 90 },
+          () =>
+            loadSearchPageRaw({
+              store_id: storeId,
+              query,
+              sort,
+              limit,
+              selectedCurrency,
+            }),
+        ),
+      ["search-page", storeId, queryHash, sort, String(limit), selectedCurrency],
+      { revalidate: 60 },
+    );
+
+    searchPageCache.set(key, fn);
+  }
+
+  return fn();
 }

@@ -2,10 +2,15 @@
 
 import { cache } from "react";
 import { unstable_cache } from "next/cache";
-import { supabaseAdmin } from "@/data/store/supabase.server";
+
+import { getStoreDb } from "@/data/db/store-db.server";
 
 export type { SeoUrlMode } from "@/lib/seo/urls";
 import type { SeoUrlMode } from "@/lib/seo/urls";
+
+function s(value: unknown) {
+  return String(value ?? "").trim();
+}
 
 function normalizeMode(v: any): SeoUrlMode {
   let raw: any = v;
@@ -13,7 +18,7 @@ function normalizeMode(v: any): SeoUrlMode {
   if (typeof raw === "string") {
     const original = raw.trim();
 
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < 2; i += 1) {
       try {
         raw = JSON.parse(typeof raw === "string" ? raw : JSON.stringify(raw));
       } catch {
@@ -30,6 +35,7 @@ function normalizeMode(v: any): SeoUrlMode {
   const m = String(modeVal || "").trim();
 
   if (m === "short" || m === "named_ar" || m === "named_en") return m;
+
   return "named_ar";
 }
 
@@ -37,13 +43,18 @@ async function getStoreSettingRaw<T = any>(args: {
   store_id: string;
   slug: string;
 }): Promise<T | null> {
-  const sb = supabaseAdmin() as any;
+  const storeId = s(args.store_id);
+  const slug = s(args.slug);
+
+  if (!storeId || !slug) return null;
+
+  const sb = (await getStoreDb(storeId)) as any;
 
   const r = await sb
     .from("store_settings")
     .select("value")
-    .eq("store_id", args.store_id)
-    .eq("slug", args.slug)
+    .eq("store_id", storeId)
+    .eq("slug", slug)
     .limit(1)
     .maybeSingle();
 
@@ -59,13 +70,22 @@ export function getStoreSetting<T = any>(args: {
   store_id: string;
   slug: string;
 }): Promise<T | null> {
-  const key = `${args.store_id}:${args.slug}`;
+  const storeId = s(args.store_id);
+  const slug = s(args.slug);
+
+  if (!storeId || !slug) return Promise.resolve(null);
+
+  const key = `${storeId}:${slug}`;
   let fn = storeSettingCache.get(key);
 
   if (!fn) {
     fn = unstable_cache(
-      () => getStoreSettingRaw<T>(args),
-      ["store-setting", args.store_id, args.slug],
+      () =>
+        getStoreSettingRaw<T>({
+          store_id: storeId,
+          slug,
+        }),
+      ["store-setting", storeId, slug],
       {
         revalidate: 120,
       },
@@ -79,8 +99,11 @@ export function getStoreSetting<T = any>(args: {
 
 export const getSeoUrlMode = cache(
   async (store_id: string): Promise<SeoUrlMode> => {
+    const storeId = s(store_id);
+    if (!storeId) return "named_ar";
+
     const value = await getStoreSetting<any>({
-      store_id,
+      store_id: storeId,
       slug: "seo.url_mode",
     });
 
@@ -101,15 +124,29 @@ export type StoreSeoMeta = {
 };
 
 function normalizeTwitterHandle(v: any): string | null {
-  const s = String(v || "").trim();
-  if (!s) return null;
-  return s.startsWith("@") ? s : `@${s}`;
+  const text = s(v);
+  if (!text) return null;
+  return text.startsWith("@") ? text : `@${text}`;
 }
 
 export const getSeoMeta = cache(
   async (store_id: string): Promise<StoreSeoMeta> => {
+    const storeId = s(store_id);
+
+    if (!storeId) {
+      return {
+        title: null,
+        description: null,
+        keywords: null,
+        og_image: null,
+        twitter_handle: null,
+        published_time: null,
+        locale: "ar_AR",
+      };
+    }
+
     const meta = await getStoreSetting<StoreSeoMeta>({
-      store_id,
+      store_id: storeId,
       slug: "seo.meta",
     });
 

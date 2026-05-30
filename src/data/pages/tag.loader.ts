@@ -2,10 +2,18 @@
 import "server-only";
 
 import { unstable_cache } from "next/cache";
-import { supabaseAdmin } from "@/data/store/supabase.server";
+import { createHash } from "node:crypto";
+
+import { cacheKey } from "@/data/cache/cache-keys";
+import { redisCached } from "@/data/cache/redis-cache.server";
+import { getStoreDb } from "@/data/db/store-db.server";
 
 function s(value: unknown) {
   return String(value ?? "").trim();
+}
+
+function hashText(value: string) {
+  return createHash("sha1").update(value).digest("hex");
 }
 
 function normalizeTagSlug(value: unknown) {
@@ -85,12 +93,15 @@ function moneyLabel(value: number | null, currency: string) {
 /* ------------------------- store options ------------------------- */
 
 async function loadStoreOptionsRaw(storeId: string) {
-  const sb: any = supabaseAdmin();
+  const store_id = s(storeId);
+  if (!store_id) return {};
+
+  const sb = await getStoreDb(store_id);
 
   const { data, error } = await sb
     .from("store_settings")
     .select("slug,value")
-    .eq("store_id", storeId)
+    .eq("store_id", store_id)
     .like("slug", "options:%");
 
   if (error || !Array.isArray(data)) return {};
@@ -113,14 +124,20 @@ const storeOptionsCache = new Map<
 >();
 
 function loadStoreOptions(storeId: string) {
-  const key = normalizeCacheKey(storeId);
+  const store_id = s(storeId);
+  const key = normalizeCacheKey(store_id);
 
   let fn = storeOptionsCache.get(key);
 
   if (!fn) {
     fn = unstable_cache(
-      () => loadStoreOptionsRaw(storeId),
-      ["tag-page-store-options", storeId],
+      () =>
+        redisCached(
+          cacheKey("tag", "store-options", store_id),
+          { ttlSeconds: 300 },
+          () => loadStoreOptionsRaw(store_id),
+        ),
+      ["tag-page-store-options", store_id],
       { revalidate: 120 },
     );
 
@@ -144,7 +161,7 @@ async function loadStoreCurrencyRaw(
   const store_id = s(storeId);
   if (!store_id) return null;
 
-  const sb: any = supabaseAdmin();
+  const sb = await getStoreDb(store_id);
 
   const { data, error } = await sb
     .from("store_currencies")
@@ -158,11 +175,11 @@ async function loadStoreCurrencyRaw(
 
   if (error || !data) return null;
 
-  const code = s(data?.currency_code).toUpperCase();
+  const code = s((data as any)?.currency_code).toUpperCase();
   if (!code) return null;
 
-  const symbol = s(data?.symbol) || code;
-  const decimalDigits = clampDecimals(data?.decimal_digits);
+  const symbol = s((data as any)?.symbol) || code;
+  const decimalDigits = clampDecimals((data as any)?.decimal_digits);
 
   return {
     code,
@@ -184,7 +201,12 @@ function loadStoreCurrency(storeId: string) {
 
   if (!fn) {
     fn = unstable_cache(
-      () => loadStoreCurrencyRaw(store_id),
+      () =>
+        redisCached(
+          cacheKey("tag", "store-currency", store_id),
+          { ttlSeconds: 300 },
+          () => loadStoreCurrencyRaw(store_id),
+        ),
       ["tag-page-store-currency", store_id],
       { revalidate: 120 },
     );
@@ -329,7 +351,7 @@ async function loadProductMedia(args: {
 
   if (!storeId || !productIds.length) return new Map<string, any[]>();
 
-  const sb: any = supabaseAdmin();
+  const sb = await getStoreDb(storeId);
 
   const mediaR = await sb
     .from("product_media")
@@ -343,7 +365,7 @@ async function loadProductMedia(args: {
   const rows = !mediaR.error && Array.isArray(mediaR.data) ? mediaR.data : [];
   const mediaByProduct = new Map<string, any[]>();
 
-  for (const row of rows) {
+  for (const row of rows as any[]) {
     const productId = s(row?.product_id);
     const url = s(row?.original_url);
 
@@ -388,11 +410,16 @@ async function loadProductMedia(args: {
 
 /* ------------------------- pricing / stock ------------------------- */
 
-async function loadProductPricing(productIds: string[]) {
-  const ids = productIds.map(s).filter(Boolean);
-  if (!ids.length) return new Map<string, any>();
+async function loadProductPricing(args: {
+  storeId: string;
+  productIds: string[];
+}) {
+  const storeId = s(args.storeId);
+  const ids = args.productIds.map(s).filter(Boolean);
 
-  const sb: any = supabaseAdmin();
+  if (!storeId || !ids.length) return new Map<string, any>();
+
+  const sb = await getStoreDb(storeId);
 
   const pricingR = await sb
     .from("product_pricing")
@@ -406,7 +433,7 @@ async function loadProductPricing(productIds: string[]) {
 
   const map = new Map<string, any>();
 
-  for (const row of rows) {
+  for (const row of rows as any[]) {
     const productId = s(row?.product_id);
     if (productId) map.set(productId, row);
   }
@@ -414,11 +441,16 @@ async function loadProductPricing(productIds: string[]) {
   return map;
 }
 
-async function loadProductStock(productIds: string[]) {
-  const ids = productIds.map(s).filter(Boolean);
-  if (!ids.length) return new Map<string, any>();
+async function loadProductStock(args: {
+  storeId: string;
+  productIds: string[];
+}) {
+  const storeId = s(args.storeId);
+  const ids = args.productIds.map(s).filter(Boolean);
 
-  const sb: any = supabaseAdmin();
+  if (!storeId || !ids.length) return new Map<string, any>();
+
+  const sb = await getStoreDb(storeId);
 
   const stockR = await sb
     .from("product_stock")
@@ -430,7 +462,7 @@ async function loadProductStock(productIds: string[]) {
   const rows = !stockR.error && Array.isArray(stockR.data) ? stockR.data : [];
   const map = new Map<string, any>();
 
-  for (const row of rows) {
+  for (const row of rows as any[]) {
     const productId = s(row?.product_id);
     if (productId) map.set(productId, row);
   }
@@ -459,11 +491,16 @@ type CardOption = {
   values: CardOptionValue[];
 };
 
-async function loadProductCardOptions(productIds: string[]) {
-  const ids = productIds.map(s).filter(Boolean);
-  if (!ids.length) return new Map<string, CardOption[]>();
+async function loadProductCardOptions(args: {
+  storeId: string;
+  productIds: string[];
+}) {
+  const storeId = s(args.storeId);
+  const ids = args.productIds.map(s).filter(Boolean);
 
-  const sb: any = supabaseAdmin();
+  if (!storeId || !ids.length) return new Map<string, CardOption[]>();
+
+  const sb = await getStoreDb(storeId);
 
   const optionsR = await sb
     .from("product_options")
@@ -476,7 +513,7 @@ async function loadProductCardOptions(productIds: string[]) {
 
   if (!optionRows.length) return new Map<string, CardOption[]>();
 
-  const optionIds = optionRows
+  const optionIds = (optionRows as any[])
     .map((option: any) => s(option?.id))
     .filter(Boolean);
 
@@ -498,12 +535,12 @@ async function loadProductCardOptions(productIds: string[]) {
   const optionById = new Map<string, any>();
   const valuesByOptionId = new Map<string, CardOptionValue[]>();
 
-  for (const option of optionRows) {
+  for (const option of optionRows as any[]) {
     const optionId = s(option?.id);
     if (optionId) optionById.set(optionId, option);
   }
 
-  for (const value of valueRows) {
+  for (const value of valueRows as any[]) {
     const optionId = s(value?.option_id);
     if (!optionId) continue;
 
@@ -541,7 +578,7 @@ async function loadProductCardOptions(productIds: string[]) {
 
   const optionsByProductId = new Map<string, CardOption[]>();
 
-  for (const option of optionRows) {
+  for (const option of optionRows as any[]) {
     const productId = s(option?.product_id);
     const optionId = s(option?.id);
 
@@ -566,11 +603,16 @@ async function loadProductCardOptions(productIds: string[]) {
   return optionsByProductId;
 }
 
-async function loadProductVariants(productIds: string[]) {
-  const ids = productIds.map(s).filter(Boolean);
-  if (!ids.length) return new Map<string, any[]>();
+async function loadProductVariants(args: {
+  storeId: string;
+  productIds: string[];
+}) {
+  const storeId = s(args.storeId);
+  const ids = args.productIds.map(s).filter(Boolean);
 
-  const sb: any = supabaseAdmin();
+  if (!storeId || !ids.length) return new Map<string, any[]>();
+
+  const sb = await getStoreDb(storeId);
 
   const variantsR = await sb
     .from("product_variants")
@@ -584,7 +626,9 @@ async function loadProductVariants(productIds: string[]) {
 
   if (!rows.length) return new Map<string, any[]>();
 
-  const variantIds = rows.map((row: any) => s(row?.id)).filter(Boolean);
+  const variantIds = (rows as any[])
+    .map((row: any) => s(row?.id))
+    .filter(Boolean);
 
   const linksR = variantIds.length
     ? await sb
@@ -596,7 +640,7 @@ async function loadProductVariants(productIds: string[]) {
   const optionValueIdsByVariant = new Map<string, string[]>();
 
   if (!linksR.error && Array.isArray(linksR.data)) {
-    for (const row of linksR.data) {
+    for (const row of linksR.data as any[]) {
       const variantId = s(row?.variant_id);
       const valueId = s(row?.option_value_id);
 
@@ -610,7 +654,7 @@ async function loadProductVariants(productIds: string[]) {
 
   const variantsByProductId = new Map<string, any[]>();
 
-  for (const row of rows) {
+  for (const row of rows as any[]) {
     const productId = s(row?.product_id);
     const variantId = s(row?.id);
 
@@ -631,7 +675,7 @@ async function loadProductVariants(productIds: string[]) {
 
 /* ------------------------- product rows ------------------------- */
 
-async function loadProductsByIds(args: {
+async function loadProductsByIdsRaw(args: {
   storeId: string;
   productIds: string[];
   limit: number;
@@ -642,7 +686,7 @@ async function loadProductsByIds(args: {
 
   if (!storeId || !productIds.length) return [];
 
-  const sb: any = supabaseAdmin();
+  const sb = await getStoreDb(storeId);
 
   const [
     productsR,
@@ -673,11 +717,11 @@ async function loadProductsByIds(args: {
       .in("product_id", productIds)
       .limit(limit),
 
-    loadProductPricing(productIds),
-    loadProductStock(productIds),
+    loadProductPricing({ storeId, productIds }),
+    loadProductStock({ storeId, productIds }),
     loadProductMedia({ storeId, productIds }),
-    loadProductCardOptions(productIds),
-    loadProductVariants(productIds),
+    loadProductCardOptions({ storeId, productIds }),
+    loadProductVariants({ storeId, productIds }),
   ]);
 
   const productRows =
@@ -688,12 +732,12 @@ async function loadProductsByIds(args: {
 
   const searchByProductId = new Map<string, any>();
 
-  for (const row of searchRows) {
+  for (const row of searchRows as any[]) {
     const productId = s(row?.product_id);
     if (productId) searchByProductId.set(productId, row);
   }
 
-  const products = productRows.map((product: any) => {
+  const products = (productRows as any[]).map((product: any) => {
     const productId = s(product?.id);
     const search = searchByProductId.get(productId) || {};
     const pricing = pricingByProduct.get(productId) || {};
@@ -724,15 +768,15 @@ async function loadProductsByIds(args: {
 
     const hoverImage =
       media
-        .map((item) => s(item?.original_url))
-        .find((url) => url && url !== currentImage) ||
+        .map((item: any) => s(item?.original_url))
+        .find((url: string) => url && url !== currentImage) ||
       s(metadata?.hoverImageUrl) ||
       s(metadata?.hover_image_url) ||
       s(metadata?.secondImageUrl) ||
       s(metadata?.second_image_url) ||
       "";
 
-    const images = media.map((item) => ({
+    const images = media.map((item: any) => ({
       url: item.original_url,
       src: item.original_url,
       original_url: item.original_url,
@@ -777,7 +821,6 @@ async function loadProductsByIds(args: {
 
       href: s(search?.href),
       url: s(search?.href),
-
       image_url: currentImage || null,
       imageUrl: currentImage || null,
       thumbnail_url: currentImage || null,
@@ -887,12 +930,55 @@ async function loadProductsByIds(args: {
   });
 }
 
+const productsByIdsCache = new Map<string, () => Promise<any[]>>();
+
+function loadProductsByIds(args: {
+  storeId: string;
+  productIds: string[];
+  limit: number;
+}) {
+  const storeId = s(args.storeId);
+  const productIds = Array.from(
+    new Set(args.productIds.map(s).filter(Boolean)),
+  );
+  const limit = Math.min(Math.max(Number(args.limit ?? 48), 1), 96);
+
+  if (!storeId || !productIds.length) return Promise.resolve([]);
+
+  const idsHash = hashText([...productIds].sort().join(","));
+  const key = `${storeId}:${limit}:${idsHash}`;
+
+  let fn = productsByIdsCache.get(key);
+
+  if (!fn) {
+    fn = unstable_cache(
+      () =>
+        redisCached(
+          cacheKey("tag", "products-by-ids", storeId, String(limit), idsHash),
+          { ttlSeconds: 120 },
+          () =>
+            loadProductsByIdsRaw({
+              storeId,
+              productIds,
+              limit,
+            }),
+        ),
+      ["tag-products-by-ids", storeId, String(limit), idsHash],
+      { revalidate: 60 },
+    );
+
+    productsByIdsCache.set(key, fn);
+  }
+
+  return fn();
+}
+
 /* ------------------------- loader ------------------------- */
 
-export async function loadTagPageBySlug(args: {
+async function loadTagPageBySlugRaw(args: {
   store_id: string;
   slug: string;
-  limit?: number;
+  limit: number;
 }) {
   const storeId = s(args.store_id);
   const incomingSlug = normalizeTagSlug(args.slug);
@@ -900,7 +986,7 @@ export async function loadTagPageBySlug(args: {
 
   if (!storeId || !incomingSlug) return null;
 
-  const sb: any = supabaseAdmin();
+  const sb = await getStoreDb(storeId);
 
   const [tagsR, options, currency] = await Promise.all([
     sb
@@ -933,7 +1019,7 @@ export async function loadTagPageBySlug(args: {
 
   if (tagsR.error || !Array.isArray(tagsR.data)) return null;
 
-  const tag = tagsR.data.find((row: any) => {
+  const tag = (tagsR.data as any[]).find((row: any) => {
     const rowSlug = normalizeTagSlug(row?.slug);
     const rowName = normalizeTagSlug(row?.name);
 
@@ -942,10 +1028,12 @@ export async function loadTagPageBySlug(args: {
 
   if (!tag?.id) return null;
 
+  const tagRow = tag as any;
+
   const linksR = await sb
     .from("product_tag_links")
     .select("product_id,created_at")
-    .eq("tag_id", tag.id)
+    .eq("tag_id", tagRow.id)
     .limit(1000);
 
   if (linksR.error) return null;
@@ -971,20 +1059,20 @@ export async function loadTagPageBySlug(args: {
     currency,
   });
 
-  const tagName = s(tag.name);
-  const tagSlug = s(tag.slug) || incomingSlug;
-  const tagDescription = s(tag.description);
+  const tagName = s(tagRow.name);
+  const tagSlug = s(tagRow.slug) || incomingSlug;
+  const tagDescription = s(tagRow.description);
 
   const categoryLike = {
-    id: String(tag.id),
+    id: String(tagRow.id),
     store_id: storeId,
     name: tagName,
     title: tagName,
     slug: tagSlug,
     description: tagDescription,
     public_no: null,
-    seo_title: tag.seo_title ?? null,
-    seo_description: tag.seo_description ?? null,
+    seo_title: tagRow.seo_title ?? null,
+    seo_description: tagRow.seo_description ?? null,
     is_tag: true,
     type: "tag",
     source: "tag",
@@ -995,28 +1083,28 @@ export async function loadTagPageBySlug(args: {
     type: "tag",
     source: "tag",
 
-    id: String(tag.id),
+    id: String(tagRow.id),
     title: tagName,
     heading: tagName,
     name: tagName,
     description: tagDescription,
 
-    seoTitle: s(tag.seo_title) || tagName,
-    seoDescription: s(tag.seo_description) || tagDescription,
+    seoTitle: s(tagRow.seo_title) || tagName,
+    seoDescription: s(tagRow.seo_description) || tagDescription,
 
     tag: {
-      id: String(tag.id),
+      id: String(tagRow.id),
       store_id: storeId,
       name: tagName,
       title: tagName,
       slug: tagSlug,
       description: tagDescription,
-      seo_title: tag.seo_title ?? null,
-      seo_description: tag.seo_description ?? null,
-      status: s(tag.status) || "active",
-      sort_order: Number(tag.sort_order ?? 0),
-      created_at: tag.created_at ?? null,
-      updated_at: tag.updated_at ?? null,
+      seo_title: tagRow.seo_title ?? null,
+      seo_description: tagRow.seo_description ?? null,
+      status: s(tagRow.status) || "active",
+      sort_order: Number(tagRow.sort_order ?? 0),
+      created_at: tagRow.created_at ?? null,
+      updated_at: tagRow.updated_at ?? null,
     },
 
     category: categoryLike,
@@ -1055,4 +1143,44 @@ export async function loadTagPageBySlug(args: {
       },
     ],
   };
+}
+
+const tagPageBySlugCache = new Map<string, () => Promise<any>>();
+
+export async function loadTagPageBySlug(args: {
+  store_id: string;
+  slug: string;
+  limit?: number;
+}) {
+  const storeId = s(args.store_id);
+  const incomingSlug = normalizeTagSlug(args.slug);
+  const limit = Math.min(Math.max(Number(args.limit ?? 48), 1), 96);
+
+  if (!storeId || !incomingSlug) return null;
+
+  const key = `${storeId}:${incomingSlug}:${limit}`;
+
+  let fn = tagPageBySlugCache.get(key);
+
+  if (!fn) {
+    fn = unstable_cache(
+      () =>
+        redisCached(
+          cacheKey("tag", "page", storeId, incomingSlug, String(limit)),
+          { ttlSeconds: 120 },
+          () =>
+            loadTagPageBySlugRaw({
+              store_id: storeId,
+              slug: incomingSlug,
+              limit,
+            }),
+        ),
+      ["tag-page", storeId, incomingSlug, String(limit)],
+      { revalidate: 60 },
+    );
+
+    tagPageBySlugCache.set(key, fn);
+  }
+
+  return fn();
 }

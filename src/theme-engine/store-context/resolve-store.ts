@@ -3,7 +3,10 @@
 import { headers } from "next/headers";
 import { cache } from "react";
 import { unstable_cache } from "next/cache";
-import { supabaseAdmin } from "@/data/store/supabase.server";
+
+import { cacheKey } from "@/data/cache/cache-keys";
+import { redisCached } from "@/data/cache/redis-cache.server";
+import { controlDb } from "@/data/db/control-db.server";
 
 export type StoreRow = {
   id: string;
@@ -92,11 +95,11 @@ function logDbError(scope: string, error: any, meta?: Record<string, any>) {
   });
 }
 
-/* ---------------------- DB lookups (real) ---------------------- */
+/* ---------------------- DB lookups (control db) ---------------------- */
 
 async function fetchStoreBySlug(slug: string): Promise<StoreRow | null> {
   try {
-    const sb = supabaseAdmin();
+    const sb = controlDb();
 
     const r = await sb
       .from("stores")
@@ -119,7 +122,7 @@ async function fetchStoreBySlug(slug: string): Promise<StoreRow | null> {
 
 async function fetchStoreById(store_id: string): Promise<StoreRow | null> {
   try {
-    const sb = supabaseAdmin();
+    const sb = controlDb();
 
     const r = await sb
       .from("stores")
@@ -144,7 +147,7 @@ async function fetchVerifiedDomainRow(
   host: string,
 ): Promise<StoreDomainRow | null> {
   try {
-    const sb = supabaseAdmin();
+    const sb = controlDb();
 
     const r = await sb
       .from("store_domains")
@@ -203,7 +206,7 @@ async function fetchActiveThemeVersion(
   store_id: string,
 ): Promise<ThemeVersionRow | null> {
   try {
-    const sb = supabaseAdmin();
+    const sb = controlDb();
 
     const r = await sb
       .from("store_theme_versions")
@@ -264,7 +267,7 @@ async function fetchActiveStoreTheme(
   store_id: string,
 ): Promise<ActiveStoreThemeRow | null> {
   try {
-    const sb = supabaseAdmin();
+    const sb = controlDb();
 
     const st = await sb
       .from("store_themes")
@@ -347,7 +350,7 @@ async function fetchThemeMainInfo(
   version_id: string,
 ): Promise<ThemeMainInfo> {
   try {
-    const sb = supabaseAdmin();
+    const sb = controlDb();
     const slug = slugForThemeMainInfo(version_id);
 
     const r = await sb
@@ -386,7 +389,7 @@ async function fetchThemeOptions(
   version_id: string,
 ): Promise<Record<string, any>> {
   try {
-    const sb = supabaseAdmin();
+    const sb = controlDb();
     const slug = slugForThemeOptions(version_id);
 
     const r = await sb
@@ -415,7 +418,7 @@ async function fetchThemeOptions(
   }
 }
 
-/* ---------------------- Cached wrappers (fast) ---------------------- */
+/* ---------------------- Cached wrappers (Next + Redis) ---------------------- */
 
 const _storeBySlugCache = new Map<string, () => Promise<StoreRow | null>>();
 const _storeByIdCache = new Map<string, () => Promise<StoreRow | null>>();
@@ -442,9 +445,16 @@ function cachedStoreBySlug(slug: string) {
   let fn = _storeBySlugCache.get(slug);
 
   if (!fn) {
-    fn = unstable_cache(() => fetchStoreBySlug(slug), ["store-by-slug", slug], {
-      revalidate: 60,
-    });
+    fn = unstable_cache(
+      () =>
+        redisCached(
+          cacheKey("resolve-store", "store-by-slug", slug),
+          { ttlSeconds: 300 },
+          () => fetchStoreBySlug(slug),
+        ),
+      ["store-by-slug", slug],
+      { revalidate: 60 },
+    );
 
     _storeBySlugCache.set(slug, fn);
   }
@@ -457,7 +467,12 @@ function cachedStoreById(store_id: string) {
 
   if (!fn) {
     fn = unstable_cache(
-      () => fetchStoreById(store_id),
+      () =>
+        redisCached(
+          cacheKey("resolve-store", "store-by-id", store_id),
+          { ttlSeconds: 300 },
+          () => fetchStoreById(store_id),
+        ),
       ["store-by-id", store_id],
       { revalidate: 60 },
     );
@@ -473,7 +488,12 @@ function cachedDomainRow(host: string) {
 
   if (!fn) {
     fn = unstable_cache(
-      () => fetchVerifiedDomainRow(host),
+      () =>
+        redisCached(
+          cacheKey("resolve-store", "domain-row", host),
+          { ttlSeconds: 300 },
+          () => fetchVerifiedDomainRow(host),
+        ),
       ["store-domain", host],
       { revalidate: 60 },
     );
@@ -489,7 +509,12 @@ function cachedActiveThemeVersion(store_id: string) {
 
   if (!fn) {
     fn = unstable_cache(
-      () => fetchActiveThemeVersion(store_id),
+      () =>
+        redisCached(
+          cacheKey("resolve-store", "active-theme-version", store_id),
+          { ttlSeconds: 120 },
+          () => fetchActiveThemeVersion(store_id),
+        ),
       ["active-theme-version", store_id],
       { revalidate: 30 },
     );
@@ -505,7 +530,12 @@ function cachedActiveStoreTheme(store_id: string) {
 
   if (!fn) {
     fn = unstable_cache(
-      () => fetchActiveStoreTheme(store_id),
+      () =>
+        redisCached(
+          cacheKey("resolve-store", "active-store-theme", store_id),
+          { ttlSeconds: 120 },
+          () => fetchActiveStoreTheme(store_id),
+        ),
       ["active-store-theme", store_id],
       { revalidate: 30 },
     );
@@ -522,7 +552,12 @@ function cachedThemeMainInfo(store_id: string, version_id: string) {
 
   if (!fn) {
     fn = unstable_cache(
-      () => fetchThemeMainInfo(store_id, version_id),
+      () =>
+        redisCached(
+          cacheKey("resolve-store", "theme-main-info", store_id, version_id),
+          { ttlSeconds: 120 },
+          () => fetchThemeMainInfo(store_id, version_id),
+        ),
       ["theme-main-info", store_id, version_id],
       { revalidate: 30 },
     );
@@ -539,7 +574,12 @@ function cachedThemeOptions(store_id: string, version_id: string) {
 
   if (!fn) {
     fn = unstable_cache(
-      () => fetchThemeOptions(store_id, version_id),
+      () =>
+        redisCached(
+          cacheKey("resolve-store", "theme-options", store_id, version_id),
+          { ttlSeconds: 120 },
+          () => fetchThemeOptions(store_id, version_id),
+        ),
       ["theme-options", store_id, version_id],
       { revalidate: 30 },
     );
@@ -594,7 +634,6 @@ async function attachThemeToContext(ctx: StoreContext): Promise<StoreContext> {
 async function resolveStoreContextByHost(host: string): Promise<StoreContext> {
   if (!host) return { host: "" };
 
-  // 1) DEV: {store}.localhost
   const localSlug = localSubdomainSlug(host);
 
   if (localSlug) {
@@ -614,7 +653,6 @@ async function resolveStoreContextByHost(host: string): Promise<StoreContext> {
     };
   }
 
-  // 2) PROD: {store}.elyaia.com
   const slug = madrarSubdomainSlug(host);
 
   if (slug) {
@@ -634,7 +672,6 @@ async function resolveStoreContextByHost(host: string): Promise<StoreContext> {
     };
   }
 
-  // 3) Custom domain mapping verified
   const domainRow = await cachedDomainRow(host);
 
   if (domainRow?.store_id) {
@@ -649,7 +686,6 @@ async function resolveStoreContextByHost(host: string): Promise<StoreContext> {
     }
   }
 
-  // 4) Platform domain
   return { host };
 }
 
@@ -660,7 +696,12 @@ function cachedStoreContextByHost(host: string) {
 
   if (!fn) {
     fn = unstable_cache(
-      () => resolveStoreContextByHost(host),
+      () =>
+        redisCached(
+          cacheKey("resolve-store", "store-context", host),
+          { ttlSeconds: 120 },
+          () => resolveStoreContextByHost(host),
+        ),
       ["store-context", host],
       { revalidate: 60 },
     );
@@ -670,7 +711,7 @@ function cachedStoreContextByHost(host: string) {
 
   return fn();
 }
- 
+
 export const resolveStoreContext = cache(async (): Promise<StoreContext> => {
   const h = await headers();
 

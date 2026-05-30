@@ -2,12 +2,14 @@
 
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { supabaseAdmin } from "@/data/store/supabase.server";
 import { isProductVisibleInWeb } from "@/data/catalog/products";
 import { getSeoUrlMode } from "@/data/store/settings";
 import { productUrl } from "@/lib/seo/urls";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
 import { getMalakBootstrap } from "@/themes/malak/bootstrap/get-malak-bootstrap";
+import { controlDb } from "@/data/db/control-db.server";
+import { getOrdersDb } from "@/data/db/orders-db.server";
+import { getStoreDb } from "@/data/db/store-db.server";
 import { loadFreeShippingEvaluator } from "../checkout/lib/free-shipping";
 import {
   buildLineKey,
@@ -315,15 +317,13 @@ async function readSelectedCurrencyCodeFromCookies() {
   }
 }
 
-async function fetchStoreDefaultCurrencyCode(
-  sb: any,
-  storeId: string,
-  fallback = "SAR",
-) {
+async function fetchStoreDefaultCurrencyCode(storeId: string, fallback = "SAR") {
   const fallbackCode = cleanCurrencyCode(fallback, "SAR");
 
   try {
-    const res = await sb
+    const control: any = await controlDb();
+
+    const res = await control
       .from("stores")
       .select("default_currency")
       .eq("id", storeId)
@@ -353,7 +353,7 @@ function readCurrencyRateFromMetadata(metadata: any) {
   );
 }
 
-async function fetchStoreCurrenciesForRuntime(sb: any, storeId: string) {
+async function fetchStoreCurrenciesForRuntime(storeDb: any, storeId: string) {
   const selects = [
     "currency_code,symbol,decimal_digits,is_default,is_enabled,name_ar,name_en,metadata",
     "currency_code,symbol,decimal_digits,is_default,is_enabled,metadata",
@@ -363,7 +363,7 @@ async function fetchStoreCurrenciesForRuntime(sb: any, storeId: string) {
   let lastError: any = null;
 
   for (const select of selects) {
-    const res = await sb
+    const res = await storeDb
       .from("store_currencies")
       .select(select)
       .eq("store_id", storeId)
@@ -1054,7 +1054,7 @@ function buildStockLimitForCartItem(args: {
 }
 
 async function normalizeCartLines(args: {
-  sb: any;
+  ordersDb: any;
   cart_id: string;
   store_id: string;
   items: any[];
@@ -1064,7 +1064,7 @@ async function normalizeCartLines(args: {
   dbVariantById: Map<string, any>;
   dbLinksByProduct: Map<string, any[]>;
 }) {
-  const { sb, cart_id, items, productMap, stockByProduct } = args;
+  const { ordersDb, cart_id, items, productMap, stockByProduct } = args;
 
   let changed = false;
 
@@ -1085,7 +1085,7 @@ async function normalizeCartLines(args: {
     const product = productMap.get(product_id);
 
     if (!product?.id) {
-      const del = await sb
+      const del = await ordersDb
         .from("cart_items")
         .delete()
         .eq("id", itemId)
@@ -1104,7 +1104,7 @@ async function normalizeCartLines(args: {
         metadata: product?.metadata,
       })
     ) {
-      const del = await sb
+      const del = await ordersDb
         .from("cart_items")
         .delete()
         .eq("id", itemId)
@@ -1159,7 +1159,7 @@ async function normalizeCartLines(args: {
       }
 
       if (!variant_id) {
-        const del = await sb
+        const del = await ordersDb
           .from("cart_items")
           .delete()
           .eq("id", itemId)
@@ -1189,7 +1189,7 @@ async function normalizeCartLines(args: {
       });
 
       if (!vStock.exists) {
-        const del = await sb
+        const del = await ordersDb
           .from("cart_items")
           .delete()
           .eq("id", itemId)
@@ -1224,7 +1224,7 @@ async function normalizeCartLines(args: {
     });
 
     if (hardMax <= 0) {
-      const del = await sb
+      const del = await ordersDb
         .from("cart_items")
         .delete()
         .eq("id", itemId)
@@ -1249,7 +1249,7 @@ async function normalizeCartLines(args: {
       });
 
       if (merged.hardMax <= 0) {
-        const del = await sb
+        const del = await ordersDb
           .from("cart_items")
           .delete()
           .eq("id", itemId)
@@ -1262,7 +1262,7 @@ async function normalizeCartLines(args: {
         continue;
       }
 
-      const upMain = await sb
+      const upMain = await ordersDb
         .from("cart_items")
         .update({
           qty: merged.finalQty,
@@ -1276,7 +1276,7 @@ async function normalizeCartLines(args: {
 
       if (upMain.error) throw new Error(upMain.error.message);
 
-      const delDup = await sb
+      const delDup = await ordersDb
         .from("cart_items")
         .delete()
         .eq("id", itemId)
@@ -1299,7 +1299,7 @@ async function normalizeCartLines(args: {
       Math.max(1, Math.floor(toNumber(it?.qty))) !== finalQty;
 
     if (needsUpdate) {
-      const up = await sb
+      const up = await ordersDb
         .from("cart_items")
         .update({
           qty: finalQty,
@@ -1319,7 +1319,7 @@ async function normalizeCartLines(args: {
   }
 
   if (changed) {
-    const countR = await sb
+    const countR = await ordersDb
       .from("cart_items")
       .select("qty")
       .eq("cart_id", cart_id);
@@ -1338,7 +1338,7 @@ async function normalizeCartLines(args: {
       return sum + (Number.isFinite(qty) ? Math.max(0, Math.floor(qty)) : 0);
     }, 0);
 
-    const upCart = await sb
+    const upCart = await ordersDb
       .from("carts")
       .update({
         item_count,
@@ -1422,8 +1422,8 @@ function jsonWithCartCookie(args: {
   return res;
 }
 
-async function fetchCartItems(sb: any, cartId: string) {
-  const itemsR = await sb
+async function fetchCartItems(ordersDb: any, cartId: string) {
+  const itemsR = await ordersDb
     .from("cart_items")
     .select(
       "id,product_id,variant_id,qty,selected_option_value_ids,selected_options,line_key,created_at,updated_at",
@@ -1437,11 +1437,11 @@ async function fetchCartItems(sb: any, cartId: string) {
 }
 
 async function fetchProductsForCart(args: {
-  sb: any;
+  storeDb: any;
   store_id: string;
   productIds: string[];
 }) {
-  const { sb, store_id, productIds } = args;
+  const { storeDb, store_id, productIds } = args;
 
   const attempts = [
     "id,store_id,name,status,metadata,public_no,short_url",
@@ -1452,7 +1452,7 @@ async function fetchProductsForCart(args: {
   let lastResult: any = null;
 
   for (const select of attempts) {
-    const result = await sb
+    const result = await storeDb
       .from("products")
       .select(select)
       .eq("store_id", store_id)
@@ -1592,7 +1592,10 @@ function emptyCartPayload(args: {
   currencyInfo: any;
   coupon?: any | null;
 }) {
-  const currencyInfo = normalizeCurrencyInfo(args.currencyInfo?.code, args.currencyInfo);
+  const currencyInfo = normalizeCurrencyInfo(
+    args.currencyInfo?.code,
+    args.currencyInfo,
+  );
 
   return {
     data: {
@@ -1609,7 +1612,11 @@ export async function GET() {
   try {
     const store_id = await getStoreIdOrThrow();
     const sid = await getCartSessionIdFromCookie();
-    const sb: any = supabaseAdmin();
+
+    const [ordersDb, storeDb] = await Promise.all([
+      getOrdersDb(store_id),
+      getStoreDb(store_id),
+    ]);
 
     const [cart, storeCurrencyInfo] = await Promise.all([
       getExistingOpenCart({ store_id, session_id: sid }),
@@ -1626,7 +1633,7 @@ export async function GET() {
       });
     }
 
-    const initialItems = await fetchCartItems(sb, cart.id);
+    const initialItems = await fetchCartItems(ordersDb, cart.id);
 
     if (!initialItems.length) {
       return jsonWithCartCookie({
@@ -1658,7 +1665,7 @@ export async function GET() {
 
     const [seoMode, storeDefaultCurrency] = await Promise.all([
       getSafeSeoMode(store_id),
-      fetchStoreDefaultCurrencyCode(sb, store_id, "SAR"),
+      fetchStoreDefaultCurrencyCode(store_id, "SAR"),
     ]);
 
     const cartTaxContextPromise = getCartTaxContext({
@@ -1674,7 +1681,7 @@ export async function GET() {
     const [selectedCookieCurrency, currencyRows, cartTaxContext] =
       await Promise.all([
         readSelectedCurrencyCodeFromCookies(),
-        fetchStoreCurrenciesForRuntime(sb, store_id),
+        fetchStoreCurrenciesForRuntime(storeDb, store_id),
         cartTaxContextPromise,
       ]);
 
@@ -1696,7 +1703,7 @@ export async function GET() {
 
     const empty = emptySummary(currencyInfo.code, currencyInfo);
 
-    const cartCouponR = await sb
+    const cartCouponR = await ordersDb
       .from("cart_coupons")
       .select("id,code,discount_amount,coupon_id")
       .eq("store_id", store_id)
@@ -1720,31 +1727,31 @@ export async function GET() {
     const [productsR, stockR, variantsR, pricingR, mediaR, optionsR] =
       await Promise.all([
         fetchProductsForCart({
-          sb,
+          storeDb,
           store_id,
           productIds: initialProductIds,
         }),
 
-        sb
+        storeDb
           .from("product_stock")
           .select(
             "product_id,quantity,unlimited_quantity,maximum_quantity_per_order",
           )
           .in("product_id", initialProductIds),
 
-        sb
+        storeDb
           .from("product_variants")
           .select(
             "id,product_id,stock_quantity,unlimited_quantity,price,sale_price,cost_price,is_default,weight,weight_unit",
           )
           .in("product_id", initialProductIds),
 
-        sb
+        storeDb
           .from("product_pricing")
           .select("product_id,price,sale_price,currency,with_tax")
           .in("product_id", initialProductIds),
 
-        sb
+        storeDb
           .from("product_media")
           .select(
             "product_id,media_kind,original_url,thumbnail_url,is_default,sort_order",
@@ -1753,7 +1760,7 @@ export async function GET() {
           .in("product_id", initialProductIds)
           .eq("media_kind", "image"),
 
-        sb
+        storeDb
           .from("product_options")
           .select(
             "id,product_id,name,is_required,option_field_type,display_type,sort_order",
@@ -1799,7 +1806,7 @@ export async function GET() {
 
     const [linksR, valuesR] = await Promise.all([
       variantIds.length
-        ? sb
+        ? storeDb
             .from("variant_option_values")
             .select("variant_id,option_value_id")
             .in("variant_id", variantIds)
@@ -1812,7 +1819,7 @@ export async function GET() {
         );
 
         return optionIds.length
-          ? sb
+          ? storeDb
               .from("product_option_values")
               .select(
                 "id,option_id,name,extra_price,quantity,is_default,display_value,image_url,sort_order",
@@ -1837,7 +1844,7 @@ export async function GET() {
     });
 
     const normalized = await normalizeCartLines({
-      sb,
+      ordersDb,
       cart_id: cart.id,
       store_id,
       items: initialItems,
@@ -1849,7 +1856,7 @@ export async function GET() {
     });
 
     let items = normalized.changed
-      ? await fetchCartItems(sb, cart.id)
+      ? await fetchCartItems(ordersDb, cart.id)
       : initialItems;
 
     items = items.filter((it: any) => {
@@ -2061,7 +2068,6 @@ export async function GET() {
         currencyDecimals: currencyInfo.decimal_digits,
         decimal_digits: currencyInfo.decimal_digits,
         decimalDigits: currencyInfo.decimal_digits,
-
         product: product
           ? {
               id: String(product.id),
@@ -2122,7 +2128,7 @@ export async function GET() {
     let couponFreeShipping = false;
 
     if (couponRaw?.coupon_id) {
-      const couponR = await sb
+      const couponR = await storeDb
         .from("coupons")
         .select(
           "id,store_id,code,discount_type,amount,maximum_amount,start_at,end_at,status,minimum_amount,exclude_sale_products,free_shipping",
@@ -2272,7 +2278,7 @@ export async function GET() {
       Math.abs(toNumber(couponRaw.discount_amount) - storedDiscountInBase) > 0.01
     ) {
       void Promise.all([
-        sb
+        ordersDb
           .from("cart_coupons")
           .update({
             discount_amount: storedDiscountInBase,
@@ -2281,7 +2287,7 @@ export async function GET() {
           .eq("store_id", store_id)
           .eq("cart_id", cart.id),
 
-        sb
+        ordersDb
           .from("carts")
           .update({
             coupon_discount: storedDiscountInBase,
@@ -2303,7 +2309,7 @@ export async function GET() {
     );
 
     const freeShippingEvaluator = await loadFreeShippingEvaluator({
-      sb,
+      sb: storeDb,
       storeId: store_id,
       subtotal,
       productIds: freeShippingProductIds,

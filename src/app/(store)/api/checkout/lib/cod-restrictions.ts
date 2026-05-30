@@ -195,12 +195,12 @@ function emptyEvaluation(args?: {
 }
 
 async function loadIds(args: {
-  sb: any;
+  db: any;
   table: string;
   column: string;
   storeId: string;
 }) {
-  const { data, error } = await args.sb
+  const { data, error } = await args.db
     .from(args.table)
     .select(args.column)
     .eq("store_id", args.storeId);
@@ -213,11 +213,11 @@ async function loadIds(args: {
 }
 
 async function loadCartItems(args: {
-  sb: any;
+  ordersDb: any;
   storeId: string;
   cartId: string;
 }) {
-  const { data, error } = await args.sb
+  const { data, error } = await args.ordersDb
     .from("cart_items")
     .select("id,product_id,variant_id,qty")
     .eq("store_id", args.storeId)
@@ -229,7 +229,7 @@ async function loadCartItems(args: {
 }
 
 async function computeCartWeightKg(args: {
-  sb: any;
+  storeDb: any;
   productIds: string[];
   variantIds: string[];
   items: CartItemRow[];
@@ -239,7 +239,7 @@ async function computeCartWeightKg(args: {
   const productWeightById = new Map<string, number>();
   const variantWeightById = new Map<string, number>();
 
-  const productWeightsR = await args.sb
+  const productWeightsR = await args.storeDb
     .from("product_shipping")
     .select("product_id,weight,weight_unit")
     .in("product_id", args.productIds);
@@ -254,7 +254,7 @@ async function computeCartWeightKg(args: {
   }
 
   if (args.variantIds.length) {
-    const variantWeightsR = await args.sb
+    const variantWeightsR = await args.storeDb
       .from("product_variants")
       .select("id,weight,weight_unit")
       .in("id", args.variantIds);
@@ -291,7 +291,7 @@ async function computeCartWeightKg(args: {
 }
 
 async function findExcludedCategory(args: {
-  sb: any;
+  storeDb: any;
   productIds: string[];
   excludedCategoryIds: string[];
 }) {
@@ -299,7 +299,7 @@ async function findExcludedCategory(args: {
     return null;
   }
 
-  const { data, error } = await args.sb
+  const { data, error } = await args.storeDb
     .from("product_categories")
     .select("product_id,category_id")
     .in("product_id", args.productIds)
@@ -313,7 +313,8 @@ async function findExcludedCategory(args: {
 }
 
 async function loadUntrustedCustomerSummary(args: {
-  sb: any;
+  reputationDb: any;
+  controlDb: any;
   storeId: string;
   customerId: string;
   threshold: number;
@@ -326,7 +327,7 @@ async function loadUntrustedCustomerSummary(args: {
 
   if (!storeId || !customerId) return null;
 
-  const recordsR = await args.sb
+  const recordsR = await args.reputationDb
     .from("customer_reputation_records")
     .select(
       [
@@ -353,7 +354,7 @@ async function loadUntrustedCustomerSummary(args: {
   const storeNameById = new Map<string, string>();
 
   if (storeIds.length) {
-    const storesR = await args.sb
+    const storesR = await args.controlDb
       .from("stores")
       .select("id,name")
       .in("id", storeIds);
@@ -452,12 +453,32 @@ async function loadUntrustedCustomerSummary(args: {
 
 export async function evaluateCodRestrictions(args: {
   sb: any;
+
+  /**
+   * تجهيز للشاردات:
+   * - storeDb: إعدادات الدفع عند الاستلام + المنتجات + التصنيفات + الأوزان.
+   * - ordersDb: cart_items.
+   * - controlDb: stores.
+   * - reputationDb: سجلات سمعة العميل عبر المتاجر.
+   *
+   * حاليًا لو ما انرسلت، نستخدم sb القديم عشان ما نكسر أي استدعاء موجود.
+   */
+  storeDb?: any;
+  ordersDb?: any;
+  controlDb?: any;
+  reputationDb?: any;
+
   storeId: string;
   cartId: string;
   cartSubtotal: number;
   customerId?: string | null;
   toCartCurrency?: (amount: number) => number;
 }): Promise<CodRestrictionEvaluation> {
+  const storeDb = args.storeDb ?? args.sb;
+  const ordersDb = args.ordersDb ?? args.sb;
+  const controlDb = args.controlDb ?? args.sb;
+  const reputationDb = args.reputationDb ?? args.controlDb ?? args.sb;
+
   const storeId = s(args.storeId);
   const cartId = s(args.cartId);
   const customerId = s(args.customerId);
@@ -467,7 +488,7 @@ export async function evaluateCodRestrictions(args: {
     return emptyEvaluation({ cartSubtotal });
   }
 
-  const restrictionsR = await args.sb
+  const restrictionsR = await storeDb
     .from("store_cod_restrictions")
     .select(
       [
@@ -500,7 +521,8 @@ export async function evaluateCodRestrictions(args: {
 
   const untrustedCustomerSummary = customerId
     ? await loadUntrustedCustomerSummary({
-        sb: args.sb,
+        reputationDb,
+        controlDb,
         storeId,
         customerId,
         threshold: untrustedMinStoreCount,
@@ -586,7 +608,7 @@ export async function evaluateCodRestrictions(args: {
   }
 
   const items = await loadCartItems({
-    sb: args.sb,
+    ordersDb,
     storeId,
     cartId,
   });
@@ -596,14 +618,14 @@ export async function evaluateCodRestrictions(args: {
 
   const [excludedProductIds, excludedCategoryIds] = await Promise.all([
     loadIds({
-      sb: args.sb,
+      db: storeDb,
       storeId,
       table: "store_cod_restriction_excluded_products",
       column: "product_id",
     }),
 
     loadIds({
-      sb: args.sb,
+      db: storeDb,
       storeId,
       table: "store_cod_restriction_excluded_categories",
       column: "category_id",
@@ -626,7 +648,7 @@ export async function evaluateCodRestrictions(args: {
 
   if (excludedCategoryIds.length && productIds.length) {
     const excludedCategoryId = await findExcludedCategory({
-      sb: args.sb,
+      storeDb,
       productIds,
       excludedCategoryIds,
     });
@@ -643,7 +665,7 @@ export async function evaluateCodRestrictions(args: {
 
   if (maximumWeightKg != null) {
     const cartWeightKg = await computeCartWeightKg({
-      sb: args.sb,
+      storeDb,
       productIds,
       variantIds,
       items,

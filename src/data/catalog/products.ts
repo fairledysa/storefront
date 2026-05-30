@@ -1,6 +1,9 @@
 // FILE: apps/storefront/src/data/catalog/products.ts
 import { unstable_cache } from "next/cache";
-import { supabaseAdmin } from "@/data/store/supabase.server";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+import { getStoreDb } from "@/data/db/store-db.server";
+import { getOrdersDb } from "@/data/db/orders-db.server";
 
 export type ProductCategoryMini = {
   id: string;
@@ -315,7 +318,9 @@ function mapBaseProductRowFromBulk(row: any, maps: ProductBulkMaps): ProductRow 
     description: row.description ?? null,
     status: row.status,
     public_no: row.public_no ?? null,
-    sold_qty: Number(maps.soldQtyByProductId?.get(productId) ?? row?.sold_qty ?? 0),
+    sold_qty: Number(
+      maps.soldQtyByProductId?.get(productId) ?? row?.sold_qty ?? 0,
+    ),
 
     brand_id: row.brand_id ?? null,
 
@@ -383,7 +388,10 @@ async function mapProductRowsBulk(
   const rows = (Array.isArray(rowsInput) ? rowsInput : []).filter(Boolean);
   if (!rows.length) return [];
 
-  const sb = supabaseAdmin();
+  const storeId = s(rows[0]?.store_id);
+  if (!storeId) return [];
+
+  const sb = await getStoreDb(storeId);
 
   const productIds = Array.from(
     new Set(rows.map((row) => String(row?.id ?? "")).filter(Boolean)),
@@ -437,10 +445,7 @@ async function mapProductRowsBulk(
       .order("created_at", { ascending: true }),
 
     brandIds.length
-      ? sb
-          .from("brands")
-          .select("id,name")
-          .in("id", brandIds)
+      ? sb.from("brands").select("id,name").in("id", brandIds)
       : Promise.resolve({ data: [] } as any),
 
     sb
@@ -557,7 +562,7 @@ async function mapProductRowsBulk(
 }
 
 async function enrichProductSEO(args: {
-  sb: ReturnType<typeof supabaseAdmin>;
+  sb: SupabaseClient;
   store_id: string;
   product_id: string;
   brand_id: string | null;
@@ -681,7 +686,9 @@ async function mapBaseProductRow(
     [row],
     extra?.sold_qty
       ? {
-          soldQtyByProductId: new Map([[String(row.id), Number(extra.sold_qty)]]),
+          soldQtyByProductId: new Map([
+            [String(row.id), Number(extra.sold_qty)],
+          ]),
         }
       : undefined,
   );
@@ -690,7 +697,7 @@ async function mapBaseProductRow(
 }
 
 async function getProductByIdRaw(opts: { store_id: string; id: string }) {
-  const sb = supabaseAdmin();
+  const sb = await getStoreDb(opts.store_id);
 
   const r = await sb
     .from("products")
@@ -711,7 +718,7 @@ async function getProductByPublicNoRaw(opts: {
   store_id: string;
   public_no: number;
 }) {
-  const sb = supabaseAdmin();
+  const sb = await getStoreDb(opts.store_id);
 
   const r = await sb
     .from("products")
@@ -732,7 +739,7 @@ async function getProductByShortUrlRaw(opts: {
   store_id: string;
   short_url: string;
 }) {
-  const sb = supabaseAdmin();
+  const sb = await getStoreDb(opts.store_id);
 
   const metaR = await sb
     .from("product_metadata")
@@ -837,7 +844,7 @@ async function getProductsByCategoryRaw(opts: {
   category_id: string;
   limit: number;
 }) {
-  const sb = supabaseAdmin();
+  const sb = await getStoreDb(opts.store_id);
   const limit = Math.min(Math.max(Number(opts.limit ?? 24), 1), 200);
 
   const firstR = await sb
@@ -924,7 +931,7 @@ async function getProductsForGridRaw(opts: {
   store_id: string;
   limit?: number;
 }): Promise<ProductRow[]> {
-  const sb = supabaseAdmin();
+  const sb = await getStoreDb(opts.store_id);
   const limit = Math.min(Math.max(Number(opts.limit ?? 12), 1), 60);
 
   const fetchLimit = Math.min(limit * 3, 180);
@@ -972,11 +979,11 @@ async function getBestSellingProductsForGridRaw(opts: {
   store_id: string;
   limit?: number;
 }): Promise<ProductRow[]> {
-  const sb = supabaseAdmin() as any;
+  const storeDb = (await getStoreDb(opts.store_id)) as any;
   const limit = Math.min(Math.max(Number(opts.limit ?? 12), 1), 60);
 
   try {
-    const fastR = await sb
+    const fastR = await storeDb
       .from("products")
       .select(`${BASE_SELECT},sold_qty`)
       .eq("store_id", opts.store_id)
@@ -1009,7 +1016,9 @@ async function getBestSellingProductsForGridRaw(opts: {
     // fallback to order_items aggregation below
   }
 
-  const orderItemsR = await sb
+  const ordersDb = await getOrdersDb(opts.store_id);
+
+  const orderItemsR = await ordersDb
     .from("order_items")
     .select(
       `
@@ -1047,7 +1056,7 @@ async function getBestSellingProductsForGridRaw(opts: {
 
   if (!sortedProductIds.length) return [];
 
-  const productsR = await sb
+  const productsR = await storeDb
     .from("products")
     .select(BASE_SELECT)
     .eq("store_id", opts.store_id)
@@ -1107,11 +1116,6 @@ export async function getBestSellingProductsForGrid(opts: {
 
   return fn();
 }
- 
-
-
-
-
 
 // =====================================================
 // Product Search
@@ -1222,7 +1226,10 @@ function stringifySearchValue(value: any): string {
   }
 
   if (Array.isArray(value)) {
-    return value.map((item) => stringifySearchValue(item)).filter(Boolean).join(" ");
+    return value
+      .map((item) => stringifySearchValue(item))
+      .filter(Boolean)
+      .join(" ");
   }
 
   if (typeof value === "object") {
@@ -1310,17 +1317,17 @@ function scoreProductForSearch(args: {
 
   if (args.product.image_url || args.product.thumbnail_url) score += 8;
 
-  const price = Number(args.product.pricing?.sale_price ?? args.product.pricing?.price ?? 0);
+  const price = Number(
+    args.product.pricing?.sale_price ?? args.product.pricing?.price ?? 0,
+  );
+
   if (Number.isFinite(price) && price > 0) score += 6;
 
   return score;
 }
 
-async function loadProductRowsByIds(args: {
-  store_id: string;
-  ids: string[];
-}) {
-  const sb = supabaseAdmin();
+async function loadProductRowsByIds(args: { store_id: string; ids: string[] }) {
+  const sb = await getStoreDb(args.store_id);
 
   const ids = Array.from(new Set(args.ids.map((id) => s(id)).filter(Boolean)));
   if (!ids.length) return [] as any[];
@@ -1354,7 +1361,10 @@ async function getProductsByIdsRaw(opts: {
   ids: string[];
   limit?: number;
 }): Promise<ProductRow[]> {
-  const limit = Math.min(Math.max(Number(opts.limit ?? opts.ids.length), 1), 500);
+  const limit = Math.min(
+    Math.max(Number(opts.limit ?? opts.ids.length), 1),
+    500,
+  );
   const ids = uniqueStrings(opts.ids).slice(0, limit);
 
   if (!s(opts.store_id) || !ids.length) return [];
@@ -1386,7 +1396,10 @@ export async function getProductsByIds(opts: {
   limit?: number;
 }): Promise<ProductRow[]> {
   const storeId = s(opts.store_id);
-  const limit = Math.min(Math.max(Number(opts.limit ?? opts.ids?.length ?? 1), 1), 500);
+  const limit = Math.min(
+    Math.max(Number(opts.limit ?? opts.ids?.length ?? 1), 1),
+    500,
+  );
   const ids = uniqueStrings(opts.ids).slice(0, limit);
 
   if (!storeId || !ids.length) return [];
@@ -1422,13 +1435,12 @@ export async function getProductsByIds(opts: {
   return ids.map((id) => byId.get(id)).filter(Boolean) as ProductRow[];
 }
 
-
 async function getProductsBySearchRaw(opts: {
   store_id: string;
   q: string;
   limit?: number;
 }): Promise<ProductRow[]> {
-  const sb = supabaseAdmin() as any;
+  const sb = (await getStoreDb(opts.store_id)) as any;
 
   const q = normalizeSearchQuery(opts.q);
   const limit = Math.min(Math.max(Number(opts.limit ?? 48), 1), 80);
@@ -1632,7 +1644,11 @@ async function getProductsBySearchRaw(opts: {
       }
 
       const brandIds = Array.from(
-        new Set((brandsR.data || []).map((row: any) => s(row?.id)).filter(Boolean)),
+        new Set(
+          (brandsR.data || [])
+            .map((row: any) => s(row?.id))
+            .filter(Boolean),
+        ),
       );
 
       if (brandIds.length) {
@@ -1652,7 +1668,10 @@ async function getProductsBySearchRaw(opts: {
 
       const optionIds = Array.from(
         new Set(
-          [...(optionValuesNameR.data || []), ...(optionValuesDisplayR.data || [])]
+          [
+            ...(optionValuesNameR.data || []),
+            ...(optionValuesDisplayR.data || []),
+          ]
             .map((row: any) => s(row?.option_id))
             .filter(Boolean),
         ),
@@ -1749,7 +1768,12 @@ export async function getProductsBySearch(opts: {
           q,
           limit,
         }),
-      ["products-by-smart-search", opts.store_id, normalizeArabicSearchText(q), String(limit)],
+      [
+        "products-by-smart-search",
+        opts.store_id,
+        normalizeArabicSearchText(q),
+        String(limit),
+      ],
       { revalidate: 45 },
     );
 
@@ -1758,9 +1782,6 @@ export async function getProductsBySearch(opts: {
 
   return fn();
 }
-
-
-
 
 // =====================================================
 // Product Details (images + options + variants)
@@ -1864,7 +1885,7 @@ function sortAllMedia(rows: any[]): ProductMediaRow[] {
 }
 
 async function fetchProductOptionsWithValues(
-  sb: ReturnType<typeof supabaseAdmin>,
+  sb: SupabaseClient,
   product_id: string,
 ) {
   const optR = await sb
@@ -1928,7 +1949,7 @@ async function fetchProductOptionsWithValues(
 }
 
 async function fetchProductVariantsWithOptionValues(
-  sb: ReturnType<typeof supabaseAdmin>,
+  sb: SupabaseClient,
   product_id: string,
 ) {
   const vR = await sb
@@ -1991,7 +2012,7 @@ export async function getProductDetailsByPublicNo(opts: {
   store_id: string;
   public_no: number;
 }): Promise<ProductDetails | null> {
-  const sb = supabaseAdmin();
+  const sb = await getStoreDb(opts.store_id);
 
   const r = await sb
     .from("products")
@@ -2040,7 +2061,7 @@ export async function getProductDetailsByShortUrl(opts: {
   store_id: string;
   short_url: string;
 }): Promise<ProductDetails | null> {
-  const sb = supabaseAdmin();
+  const sb = await getStoreDb(opts.store_id);
 
   const metaR = await sb
     .from("product_metadata")

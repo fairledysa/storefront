@@ -1,12 +1,13 @@
 // FILE: apps/storefront/src/app/(store)/api/ref/cities/route.ts
 
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/data/store/supabase.server";
+
+import { controlDb } from "@/data/db/control-db.server";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const sb: any = supabaseAdmin();
+  const sb: any = await controlDb();
 
   const r = await sb
     .from("ref_cities")

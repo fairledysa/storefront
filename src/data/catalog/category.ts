@@ -1,6 +1,7 @@
 // FILE: apps/storefront/src/data/catalog/category.ts
 import { unstable_cache } from "next/cache";
-import { supabaseAdmin } from "@/data/store/supabase.server";
+
+import { getStoreDb } from "@/data/db/store-db.server";
 
 export type CategoryRow = {
   id: string;
@@ -21,6 +22,10 @@ export type CategoryRow = {
 
   og_image_url?: string | null;
 };
+
+function s(value: any) {
+  return String(value ?? "").trim();
+}
 
 function pickCategoryOgImage(row: any): string | null {
   const media = row?.category_media;
@@ -73,15 +78,20 @@ async function getCategoryBySlugRaw(args: {
   store_id: string;
   slug: string;
 }): Promise<CategoryRow | null> {
-  const sb = supabaseAdmin();
+  const storeId = s(args.store_id);
+  const slug = s(args.slug);
+
+  if (!storeId || !slug) return null;
+
+  const sb = await getStoreDb(storeId);
 
   const r = await sb
     .from("categories")
     .select(
       "id,store_id,parent_id,name,slug,sort_order,depth,path,public_no,category_metadata(title,description,url),category_media(url,is_primary,sort_order)",
     )
-    .eq("store_id", args.store_id)
-    .eq("slug", args.slug)
+    .eq("store_id", storeId)
+    .eq("slug", slug)
     .limit(1)
     .maybeSingle();
 
@@ -95,44 +105,57 @@ async function getCategoryByShortUrlRaw(args: {
   store_id: string;
   short_url: string;
 }): Promise<CategoryRow | null> {
-  const sb = supabaseAdmin();
+  const storeId = s(args.store_id);
+  const shortUrl = s(args.short_url);
+
+  if (!storeId || !shortUrl) return null;
+
+  const sb = await getStoreDb(storeId);
 
   const r = await sb
     .from("category_metadata")
     .select(
       "url,title,description,category_id,categories!inner(id,store_id,parent_id,name,slug,sort_order,depth,path,public_no,category_media(url,is_primary,sort_order))",
     )
-    .eq("url", args.short_url)
-    .eq("categories.store_id", args.store_id)
+    .eq("url", shortUrl)
+    .eq("categories.store_id", storeId)
     .limit(1)
     .maybeSingle();
 
   const row: any = r.data;
-  const c = readOne(row?.categories);
-  if (!c) return null;
+  const category = readOne(row?.categories);
 
-  c.category_metadata = {
+  if (!category) return null;
+
+  category.category_metadata = {
     url: row.url ?? null,
     title: row.title ?? null,
     description: row.description ?? null,
   };
 
-  return mapCategory(c);
+  return mapCategory(category);
 }
 
 async function getCategoryByPublicNoRaw(args: {
   store_id: string;
   public_no: number;
 }): Promise<CategoryRow | null> {
-  const sb = supabaseAdmin();
+  const storeId = s(args.store_id);
+  const publicNo = Number(args.public_no);
+
+  if (!storeId || !Number.isFinite(publicNo) || publicNo <= 0) {
+    return null;
+  }
+
+  const sb = await getStoreDb(storeId);
 
   const r = await sb
     .from("categories")
     .select(
       "id,store_id,parent_id,name,slug,sort_order,depth,path,public_no,category_metadata(title,description,url),category_media(url,is_primary,sort_order)",
     )
-    .eq("store_id", args.store_id)
-    .eq("public_no", args.public_no)
+    .eq("store_id", storeId)
+    .eq("public_no", publicNo)
     .limit(1)
     .maybeSingle();
 
@@ -147,26 +170,32 @@ async function getCategoriesForGridRaw(args: {
   parent_id?: string | null;
   limit?: number;
 }): Promise<CategoryRow[]> {
-  const sb = supabaseAdmin();
+  const storeId = s(args.store_id);
+  if (!storeId) return [];
+
+  const sb = await getStoreDb(storeId);
   const limit = Math.min(Math.max(Number(args.limit ?? 12), 1), 60);
 
-  let q = sb
+  let query = sb
     .from("categories")
     .select(
       "id,store_id,parent_id,name,slug,sort_order,depth,path,public_no,category_metadata(title,description,url),category_media(url,is_primary,sort_order)",
     )
-    .eq("store_id", args.store_id)
+    .eq("store_id", storeId)
     .eq("status", "active")
     .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true })
     .limit(limit);
 
-  if (args.parent_id === null) q = q.is("parent_id", null);
-  else if (typeof args.parent_id === "string")
-    q = q.eq("parent_id", args.parent_id);
-  else q = q.is("parent_id", null);
+  if (args.parent_id === null) {
+    query = query.is("parent_id", null);
+  } else if (typeof args.parent_id === "string") {
+    query = query.eq("parent_id", args.parent_id);
+  } else {
+    query = query.is("parent_id", null);
+  }
 
-  const r = await q;
+  const r = await query;
   const rows = (r.data || []) as any[];
 
   return rows.map(mapCategory);
@@ -187,13 +216,22 @@ export async function getCategoryBySlug(args: {
   store_id: string;
   slug: string;
 }): Promise<CategoryRow | null> {
-  const key = `${args.store_id}:${args.slug}`;
+  const storeId = s(args.store_id);
+  const slug = s(args.slug);
+
+  if (!storeId || !slug) return null;
+
+  const key = `${storeId}:${slug}`;
   let fn = categoryBySlugCache.get(key);
 
   if (!fn) {
     fn = unstable_cache(
-      () => getCategoryBySlugRaw(args),
-      ["category-by-slug", args.store_id, args.slug],
+      () =>
+        getCategoryBySlugRaw({
+          store_id: storeId,
+          slug,
+        }),
+      ["category-by-slug", storeId, slug],
       { revalidate: 120 },
     );
 
@@ -207,13 +245,22 @@ export async function getCategoryByShortUrl(args: {
   store_id: string;
   short_url: string;
 }): Promise<CategoryRow | null> {
-  const key = `${args.store_id}:${args.short_url}`;
+  const storeId = s(args.store_id);
+  const shortUrl = s(args.short_url);
+
+  if (!storeId || !shortUrl) return null;
+
+  const key = `${storeId}:${shortUrl}`;
   let fn = categoryByShortUrlCache.get(key);
 
   if (!fn) {
     fn = unstable_cache(
-      () => getCategoryByShortUrlRaw(args),
-      ["category-by-short-url", args.store_id, args.short_url],
+      () =>
+        getCategoryByShortUrlRaw({
+          store_id: storeId,
+          short_url: shortUrl,
+        }),
+      ["category-by-short-url", storeId, shortUrl],
       { revalidate: 120 },
     );
 
@@ -227,13 +274,24 @@ export async function getCategoryByPublicNo(args: {
   store_id: string;
   public_no: number;
 }): Promise<CategoryRow | null> {
-  const key = `${args.store_id}:${args.public_no}`;
+  const storeId = s(args.store_id);
+  const publicNo = Number(args.public_no);
+
+  if (!storeId || !Number.isFinite(publicNo) || publicNo <= 0) {
+    return null;
+  }
+
+  const key = `${storeId}:${publicNo}`;
   let fn = categoryByPublicNoCache.get(key);
 
   if (!fn) {
     fn = unstable_cache(
-      () => getCategoryByPublicNoRaw(args),
-      ["category-by-public-no", args.store_id, String(args.public_no)],
+      () =>
+        getCategoryByPublicNoRaw({
+          store_id: storeId,
+          public_no: publicNo,
+        }),
+      ["category-by-public-no", storeId, String(publicNo)],
       { revalidate: 120 },
     );
 
@@ -248,7 +306,11 @@ export async function getCategoriesForGrid(args: {
   parent_id?: string | null;
   limit?: number;
 }): Promise<CategoryRow[]> {
+  const storeId = s(args.store_id);
+  if (!storeId) return [];
+
   const limit = Math.min(Math.max(Number(args.limit ?? 12), 1), 60);
+
   const parentKey =
     args.parent_id === null
       ? "root"
@@ -256,13 +318,18 @@ export async function getCategoriesForGrid(args: {
         ? args.parent_id
         : "root";
 
-  const key = `${args.store_id}:${parentKey}:${limit}`;
+  const key = `${storeId}:${parentKey}:${limit}`;
   let fn = categoriesForGridCache.get(key);
 
   if (!fn) {
     fn = unstable_cache(
-      () => getCategoriesForGridRaw({ ...args, limit }),
-      ["categories-for-grid", args.store_id, parentKey, String(limit)],
+      () =>
+        getCategoriesForGridRaw({
+          ...args,
+          store_id: storeId,
+          limit,
+        }),
+      ["categories-for-grid", storeId, parentKey, String(limit)],
       { revalidate: 120 },
     );
 

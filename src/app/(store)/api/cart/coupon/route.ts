@@ -1,7 +1,8 @@
 // FILE: apps/storefront/src/app/(store)/api/cart/coupon/route.ts
 
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/data/store/supabase.server";
+import { getOrdersDb } from "@/data/db/orders-db.server";
+import { getStoreDb } from "@/data/db/store-db.server";
 
 import {
   cartSessionCookie,
@@ -57,20 +58,20 @@ function withCartCookie(res: NextResponse, sid: string) {
 }
 
 async function clearCartCoupon(args: {
-  sb: any;
+  ordersDb: any;
   store_id: string;
   cart_id: string;
 }) {
   const now = new Date().toISOString();
 
   await Promise.all([
-    args.sb
+    args.ordersDb
       .from("cart_coupons")
       .delete()
       .eq("store_id", args.store_id)
       .eq("cart_id", args.cart_id),
 
-    args.sb
+    args.ordersDb
       .from("carts")
       .update({
         coupon_discount: 0,
@@ -83,7 +84,7 @@ async function clearCartCoupon(args: {
 }
 
 async function validateUsageLimit(args: {
-  sb: any;
+  ordersDb: any;
   store_id: string;
   coupon_id: string;
   usage_limit: any;
@@ -98,7 +99,7 @@ async function validateUsageLimit(args: {
     };
   }
 
-  const usedR = await args.sb
+  const usedR = await args.ordersDb
     .from("coupon_redemptions")
     .select("id", { count: "exact", head: true })
     .eq("store_id", args.store_id)
@@ -142,7 +143,11 @@ export async function POST(req: Request) {
 
     const store_id = await getStoreIdOrThrow();
     const sid = await getCartSessionId();
-    const sb: any = supabaseAdmin();
+
+    const [ordersDb, storeDb] = await Promise.all([
+      getOrdersDb(store_id),
+      getStoreDb(store_id),
+    ]);
 
     const cart = await getOrCreateOpenCart({
       store_id,
@@ -155,7 +160,7 @@ export async function POST(req: Request) {
       return jsonError("CART_NOT_FOUND", "تعذر العثور على السلة.", 404);
     }
 
-    const couponR = await sb
+    const couponR = await storeDb
       .from("coupons")
       .select("*")
       .eq("store_id", store_id)
@@ -188,7 +193,7 @@ export async function POST(req: Request) {
     }
 
     const usage = await validateUsageLimit({
-      sb,
+      ordersDb,
       store_id,
       coupon_id: String(coupon.id),
       usage_limit: coupon.usage_limit,
@@ -208,7 +213,7 @@ export async function POST(req: Request) {
 
     const nowIso = new Date().toISOString();
 
-    const upR = await sb
+    const upR = await ordersDb
       .from("cart_coupons")
       .upsert(
         {
@@ -228,7 +233,7 @@ export async function POST(req: Request) {
       throw new Error(upR.error.message);
     }
 
-    await sb
+    await ordersDb
       .from("carts")
       .update({
         coupon_discount: 0,
@@ -247,7 +252,7 @@ export async function POST(req: Request) {
 
     if (!summaryCoupon?.code) {
       await clearCartCoupon({
-        sb,
+        ordersDb,
         store_id,
         cart_id: cartId,
       });
@@ -263,7 +268,7 @@ export async function POST(req: Request) {
 
     if (n(upR.data?.discount_amount) !== discount) {
       await Promise.all([
-        sb
+        ordersDb
           .from("cart_coupons")
           .update({
             discount_amount: discount,
@@ -272,7 +277,7 @@ export async function POST(req: Request) {
           .eq("store_id", store_id)
           .eq("cart_id", cartId),
 
-        sb
+        ordersDb
           .from("carts")
           .update({
             coupon_discount: discount,
@@ -317,7 +322,7 @@ export async function DELETE() {
   try {
     const store_id = await getStoreIdOrThrow();
     const sid = await getCartSessionId();
-    const sb: any = supabaseAdmin();
+    const ordersDb = await getOrdersDb(store_id);
 
     const cart = await getOrCreateOpenCart({
       store_id,
@@ -331,7 +336,7 @@ export async function DELETE() {
     }
 
     await clearCartCoupon({
-      sb,
+      ordersDb,
       store_id,
       cart_id: cartId,
     });

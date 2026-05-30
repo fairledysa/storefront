@@ -1,8 +1,10 @@
 // FILE: apps/storefront/src/app/(store)/api/checkout/lib/summary.ts
 
 import { cookies } from "next/headers";
-import { supabaseAdmin } from "@/data/store/supabase.server";
 import crypto from "crypto";
+
+import { getOrdersDb } from "@/data/db/orders-db.server";
+import { getStoreDb } from "@/data/db/store-db.server";
 import { getStoreCurrency } from "../../_cart/cart.server";
 import { loadFreeShippingEvaluator } from "./free-shipping";
 import {
@@ -1129,10 +1131,13 @@ export async function buildCartSummary(args: {
   store_id: string;
   cart_id: string;
 }): Promise<CartSummaryOut> {
-  const sb: any = supabaseAdmin();
+  const [ordersDb, storeDb] = await Promise.all([
+    getOrdersDb(args.store_id),
+    getStoreDb(args.store_id),
+  ]);
 
   const [cartR, itemsR, ccR, currencyRows, checkoutTax] = await Promise.all([
-    sb
+    ordersDb
       .from("carts")
       .select(
         "id,store_id,user_id,currency,coupon_discount,address_id,shipping_id,payment_method",
@@ -1142,14 +1147,14 @@ export async function buildCartSummary(args: {
       .limit(1)
       .maybeSingle(),
 
-    sb
+    ordersDb
       .from("cart_items")
       .select(
         "id,product_id,variant_id,qty,line_key,unit_price,selected_option_value_ids",
       )
       .eq("cart_id", args.cart_id),
 
-    sb
+    ordersDb
       .from("cart_coupons")
       .select("coupon_id,code,discount_amount")
       .eq("cart_id", args.cart_id)
@@ -1157,10 +1162,10 @@ export async function buildCartSummary(args: {
       .limit(1)
       .maybeSingle(),
 
-    fetchStoreCurrenciesForRuntime(sb, args.store_id),
+    fetchStoreCurrenciesForRuntime(storeDb, args.store_id),
 
     loadCheckoutTax({
-      sb,
+      sb: storeDb,
       store_id: args.store_id,
     }),
   ]);
@@ -1216,23 +1221,23 @@ export async function buildCartSummary(args: {
           Promise.resolve({ data: [], error: null } as any),
         ])
       : await Promise.all([
-          sb
+          storeDb
             .from("products")
             .select("id,name,require_shipping")
             .in("id", productIds)
             .eq("store_id", args.store_id),
 
-          sb
+          storeDb
             .from("product_pricing")
             .select("product_id,currency,price,sale_price")
             .in("product_id", productIds),
 
-          sb
+          storeDb
             .from("product_media")
             .select("product_id,original_url,is_default,sort_order")
             .in("product_id", productIds),
 
-          sb
+          storeDb
             .from("product_variants")
             .select("id,product_id,price,sale_price")
             .in("product_id", productIds),
@@ -1281,7 +1286,7 @@ export async function buildCartSummary(args: {
   const linksR =
     variantIds.length === 0
       ? ({ data: [], error: null } as any)
-      : await sb
+      : await storeDb
           .from("variant_option_values")
           .select("variant_id,option_value_id")
           .in("variant_id", variantIds);
@@ -1377,7 +1382,7 @@ export async function buildCartSummary(args: {
   const subtotal = round2(items.reduce((a, x) => a + x.unit_price * x.qty, 0));
 
   const orderOptionsSummary = await loadCartOrderOptionsSummary({
-    sb,
+    sb: ordersDb,
     storeId: args.store_id,
     cartId: args.cart_id,
     productIds,
@@ -1410,7 +1415,7 @@ export async function buildCartSummary(args: {
   if (!ccR.error && ccR.data?.coupon_id) {
     const couponId = String(ccR.data.coupon_id);
 
-    const cR = await sb
+    const cR = await storeDb
       .from("coupons")
       .select(
         "id,store_id,code,discount_type,amount,maximum_amount,start_at,end_at,status,minimum_amount,exclude_sale_products,free_shipping",
@@ -1492,7 +1497,7 @@ export async function buildCartSummary(args: {
 
       if (round2(n(ccR.data?.discount_amount)) !== discount) {
         await Promise.all([
-          sb
+          ordersDb
             .from("cart_coupons")
             .update({
               discount_amount: discount,
@@ -1501,7 +1506,7 @@ export async function buildCartSummary(args: {
             .eq("store_id", args.store_id)
             .eq("cart_id", args.cart_id),
 
-          sb
+          ordersDb
             .from("carts")
             .update({
               coupon_discount: discount,
@@ -1519,7 +1524,7 @@ export async function buildCartSummary(args: {
     couponFreeShipping = false;
 
     if (n(cartR.data.coupon_discount) > 0) {
-      await sb
+      await ordersDb
         .from("carts")
         .update({
           coupon_discount: 0,
@@ -1537,7 +1542,7 @@ export async function buildCartSummary(args: {
   const address_id = s(cartR.data.address_id) || "";
 
   if (address_id) {
-    const aR = await sb
+    const aR = await ordersDb
       .from("customer_addresses")
       .select("id,country_id,city_id,customer_id")
       .eq("id", address_id)
@@ -1551,7 +1556,7 @@ export async function buildCartSummary(args: {
   }
 
   if (!country_id && city_id) {
-    const cityR = await sb
+    const cityR = await storeDb
       .from("ref_cities")
       .select("id,country_id")
       .eq("id", city_id)
@@ -1568,7 +1573,7 @@ export async function buildCartSummary(args: {
   let store_shipping_carrier_id = "";
 
   if (shipping_rate_id) {
-    const srR = await sb
+    const srR = await storeDb
       .from("store_shipping_rates")
       .select("id,store_shipping_carrier_id")
       .eq("id", shipping_rate_id)
@@ -1597,7 +1602,7 @@ export async function buildCartSummary(args: {
     : Array.from(new Set(items.map((item) => item.product_id).filter(Boolean)));
 
   const freeShippingEvaluator = await loadFreeShippingEvaluator({
-    sb,
+    sb: storeDb,
     storeId: args.store_id,
     subtotal,
     countryId: country_id,
@@ -1639,7 +1644,7 @@ export async function buildCartSummary(args: {
     : round2(Math.max(0, n(freeShippingRule.remaining)));
 
   const charges = await computeCheckoutCharges({
-    sb,
+    sb: storeDb,
     store_id: args.store_id,
     city_id,
     shipping_rate_id,
@@ -1857,14 +1862,14 @@ export async function generateUniqueOrderPublicToken(args: {
   tries?: number;
   len?: number;
 }) {
-  const sb: any = supabaseAdmin();
+  const ordersDb = await getOrdersDb(args.store_id);
   const tries = Math.max(1, Math.min(50, Math.floor(n(args.tries ?? 25))));
   const len = Math.max(5, Math.min(24, Math.floor(n(args.len ?? 7))));
 
   for (let i = 0; i < tries; i++) {
     const token = makePublicToken(len);
 
-    const existsR = await sb
+    const existsR = await ordersDb
       .from("orders")
       .select("id")
       .eq("store_id", args.store_id)

@@ -6,9 +6,27 @@ declare global {
   var __sb_admin: SupabaseClient | undefined;
 }
 
-export function supabaseAdmin() {
-  // ✅ يمنع تكرار إنشاء العميل مع HMR في التطوير
-  if (globalThis.__sb_admin) return globalThis.__sb_admin;
+function isValidSupabaseClient(value: unknown): value is SupabaseClient {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      typeof (value as any).from === "function" &&
+      typeof (value as any).rpc === "function",
+  );
+}
+
+export function supabaseAdmin(): SupabaseClient {
+  const cached = globalThis.__sb_admin;
+
+  if (isValidSupabaseClient(cached)) {
+    return cached;
+  }
+
+  // مهم جدًا:
+  // لو كان فيه كاش قديم غلط بسبب HMR أو تعديل سابق، لا ترجعه.
+  if (cached) {
+    globalThis.__sb_admin = undefined;
+  }
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -25,9 +43,16 @@ export function supabaseAdmin() {
       autoRefreshToken: false,
       detectSessionInUrl: false,
     },
-    // ما نبي realtime هنا نهائي (ثقيل + غير مطلوب للسيرفر)
-    realtime: { params: { eventsPerSecond: 0 } },
+    realtime: {
+      params: {
+        eventsPerSecond: 0,
+      },
+    },
   });
+
+  if (!isValidSupabaseClient(client)) {
+    throw new Error("SUPABASE_ADMIN_CLIENT_INVALID");
+  }
 
   globalThis.__sb_admin = client;
   return client;

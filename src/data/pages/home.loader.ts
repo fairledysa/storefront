@@ -2,12 +2,15 @@
 
 import { unstable_cache } from "next/cache";
 import { createHash } from "node:crypto";
+
+import { cacheKey } from "@/data/cache/cache-keys";
+import { redisCached } from "@/data/cache/redis-cache.server";
 import {
   getBestSellingProductsForGrid,
   getProductsByIds,
   getProductsForGrid,
 } from "@/data/catalog/products";
-import { supabaseAdmin } from "@/data/store/supabase.server";
+import { getStoreDb } from "@/data/db/store-db.server";
 
 function s(value: any) {
   return String(value ?? "").trim();
@@ -599,7 +602,7 @@ async function loadLinkedCategoriesByIdRaw(args: {
   const ids = Array.from(new Set(args.categoryIds.map(s).filter(Boolean)));
   if (!ids.length) return {};
 
-  const sb: any = supabaseAdmin();
+  const sb = await getStoreDb(args.store_id);
 
   const uuidIds = ids.filter((id) => isRealUuid(id));
 
@@ -699,17 +702,25 @@ function loadLinkedProductsById(args: {
 
   if (!ids.length) return Promise.resolve({});
 
-  const key = `${args.store_id}:${ids.join(",")}`;
+  const idsFingerprint = ids.join(",");
+  const idsHash = hashText(idsFingerprint);
+  const key = `${args.store_id}:${idsHash}`;
+
   let fn = linkedProductsCache.get(key);
 
   if (!fn) {
     fn = unstable_cache(
       () =>
-        loadLinkedProductsByIdRaw({
-          store_id: args.store_id,
-          productIds: ids,
-        }),
-      ["homepage-linked-products", args.store_id, ids.join(",")],
+        redisCached(
+          cacheKey("home", "linked-products", args.store_id, idsHash),
+          { ttlSeconds: 180 },
+          () =>
+            loadLinkedProductsByIdRaw({
+              store_id: args.store_id,
+              productIds: ids,
+            }),
+        ),
+      ["homepage-linked-products", args.store_id, idsHash],
       { revalidate: 120 },
     );
 
@@ -732,17 +743,25 @@ function loadLinkedCategoriesById(args: {
 
   if (!ids.length) return Promise.resolve({});
 
-  const key = `${args.store_id}:${ids.join(",")}`;
+  const idsFingerprint = ids.join(",");
+  const idsHash = hashText(idsFingerprint);
+  const key = `${args.store_id}:${idsHash}`;
+
   let fn = linkedCategoriesCache.get(key);
 
   if (!fn) {
     fn = unstable_cache(
       () =>
-        loadLinkedCategoriesByIdRaw({
-          store_id: args.store_id,
-          categoryIds: ids,
-        }),
-      ["homepage-linked-categories", args.store_id, ids.join(",")],
+        redisCached(
+          cacheKey("home", "linked-categories", args.store_id, idsHash),
+          { ttlSeconds: 300 },
+          () =>
+            loadLinkedCategoriesByIdRaw({
+              store_id: args.store_id,
+              categoryIds: ids,
+            }),
+        ),
+      ["homepage-linked-categories", args.store_id, idsHash],
       { revalidate: 120 },
     );
 
@@ -820,7 +839,7 @@ function normalizeStoreReview(review: any) {
 }
 
 async function loadStoreReviewsRaw(storeId: string) {
-  const sb: any = supabaseAdmin();
+  const sb = await getStoreDb(storeId);
 
   const baseSelect = `
     id,
@@ -893,7 +912,12 @@ function loadStoreReviews(storeId: string) {
 
   if (!fn) {
     fn = unstable_cache(
-      () => loadStoreReviewsRaw(storeId),
+      () =>
+        redisCached(
+          cacheKey("home", "store-reviews", storeId),
+          { ttlSeconds: 180 },
+          () => loadStoreReviewsRaw(storeId),
+        ),
       ["homepage-store-reviews", storeId],
       { revalidate: 120 },
     );
@@ -1059,11 +1083,16 @@ export async function loadHomePage(args: {
   if (!fn) {
     fn = unstable_cache(
       () =>
-        loadHomePageRaw({
-          store_id: args.store_id,
-          limit,
-          themeOptions,
-        }),
+        redisCached(
+          cacheKey("home", "page", args.store_id, String(limit), sectionsHash),
+          { ttlSeconds: 90 },
+          () =>
+            loadHomePageRaw({
+              store_id: args.store_id,
+              limit,
+              themeOptions,
+            }),
+        ),
       ["homepage-data", args.store_id, String(limit), sectionsHash],
       { revalidate: 60 },
     );

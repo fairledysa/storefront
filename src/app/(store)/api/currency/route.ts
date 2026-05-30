@@ -4,7 +4,8 @@ import "server-only";
 
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/data/store/supabase.server";
+
+import { getStoreDb } from "@/data/db/store-db.server";
 
 function s(value: unknown) {
   return String(value ?? "").trim();
@@ -51,7 +52,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const sb: any = supabaseAdmin();
+  const sb: any = await getStoreDb(storeId);
 
   const { data, error } = await sb
     .from("store_currencies")

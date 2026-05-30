@@ -2,7 +2,10 @@
 
 import { unstable_cache } from "next/cache";
 import { cookies } from "next/headers";
+import { createHash } from "node:crypto";
 
+import { cacheKey } from "@/data/cache/cache-keys";
+import { redisCached } from "@/data/cache/redis-cache.server";
 import {
   getProductByPublicNo,
   getProductByShortUrl,
@@ -11,8 +14,9 @@ import {
   getProductsForGrid,
   isProductVisibleInWeb,
 } from "@/data/catalog/products";
+import { getOrdersDb } from "@/data/db/orders-db.server";
+import { getStoreDb } from "@/data/db/store-db.server";
 import { fromBase62 } from "@/lib/seo/base62";
-import { supabaseAdmin } from "@/data/store/supabase.server";
 
 /* ------------------------- metadata fallback mappers ------------------------ */
 
@@ -47,6 +51,10 @@ type MetaVariant = {
 
 function s(x: any) {
   return String(x ?? "").trim();
+}
+
+function hashText(value: string) {
+  return createHash("sha1").update(value).digest("hex");
 }
 
 function normalizeCacheKey(value: any) {
@@ -116,9 +124,7 @@ function getMetadataChannels(meta: any): string[] | null {
 }
 
 function mapMetaOptionsToDbShape(meta: any) {
-  const arr = Array.isArray(meta?.options)
-    ? (meta.options as MetaOption[])
-    : [];
+  const arr = Array.isArray(meta?.options) ? (meta.options as MetaOption[]) : [];
 
   return arr
     .filter((o) => o && o.id && o.name)
@@ -213,12 +219,15 @@ function readMetaBool(meta: any, keys: string[]) {
 /* ------------------------- store options loader ------------------------ */
 
 async function loadStoreOptionsRaw(store_id: string) {
-  const sb: any = supabaseAdmin();
+  const storeId = s(store_id);
+  if (!storeId) return {};
+
+  const sb = await getStoreDb(storeId);
 
   const { data, error } = await sb
     .from("store_settings")
     .select("slug,value")
-    .eq("store_id", store_id)
+    .eq("store_id", storeId)
     .like("slug", "options:%");
 
   if (error || !Array.isArray(data)) {
@@ -235,6 +244,35 @@ async function loadStoreOptionsRaw(store_id: string) {
   }
 
   return items;
+}
+
+const storeOptionsCache = new Map<
+  string,
+  () => Promise<Record<string, unknown>>
+>();
+
+function loadStoreOptions(store_id: string) {
+  const storeId = s(store_id);
+  const key = normalizeCacheKey(storeId);
+
+  let fn = storeOptionsCache.get(key);
+
+  if (!fn) {
+    fn = unstable_cache(
+      () =>
+        redisCached(
+          cacheKey("product", "store-options", storeId),
+          { ttlSeconds: 300 },
+          () => loadStoreOptionsRaw(storeId),
+        ),
+      ["product-page-store-options", storeId],
+      { revalidate: 120 },
+    );
+
+    storeOptionsCache.set(key, fn);
+  }
+
+  return fn();
 }
 
 /* ------------------------- size guides loader ------------------------ */
@@ -282,7 +320,7 @@ async function loadStoreSizeGuidesRaw(store_id: string) {
   const storeId = s(store_id);
   if (!storeId) return [];
 
-  const sb: any = supabaseAdmin();
+  const sb = await getStoreDb(storeId);
 
   const { data, error } = await sb
     .from("store_settings")
@@ -318,36 +356,17 @@ function loadStoreSizeGuides(store_id: string) {
 
   if (!fn) {
     fn = unstable_cache(
-      () => loadStoreSizeGuidesRaw(storeId),
+      () =>
+        redisCached(
+          cacheKey("product", "store-size-guides", storeId),
+          { ttlSeconds: 300 },
+          () => loadStoreSizeGuidesRaw(storeId),
+        ),
       ["product-page-store-size-guides", storeId],
       { revalidate: 120 },
     );
 
     storeSizeGuidesCache.set(key, fn);
-  }
-
-  return fn();
-}
-
-const storeOptionsCache = new Map<
-  string,
-  () => Promise<Record<string, unknown>>
->();
-
-function loadStoreOptions(store_id: string) {
-  const storeId = s(store_id);
-  const key = normalizeCacheKey(storeId);
-
-  let fn = storeOptionsCache.get(key);
-
-  if (!fn) {
-    fn = unstable_cache(
-      () => loadStoreOptionsRaw(storeId),
-      ["product-page-store-options", storeId],
-      { revalidate: 120 },
-    );
-
-    storeOptionsCache.set(key, fn);
   }
 
   return fn();
@@ -394,7 +413,7 @@ async function loadStoreCurrenciesRaw(
   const storeId = s(store_id);
   if (!storeId) return [];
 
-  const sb: any = supabaseAdmin();
+  const sb = await getStoreDb(storeId);
 
   const { data, error } = await sb
     .from("store_currencies")
@@ -446,7 +465,12 @@ function loadStoreCurrencies(store_id: string) {
 
   if (!fn) {
     fn = unstable_cache(
-      () => loadStoreCurrenciesRaw(storeId),
+      () =>
+        redisCached(
+          cacheKey("product", "store-currencies", storeId),
+          { ttlSeconds: 300 },
+          () => loadStoreCurrenciesRaw(storeId),
+        ),
       ["product-page-store-currencies", storeId],
       { revalidate: 120 },
     );
@@ -871,13 +895,18 @@ async function attachStoreCurrencyToProducts(args: {
 /* ------------------------- purchase count loader ------------------------ */
 
 async function loadProductPurchaseCountRaw(store_id: string, product_id: string) {
-  const sb: any = supabaseAdmin();
+  const storeId = s(store_id);
+  const productId = s(product_id);
+
+  if (!storeId || !productId) return 0;
+
+  const sb = await getOrdersDb(storeId);
 
   const { data, error } = await sb
     .from("order_items")
     .select("qty, orders!inner(status)")
-    .eq("store_id", store_id)
-    .eq("product_id", product_id)
+    .eq("store_id", storeId)
+    .eq("product_id", productId)
     .in("orders.status", ["pending", "paid", "completed", "shipped"]);
 
   if (error || !Array.isArray(data)) {
@@ -904,7 +933,12 @@ function loadProductPurchaseCount(store_id: string, product_id: string) {
 
   if (!fn) {
     fn = unstable_cache(
-      () => loadProductPurchaseCountRaw(storeId, productId),
+      () =>
+        redisCached(
+          cacheKey("product", "purchase-count", storeId, productId),
+          { ttlSeconds: 180 },
+          () => loadProductPurchaseCountRaw(storeId, productId),
+        ),
       ["product-purchase-count", storeId, productId],
       { revalidate: 120 },
     );
@@ -1010,26 +1044,39 @@ function loadRecommendedByCategory(args: {
   const storeId = s(args.store_id);
   const currentProductId = s(args.currentProductId);
   const limit = Math.min(Math.max(Number(args.limit ?? 8), 1), 12);
+  const idsHash = hashText(ids.join(","));
 
-  const key = `${storeId}:${currentProductId}:${limit}:${ids.join(",")}`;
+  const key = `${storeId}:${currentProductId}:${limit}:${idsHash}`;
 
   let fn = recommendedByCategoryCache.get(key);
 
   if (!fn) {
     fn = unstable_cache(
       () =>
-        loadRecommendedByCategoryRaw({
-          store_id: storeId,
-          currentProductId,
-          categoryIds: ids,
-          limit,
-        }),
+        redisCached(
+          cacheKey(
+            "product",
+            "recommended-by-category",
+            storeId,
+            currentProductId,
+            String(limit),
+            idsHash,
+          ),
+          { ttlSeconds: 180 },
+          () =>
+            loadRecommendedByCategoryRaw({
+              store_id: storeId,
+              currentProductId,
+              categoryIds: ids,
+              limit,
+            }),
+        ),
       [
         "recommended-by-category",
         storeId,
         currentProductId,
         String(limit),
-        ids.join(","),
+        idsHash,
       ],
       { revalidate: 120 },
     );
@@ -1046,19 +1093,25 @@ async function loadRecommendedByBrandRaw(args: {
   brandId: string;
   limit: number;
 }) {
-  const sb: any = supabaseAdmin();
+  const storeId = s(args.store_id);
+  const currentProductId = s(args.currentProductId);
+  const brandId = s(args.brandId);
+
+  if (!storeId || !brandId) return [];
+
+  const sb = await getStoreDb(storeId);
 
   const r = await sb
     .from("products")
     .select("id")
-    .eq("store_id", args.store_id)
-    .eq("brand_id", args.brandId)
+    .eq("store_id", storeId)
+    .eq("brand_id", brandId)
     .limit(args.limit * 4);
 
   const rawIds = (Array.isArray(r.data) ? r.data : [])
     .map((x: any) => s(x?.id))
     .filter((id: string) => Boolean(id))
-    .filter((id: string) => id !== args.currentProductId);
+    .filter((id: string) => id !== currentProductId);
 
   const ids: string[] = Array.from(new Set<string>(rawIds)).slice(
     0,
@@ -1068,7 +1121,7 @@ async function loadRecommendedByBrandRaw(args: {
   if (!ids.length) return [];
 
   const products = await getProductsByIds({
-    store_id: args.store_id,
+    store_id: storeId,
     ids,
     limit: ids.length,
   });
@@ -1083,7 +1136,7 @@ async function loadRecommendedByBrandRaw(args: {
   return ids
     .map((id) => byId.get(id))
     .filter(Boolean)
-    .filter((product: any) => s(product?.id) !== args.currentProductId)
+    .filter((product: any) => s(product?.id) !== currentProductId)
     .slice(0, args.limit);
 }
 
@@ -1109,12 +1162,24 @@ function loadRecommendedByBrand(args: {
   if (!fn) {
     fn = unstable_cache(
       () =>
-        loadRecommendedByBrandRaw({
-          store_id: storeId,
-          currentProductId,
-          brandId,
-          limit,
-        }),
+        redisCached(
+          cacheKey(
+            "product",
+            "recommended-by-brand",
+            storeId,
+            currentProductId,
+            brandId,
+            String(limit),
+          ),
+          { ttlSeconds: 180 },
+          () =>
+            loadRecommendedByBrandRaw({
+              store_id: storeId,
+              currentProductId,
+              brandId,
+              limit,
+            }),
+        ),
       [
         "recommended-by-brand",
         storeId,
@@ -1137,10 +1202,13 @@ async function loadRecommendedByTagRaw(args: {
   tagIds: string[];
   limit: number;
 }) {
-  const sb: any = supabaseAdmin();
-
+  const storeId = s(args.store_id);
+  const currentProductId = s(args.currentProductId);
   const tagIds = Array.from(new Set(args.tagIds.map(s).filter(Boolean)));
-  if (!tagIds.length) return [];
+
+  if (!storeId || !tagIds.length) return [];
+
+  const sb = await getStoreDb(storeId);
 
   const tagResults = await Promise.all(
     tagIds.map((tagId) =>
@@ -1162,7 +1230,7 @@ async function loadRecommendedByTagRaw(args: {
       const id = s(row?.product_id);
 
       if (!id) continue;
-      if (id === args.currentProductId) continue;
+      if (id === currentProductId) continue;
       if (seen.has(id)) continue;
 
       seen.add(id);
@@ -1177,7 +1245,7 @@ async function loadRecommendedByTagRaw(args: {
   if (!collectedIds.length) return [];
 
   const products = await getProductsByIds({
-    store_id: args.store_id,
+    store_id: storeId,
     ids: collectedIds,
     limit: collectedIds.length,
   });
@@ -1192,7 +1260,7 @@ async function loadRecommendedByTagRaw(args: {
   return collectedIds
     .map((id) => byId.get(id))
     .filter(Boolean)
-    .filter((product: any) => s(product?.id) !== args.currentProductId)
+    .filter((product: any) => s(product?.id) !== currentProductId)
     .slice(0, args.limit);
 }
 
@@ -1211,27 +1279,34 @@ function loadRecommendedByTag(args: {
   const storeId = s(args.store_id);
   const currentProductId = s(args.currentProductId);
   const limit = Math.min(Math.max(Number(args.limit ?? 8), 1), 12);
+  const idsHash = hashText(ids.join(","));
 
-  const key = `${storeId}:${currentProductId}:${limit}:${ids.join(",")}`;
+  const key = `${storeId}:${currentProductId}:${limit}:${idsHash}`;
 
   let fn = recommendedByTagCache.get(key);
 
   if (!fn) {
     fn = unstable_cache(
       () =>
-        loadRecommendedByTagRaw({
-          store_id: storeId,
-          currentProductId,
-          tagIds: ids,
-          limit,
-        }),
-      [
-        "recommended-by-tag",
-        storeId,
-        currentProductId,
-        String(limit),
-        ids.join(","),
-      ],
+        redisCached(
+          cacheKey(
+            "product",
+            "recommended-by-tag",
+            storeId,
+            currentProductId,
+            String(limit),
+            idsHash,
+          ),
+          { ttlSeconds: 180 },
+          () =>
+            loadRecommendedByTagRaw({
+              store_id: storeId,
+              currentProductId,
+              tagIds: ids,
+              limit,
+            }),
+        ),
+      ["recommended-by-tag", storeId, currentProductId, String(limit), idsHash],
       { revalidate: 120 },
     );
 
@@ -1345,6 +1420,8 @@ function loadRecommendedProducts(args: {
     : [];
 
   const brandId = s(args.product?.brand?.id);
+  const categoryHash = hashText(categoryIds.join(","));
+  const tagHash = hashText(tagIds.join(","));
 
   const key = [
     storeId,
@@ -1353,8 +1430,8 @@ function loadRecommendedProducts(args: {
     String(settings.enabled),
     settings.type,
     brandId,
-    categoryIds.join(","),
-    tagIds.join(","),
+    categoryHash,
+    tagHash,
   ].join(":");
 
   let fn = recommendedProductsCache.get(key);
@@ -1362,12 +1439,28 @@ function loadRecommendedProducts(args: {
   if (!fn) {
     fn = unstable_cache(
       () =>
-        loadRecommendedProductsRaw({
-          store_id: storeId,
-          product: args.product,
-          rawOptions: args.rawOptions,
-          limit,
-        }),
+        redisCached(
+          cacheKey(
+            "product",
+            "recommendations",
+            storeId,
+            currentProductId,
+            String(limit),
+            String(settings.enabled),
+            settings.type,
+            brandId || "none",
+            categoryHash,
+            tagHash,
+          ),
+          { ttlSeconds: 180 },
+          () =>
+            loadRecommendedProductsRaw({
+              store_id: storeId,
+              product: args.product,
+              rawOptions: args.rawOptions,
+              limit,
+            }),
+        ),
       [
         "product-recommendations",
         storeId,
@@ -1376,8 +1469,8 @@ function loadRecommendedProducts(args: {
         String(settings.enabled),
         settings.type,
         brandId,
-        categoryIds.join(","),
-        tagIds.join(","),
+        categoryHash,
+        tagHash,
       ],
       { revalidate: 120 },
     );
@@ -1396,10 +1489,11 @@ async function enrichProductFullRaw(args: {
   selectedCurrencyCode?: string | null;
 }) {
   const { store_id, product } = args;
+  const storeId = s(store_id);
 
-  if (!product?.id) return product;
+  if (!storeId || !product?.id) return product;
 
-  const sb: any = supabaseAdmin();
+  const sb = await getStoreDb(storeId);
   const product_id = product.id as string;
   const brandId = s(product?.brand_id);
   const meta = (product?.metadata ?? {}) as any;
@@ -1421,7 +1515,7 @@ async function enrichProductFullRaw(args: {
       .select(
         "id,media_kind,original_url,thumbnail_url,alt,video_url,is_default,sort_order,created_at",
       )
-      .eq("store_id", store_id)
+      .eq("store_id", storeId)
       .eq("product_id", product_id)
       .order("is_default", { ascending: false })
       .order("sort_order", { ascending: true }),
@@ -1469,14 +1563,14 @@ async function enrichProductFullRaw(args: {
       ? sb
           .from("brands")
           .select("id,name,logo_url,banner_url,description,metadata")
-          .eq("store_id", store_id)
+          .eq("store_id", storeId)
           .eq("id", brandId)
           .maybeSingle()
       : Promise.resolve({ data: null, error: null } as any),
 
-    loadProductPurchaseCount(store_id, product_id),
+    loadProductPurchaseCount(storeId, product_id),
 
-    loadStoreCurrencies(store_id),
+    loadStoreCurrencies(storeId),
   ]);
 
   const media = (mediaR.data || []) as any[];
@@ -1515,7 +1609,7 @@ async function enrichProductFullRaw(args: {
       ? sb
           .from("product_tags")
           .select("id,name")
-          .eq("store_id", store_id)
+          .eq("store_id", storeId)
           .in("id", tagIds)
       : Promise.resolve({ data: [], error: null }),
   ]);
@@ -1677,11 +1771,23 @@ function enrichProductFull(args: {
   if (!fn) {
     fn = unstable_cache(
       () =>
-        enrichProductFullRaw({
-          store_id: storeId,
-          product: args.product,
-          selectedCurrencyCode: args.selectedCurrencyCode,
-        }),
+        redisCached(
+          cacheKey(
+            "product",
+            "full",
+            storeId,
+            productId,
+            updatedKey,
+            selectedCurrencyCode,
+          ),
+          { ttlSeconds: 180 },
+          () =>
+            enrichProductFullRaw({
+              store_id: storeId,
+              product: args.product,
+              selectedCurrencyCode: args.selectedCurrencyCode,
+            }),
+        ),
       ["product-full", storeId, productId, updatedKey, selectedCurrencyCode],
       { revalidate: 120 },
     );
@@ -1762,11 +1868,22 @@ export async function loadProductPageByPublicNo(args: {
   if (!fn) {
     fn = unstable_cache(
       () =>
-        loadProductPageByPublicNoRaw({
-          store_id: storeId,
-          publicNo,
-          selectedCurrencyCode,
-        }),
+        redisCached(
+          cacheKey(
+            "product",
+            "page-public-no",
+            storeId,
+            String(publicNo),
+            selectedKey,
+          ),
+          { ttlSeconds: 120 },
+          () =>
+            loadProductPageByPublicNoRaw({
+              store_id: storeId,
+              publicNo,
+              selectedCurrencyCode,
+            }),
+        ),
       ["product-page-public-no", storeId, String(publicNo), selectedKey],
       { revalidate: 60 },
     );
@@ -1852,29 +1969,30 @@ export async function loadProductPageByShortCode(args: {
 }) {
   const storeId = s(args.store_id);
   const code = s(args.code);
+  const normalizedCode = normalizeCacheKey(code);
   const selectedCurrencyCode = await readSelectedCurrencyCodeFromCookies();
   const selectedKey = normalizeCurrencyCode(selectedCurrencyCode, "auto");
 
   if (!storeId || !code) return null;
 
-  const key = `${storeId}:short:${normalizeCacheKey(code)}:${selectedKey}`;
+  const key = `${storeId}:short:${normalizedCode}:${selectedKey}`;
 
   let fn = productPageByShortCodeCache.get(key);
 
   if (!fn) {
     fn = unstable_cache(
       () =>
-        loadProductPageByShortCodeRaw({
-          store_id: storeId,
-          code,
-          selectedCurrencyCode,
-        }),
-      [
-        "product-page-short-code",
-        storeId,
-        normalizeCacheKey(code),
-        selectedKey,
-      ],
+        redisCached(
+          cacheKey("product", "page-short-code", storeId, normalizedCode, selectedKey),
+          { ttlSeconds: 120 },
+          () =>
+            loadProductPageByShortCodeRaw({
+              store_id: storeId,
+              code,
+              selectedCurrencyCode,
+            }),
+        ),
+      ["product-page-short-code", storeId, normalizedCode, selectedKey],
       { revalidate: 60 },
     );
 

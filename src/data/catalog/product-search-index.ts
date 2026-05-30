@@ -1,7 +1,7 @@
 // FILE: apps/storefront/src/data/catalog/product-search-index.ts
 import "server-only";
 
-import { supabaseAdmin } from "@/data/store/supabase.server";
+import { getStoreDb } from "@/data/db/store-db.server";
 import { isProductVisibleInWeb } from "@/data/catalog/products";
 
 const PRODUCT_SELECT =
@@ -206,44 +206,59 @@ function splitSuggestionTerms(values: unknown[]) {
   return uniqueText(terms).slice(0, 80);
 }
 
-async function loadPricingMap(productIds: string[]) {
-  if (!productIds.length) return new Map<string, any>();
+async function loadPricingMap(args: {
+  storeId: string;
+  productIds: string[];
+}) {
+  const storeId = s(args.storeId);
+  const productIds = args.productIds.map(s).filter(Boolean);
 
-  const sb = supabaseAdmin() as any;
+  if (!storeId || !productIds.length) return new Map<string, any>();
 
-  const { data } = await sb
+  const sb = await getStoreDb(storeId);
+
+  const result = await sb
     .from("product_pricing")
     .select("product_id,currency,price,sale_price,sale_end")
     .in("product_id", productIds);
 
+  const rows = Array.isArray(result.data) ? (result.data as any[]) : [];
   const map = new Map<string, any>();
 
-  for (const row of data || []) {
+  for (const row of rows) {
     const productId = s(row?.product_id);
     if (!productId) continue;
+
     map.set(productId, row);
   }
 
   return map;
 }
 
- async function loadMediaMap(productIds: string[]) {
-  if (!productIds.length) return new Map<string, string>();
+async function loadMediaMap(args: {
+  storeId: string;
+  productIds: string[];
+}) {
+  const storeId = s(args.storeId);
+  const productIds = args.productIds.map(s).filter(Boolean);
 
-  const sb = supabaseAdmin() as any;
+  if (!storeId || !productIds.length) return new Map<string, string>();
 
-  const { data, error } = await sb
+  const sb = await getStoreDb(storeId);
+
+  const result = await sb
     .from("product_media")
     .select(
       "product_id,original_url,thumbnail_url,media_kind,is_default,sort_order,created_at",
     )
+    .eq("store_id", storeId)
     .in("product_id", productIds);
 
-  if (error || !Array.isArray(data)) {
+  if (result.error || !Array.isArray(result.data)) {
     return new Map<string, string>();
   }
 
-  const rows = [...data].sort((a: any, b: any) => {
+  const rows = [...(result.data as any[])].sort((a: any, b: any) => {
     const aDefault = a?.is_default ? 1 : 0;
     const bDefault = b?.is_default ? 1 : 0;
 
@@ -274,31 +289,43 @@ async function loadPricingMap(productIds: string[]) {
   return map;
 }
 
-async function loadBrandsMap(storeId: string, brandIds: string[]) {
-  const cleanIds = Array.from(new Set(brandIds.map(s).filter(Boolean)));
-  if (!cleanIds.length) return new Map<string, any>();
+async function loadBrandsMap(args: {
+  storeId: string;
+  brandIds: string[];
+}) {
+  const storeId = s(args.storeId);
+  const cleanIds = Array.from(new Set(args.brandIds.map(s).filter(Boolean)));
 
-  const sb = supabaseAdmin() as any;
+  if (!storeId || !cleanIds.length) return new Map<string, any>();
 
-  const { data } = await sb
+  const sb = await getStoreDb(storeId);
+
+  const result = await sb
     .from("brands")
     .select("id,name,description,metadata,seo_description")
     .eq("store_id", storeId)
     .in("id", cleanIds);
 
+  const rows = Array.isArray(result.data) ? (result.data as any[]) : [];
   const map = new Map<string, any>();
 
-  for (const row of data || []) {
+  for (const row of rows) {
     map.set(String(row.id), row);
   }
 
   return map;
 }
 
-async function loadCategoriesByProductId(productIds: string[]) {
-  if (!productIds.length) return new Map<string, any[]>();
+async function loadCategoriesByProductId(args: {
+  storeId: string;
+  productIds: string[];
+}) {
+  const storeId = s(args.storeId);
+  const productIds = args.productIds.map(s).filter(Boolean);
 
-  const sb = supabaseAdmin() as any;
+  if (!storeId || !productIds.length) return new Map<string, any[]>();
+
+  const sb = await getStoreDb(storeId);
 
   const [a, b] = await Promise.all([
     sb
@@ -313,8 +340,8 @@ async function loadCategoriesByProductId(productIds: string[]) {
   ]);
 
   const links = [
-    ...(Array.isArray(a.data) ? a.data : []),
-    ...(Array.isArray(b.data) ? b.data : []),
+    ...(Array.isArray(a.data) ? (a.data as any[]) : []),
+    ...(Array.isArray(b.data) ? (b.data as any[]) : []),
   ];
 
   const categoryIds = Array.from(
@@ -324,12 +351,15 @@ async function loadCategoriesByProductId(productIds: string[]) {
   const categoriesById = new Map<string, any>();
 
   if (categoryIds.length) {
-    const { data } = await sb
+    const result = await sb
       .from("categories")
       .select("id,name,slug,path,status")
+      .eq("store_id", storeId)
       .in("id", categoryIds);
 
-    for (const row of data || []) {
+    const rows = Array.isArray(result.data) ? (result.data as any[]) : [];
+
+    for (const row of rows) {
       categoriesById.set(String(row.id), row);
     }
   }
@@ -351,28 +381,41 @@ async function loadCategoriesByProductId(productIds: string[]) {
   return map;
 }
 
-async function loadOptionsByProductId(productIds: string[]) {
-  if (!productIds.length) return new Map<string, any[]>();
+async function loadOptionsByProductId(args: {
+  storeId: string;
+  productIds: string[];
+}) {
+  const storeId = s(args.storeId);
+  const productIds = args.productIds.map(s).filter(Boolean);
 
-  const sb = supabaseAdmin() as any;
+  if (!storeId || !productIds.length) return new Map<string, any[]>();
 
-  const { data: options } = await sb
+  const sb = await getStoreDb(storeId);
+
+  const optionsResult = await sb
     .from("product_options")
     .select("id,product_id,name,option_field_type,display_type")
     .in("product_id", productIds);
 
-  const optionRows = Array.isArray(options) ? options : [];
+  const optionRows = Array.isArray(optionsResult.data)
+    ? (optionsResult.data as any[])
+    : [];
+
   const optionIds = optionRows.map((row: any) => s(row?.id)).filter(Boolean);
 
   const valuesByOptionId = new Map<string, any[]>();
 
   if (optionIds.length) {
-    const { data: values } = await sb
+    const valuesResult = await sb
       .from("product_option_values")
       .select("option_id,name,display_value")
       .in("option_id", optionIds);
 
-    for (const value of values || []) {
+    const valueRows = Array.isArray(valuesResult.data)
+      ? (valuesResult.data as any[])
+      : [];
+
+    for (const value of valueRows) {
       const optionId = s(value?.option_id);
       if (!optionId) continue;
 
@@ -401,37 +444,51 @@ async function loadOptionsByProductId(productIds: string[]) {
   return map;
 }
 
-async function loadTagsByProductId(storeId: string, productIds: string[]) {
-  if (!productIds.length) return new Map<string, any[]>();
+async function loadTagsByProductId(args: {
+  storeId: string;
+  productIds: string[];
+}) {
+  const storeId = s(args.storeId);
+  const productIds = args.productIds.map(s).filter(Boolean);
 
-  const sb = supabaseAdmin() as any;
+  if (!storeId || !productIds.length) return new Map<string, any[]>();
 
-  const { data: links } = await sb
+  const sb = await getStoreDb(storeId);
+
+  const linksResult = await sb
     .from("product_tag_links")
     .select("product_id,tag_id")
     .in("product_id", productIds);
 
+  const links = Array.isArray(linksResult.data)
+    ? (linksResult.data as any[])
+    : [];
+
   const tagIds = Array.from(
-    new Set((links || []).map((row: any) => s(row?.tag_id)).filter(Boolean)),
+    new Set(links.map((row: any) => s(row?.tag_id)).filter(Boolean)),
   );
 
   const tagsById = new Map<string, any>();
 
   if (tagIds.length) {
-    const { data: tags } = await sb
+    const tagsResult = await sb
       .from("product_tags")
       .select("id,name")
       .eq("store_id", storeId)
       .in("id", tagIds);
 
-    for (const tag of tags || []) {
+    const tags = Array.isArray(tagsResult.data)
+      ? (tagsResult.data as any[])
+      : [];
+
+    for (const tag of tags) {
       tagsById.set(String(tag.id), tag);
     }
   }
 
   const map = new Map<string, any[]>();
 
-  for (const link of links || []) {
+  for (const link of links) {
     const productId = s(link?.product_id);
     const tag = tagsById.get(s(link?.tag_id));
 
@@ -445,19 +502,26 @@ async function loadTagsByProductId(storeId: string, productIds: string[]) {
   return map;
 }
 
-async function loadVariantsByProductId(productIds: string[]) {
-  if (!productIds.length) return new Map<string, any[]>();
+async function loadVariantsByProductId(args: {
+  storeId: string;
+  productIds: string[];
+}) {
+  const storeId = s(args.storeId);
+  const productIds = args.productIds.map(s).filter(Boolean);
 
-  const sb = supabaseAdmin() as any;
+  if (!storeId || !productIds.length) return new Map<string, any[]>();
 
-  const { data } = await sb
+  const sb = await getStoreDb(storeId);
+
+  const result = await sb
     .from("product_variants")
     .select("product_id,sku,barcode,mpn,gtin")
     .in("product_id", productIds);
 
+  const rows = Array.isArray(result.data) ? (result.data as any[]) : [];
   const map = new Map<string, any[]>();
 
-  for (const row of data || []) {
+  for (const row of rows) {
     const productId = s(row?.product_id);
     if (!productId) continue;
 
@@ -468,6 +532,7 @@ async function loadVariantsByProductId(productIds: string[]) {
 
   return map;
 }
+
 function readProductImage(product: any, mediaUrl = "") {
   const metadata = safeObject(product?.metadata);
 
@@ -505,6 +570,7 @@ function readProductImage(product: any, mediaUrl = "") {
     fromMetadataMedia,
   );
 }
+
 function buildIndexPayload(args: {
   product: any;
   pricing: any;
@@ -610,6 +676,8 @@ function buildIndexPayload(args: {
   const suggestionTerms = splitSuggestionTerms(suggestionParts);
   const suggestionTermsText = suggestionTerms.join(" ");
 
+  const resolvedImageUrl = readProductImage(product, imageUrl);
+
   return {
     store_id: product.store_id,
     product_id: product.id,
@@ -617,7 +685,7 @@ function buildIndexPayload(args: {
     title: s(product?.name),
     description: firstText(product?.description, productMetadata?.description),
     href: buildProductHref(product),
-  image_url: imageUrl || "",
+    image_url: resolvedImageUrl || "",
 
     price: finalPrice,
     compare_price: comparePrice,
@@ -638,26 +706,35 @@ export async function syncStoreSearchIndex(args: {
   storeId: string;
   limit?: number;
 }) {
-  const sb = supabaseAdmin() as any;
+  const storeId = s(args.storeId);
 
-  const limit = Math.min(Math.max(Number(args.limit || 500), 1), 5000);
-
-  const { data: products, error } = await sb
-    .from("products")
-    .select(PRODUCT_SELECT)
-    .eq("store_id", args.storeId)
-    .order("created_at", { ascending: false })
-    .limit(limit);
-
-  if (error) {
+  if (!storeId) {
     return {
       ok: false,
       indexed: 0,
-      error: error.message,
+      error: "Missing storeId",
     };
   }
 
-  const rows = Array.isArray(products) ? products : [];
+  const sb = await getStoreDb(storeId);
+  const limit = Math.min(Math.max(Number(args.limit || 500), 1), 5000);
+
+  const result = await sb
+    .from("products")
+    .select(PRODUCT_SELECT)
+    .eq("store_id", storeId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (result.error) {
+    return {
+      ok: false,
+      indexed: 0,
+      error: result.error.message,
+    };
+  }
+
+  const rows = Array.isArray(result.data) ? (result.data as any[]) : [];
   const productIds = rows.map((product: any) => s(product?.id)).filter(Boolean);
 
   const brandIds = rows
@@ -673,13 +750,13 @@ export async function syncStoreSearchIndex(args: {
     tagsMap,
     variantsMap,
   ] = await Promise.all([
-    loadPricingMap(productIds),
-    loadMediaMap(productIds),
-    loadBrandsMap(args.storeId, brandIds),
-    loadCategoriesByProductId(productIds),
-    loadOptionsByProductId(productIds),
-    loadTagsByProductId(args.storeId, productIds),
-    loadVariantsByProductId(productIds),
+    loadPricingMap({ storeId, productIds }),
+    loadMediaMap({ storeId, productIds }),
+    loadBrandsMap({ storeId, brandIds }),
+    loadCategoriesByProductId({ storeId, productIds }),
+    loadOptionsByProductId({ storeId, productIds }),
+    loadTagsByProductId({ storeId, productIds }),
+    loadVariantsByProductId({ storeId, productIds }),
   ]);
 
   const payloads = rows.map((product: any) => {
@@ -704,17 +781,15 @@ export async function syncStoreSearchIndex(args: {
     };
   }
 
-  const { error: upsertError } = await sb
-    .from("product_search_index")
-    .upsert(payloads, {
-      onConflict: "store_id,product_id",
-    });
+  const upsertResult = await sb.from("product_search_index").upsert(payloads, {
+    onConflict: "store_id,product_id",
+  });
 
-  if (upsertError) {
+  if (upsertResult.error) {
     return {
       ok: false,
       indexed: 0,
-      error: upsertError.message,
+      error: upsertResult.error.message,
     };
   }
 

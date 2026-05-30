@@ -2,6 +2,9 @@
 
 import "server-only";
 
+import { getOrdersDb } from "@/data/db/orders-db.server";
+import { getStoreDb } from "@/data/db/store-db.server";
+
 type OrderOptionType = "text" | "number" | "choices" | "appointment";
 
 type StoreOrderOptionRow = {
@@ -483,8 +486,11 @@ function mergeChoicesForOption(args: {
   return Array.from(map.values()).filter((choice) => choice.id && choice.label);
 }
 
-async function loadCartProductIds(sb: any, cartId: string) {
-  const r = await sb.from("cart_items").select("product_id").eq("cart_id", cartId);
+async function loadCartProductIds(ordersDb: any, cartId: string) {
+  const r = await ordersDb
+    .from("cart_items")
+    .select("product_id")
+    .eq("cart_id", cartId);
 
   if (r.error) throw new Error(r.error.message);
 
@@ -494,7 +500,7 @@ async function loadCartProductIds(sb: any, cartId: string) {
 }
 
 async function loadProductCategoryIds(args: {
-  sb: any;
+  storeDb: any;
   storeId: string;
   productIds: string[];
 }) {
@@ -503,7 +509,7 @@ async function loadProductCategoryIds(args: {
 
   const out: string[] = [];
 
-  const pcR = await args.sb
+  const pcR = await args.storeDb
     .from("product_categories")
     .select("product_id,category_id")
     .in("product_id", productIds);
@@ -512,7 +518,7 @@ async function loadProductCategoryIds(args: {
     for (const row of pcR.data) out.push(s(row.category_id));
   }
 
-  const cpR = await args.sb
+  const cpR = await args.storeDb
     .from("category_products")
     .select("product_id,category_id")
     .in("product_id", productIds);
@@ -525,7 +531,7 @@ async function loadProductCategoryIds(args: {
 }
 
 async function loadOptionCategoryLinks(args: {
-  sb: any;
+  storeDb: any;
   storeId: string;
   optionIds: string[];
 }) {
@@ -535,7 +541,7 @@ async function loadOptionCategoryLinks(args: {
   if (optionIds.length === 0) return map;
 
   async function run(ids: string[]) {
-    return await args.sb
+    return await args.storeDb
       .from("store_order_option_categories")
       .select("option_id,category_id")
       .eq("store_id", args.storeId)
@@ -569,7 +575,7 @@ async function loadOptionCategoryLinks(args: {
 }
 
 async function loadChoices(args: {
-  sb: any;
+  storeDb: any;
   storeId: string;
   optionIds: string[];
 }) {
@@ -587,7 +593,7 @@ async function loadChoices(args: {
   let lastError: any = null;
 
   async function run(select: string, ids: string[]) {
-    return await args.sb
+    return await args.storeDb
       .from("store_order_option_choices")
       .select(select)
       .eq("store_id", args.storeId)
@@ -644,7 +650,7 @@ async function loadChoices(args: {
   return map;
 }
 
-async function loadRawActiveOptions(args: { sb: any; storeId: string }) {
+async function loadRawActiveOptions(args: { storeDb: any; storeId: string }) {
   const selects = [
     "id,store_id,type,name,description,status,is_required,applies_to,text_size,allow_multiple,price_customer,metadata,sort_order",
     "id,store_id,type,name,description,status,is_required,text_size,allow_multiple,price_customer,metadata,sort_order",
@@ -654,7 +660,7 @@ async function loadRawActiveOptions(args: { sb: any; storeId: string }) {
   let lastError: any = null;
 
   for (const select of selects) {
-    const r = await args.sb
+    const r = await args.storeDb
       .from("store_order_options")
       .select(select)
       .eq("store_id", args.storeId)
@@ -694,7 +700,8 @@ async function loadRawActiveOptions(args: { sb: any; storeId: string }) {
 }
 
 async function loadApplicableOrderOptions(args: {
-  sb: any;
+  ordersDb: any;
+  storeDb: any;
   storeId: string;
   cartId?: string;
   productIds?: string[];
@@ -702,11 +709,11 @@ async function loadApplicableOrderOptions(args: {
   const productIds = args.productIds
     ? uniq(args.productIds)
     : args.cartId
-      ? await loadCartProductIds(args.sb, args.cartId)
+      ? await loadCartProductIds(args.ordersDb, args.cartId)
       : [];
 
   const rawOptions = await loadRawActiveOptions({
-    sb: args.sb,
+    storeDb: args.storeDb,
     storeId: args.storeId,
   });
 
@@ -715,17 +722,17 @@ async function loadApplicableOrderOptions(args: {
   const [choicesByOption, linkedCategories, cartCategoryIds] =
     await Promise.all([
       loadChoices({
-        sb: args.sb,
+        storeDb: args.storeDb,
         storeId: args.storeId,
         optionIds,
       }),
       loadOptionCategoryLinks({
-        sb: args.sb,
+        storeDb: args.storeDb,
         storeId: args.storeId,
         optionIds,
       }),
       loadProductCategoryIds({
-        sb: args.sb,
+        storeDb: args.storeDb,
         storeId: args.storeId,
         productIds,
       }),
@@ -1179,14 +1186,16 @@ function normalizeOneAnswer(args: {
 }
 
 async function normalizeAnswersFromPayload(args: {
-  sb: any;
+  ordersDb: any;
+  storeDb: any;
   storeId: string;
   cartId: string;
   answers: CartOrderOptionAnswerInput[];
   requireAll?: boolean;
 }) {
   const options = await loadApplicableOrderOptions({
-    sb: args.sb,
+    ordersDb: args.ordersDb,
+    storeDb: args.storeDb,
     storeId: args.storeId,
     cartId: args.cartId,
   });
@@ -1226,14 +1235,20 @@ async function normalizeAnswersFromPayload(args: {
 }
 
 export async function saveCartOrderOptionsFromPayload(args: {
-  sb: any;
+  sb?: any;
   storeId: string;
   cartId: string;
   answers: CartOrderOptionAnswerInput[];
   currency: string;
 }) {
+  const [ordersDb, storeDb] = await Promise.all([
+    getOrdersDb(args.storeId),
+    getStoreDb(args.storeId),
+  ]);
+
   const normalized = await normalizeAnswersFromPayload({
-    sb: args.sb,
+    ordersDb,
+    storeDb,
     storeId: args.storeId,
     cartId: args.cartId,
     answers: args.answers,
@@ -1242,7 +1257,7 @@ export async function saveCartOrderOptionsFromPayload(args: {
 
   if (!normalized.ok) return normalized;
 
-  const del = await args.sb
+  const del = await ordersDb
     .from("cart_order_option_answers")
     .delete()
     .eq("store_id", args.storeId)
@@ -1259,7 +1274,7 @@ export async function saveCartOrderOptionsFromPayload(args: {
   if (normalized.rows.length > 0) {
     const now = new Date().toISOString();
 
-    const ins = await args.sb.from("cart_order_option_answers").insert(
+    const ins = await ordersDb.from("cart_order_option_answers").insert(
       normalized.rows.map((row) => ({
         store_id: args.storeId,
         cart_id: args.cartId,
@@ -1292,11 +1307,11 @@ export async function saveCartOrderOptionsFromPayload(args: {
 }
 
 async function loadSavedCartAnswers(args: {
-  sb: any;
+  ordersDb: any;
   storeId: string;
   cartId: string;
 }) {
-  const r = await args.sb
+  const r = await args.ordersDb
     .from("cart_order_option_answers")
     .select(
       "option_id,option_type,value,choice_ids,metadata,snapshot,price_customer,currency",
@@ -1310,12 +1325,17 @@ async function loadSavedCartAnswers(args: {
 }
 
 export async function ensureCartOrderOptionsValid(args: {
-  sb: any;
+  sb?: any;
   storeId: string;
   cartId: string;
 }) {
+  const [ordersDb, storeDb] = await Promise.all([
+    getOrdersDb(args.storeId),
+    getStoreDb(args.storeId),
+  ]);
+
   const saved = await loadSavedCartAnswers({
-    sb: args.sb,
+    ordersDb,
     storeId: args.storeId,
     cartId: args.cartId,
   });
@@ -1329,7 +1349,8 @@ export async function ensureCartOrderOptionsValid(args: {
   }));
 
   const normalized = await normalizeAnswersFromPayload({
-    sb: args.sb,
+    ordersDb,
+    storeDb,
     storeId: args.storeId,
     cartId: args.cartId,
     answers,
@@ -1345,7 +1366,7 @@ export async function ensureCartOrderOptionsValid(args: {
 }
 
 export async function loadCartOrderOptionsSummary(args: {
-  sb: any;
+  sb?: any;
   storeId: string;
   cartId: string;
   productIds: string[];
@@ -1353,8 +1374,14 @@ export async function loadCartOrderOptionsSummary(args: {
   sourceCurrency: string;
   convertFromStoreCurrency: (amount: number) => number;
 }) {
+  const [ordersDb, storeDb] = await Promise.all([
+    getOrdersDb(args.storeId),
+    getStoreDb(args.storeId),
+  ]);
+
   const options = await loadApplicableOrderOptions({
-    sb: args.sb,
+    ordersDb,
+    storeDb,
     storeId: args.storeId,
     cartId: args.cartId,
     productIds: args.productIds,
@@ -1362,7 +1389,7 @@ export async function loadCartOrderOptionsSummary(args: {
 
   const optionMap = new Map(options.map((option) => [option.id, option]));
   const saved = await loadSavedCartAnswers({
-    sb: args.sb,
+    ordersDb,
     storeId: args.storeId,
     cartId: args.cartId,
   });
@@ -1439,15 +1466,16 @@ export async function loadCartOrderOptionsSummary(args: {
 }
 
 export async function copyCartOrderOptionsToOrder(args: {
-  sb: any;
+  sb?: any;
   storeId: string;
   cartId: string;
   orderId: string;
   targetCurrency: string;
   summaryOrderOptions?: CartOrderOptionSummaryLine[];
 }) {
+  const ordersDb = await getOrdersDb(args.storeId);
+
   const valid = await ensureCartOrderOptionsValid({
-    sb: args.sb,
     storeId: args.storeId,
     cartId: args.cartId,
   });
@@ -1488,7 +1516,7 @@ export async function copyCartOrderOptionsToOrder(args: {
     };
   });
 
-  const ins = await args.sb.from("order_option_answers").insert(rows);
+  const ins = await ordersDb.from("order_option_answers").insert(rows);
 
   if (ins.error) {
     return {
@@ -1502,11 +1530,13 @@ export async function copyCartOrderOptionsToOrder(args: {
 }
 
 export async function clearCartOrderOptions(args: {
-  sb: any;
+  sb?: any;
   storeId: string;
   cartId: string;
 }) {
-  const r = await args.sb
+  const ordersDb = await getOrdersDb(args.storeId);
+
+  const r = await ordersDb
     .from("cart_order_option_answers")
     .delete()
     .eq("store_id", args.storeId)

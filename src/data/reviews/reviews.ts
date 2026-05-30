@@ -1,5 +1,7 @@
-//data/reviews/reviews.ts
-import { supabaseAdmin } from "@/data/store/supabase.server";
+// FILE: apps/storefront/src/data/reviews/reviews.ts
+import { controlDb } from "@/data/db/control-db.server";
+import { getOrdersDb } from "@/data/db/orders-db.server";
+import { getStoreDb } from "@/data/db/store-db.server";
 
 export type ReviewTargetType = "product" | "store" | "category" | "page";
 export type ReviewStatus = "pending" | "published" | "rejected" | "hidden";
@@ -236,7 +238,7 @@ function normalizeReviewEntryRow(row: any): ReviewEntryRow {
 }
 
 async function resolveVerifiedPurchase(args: {
-  sb: ReturnType<typeof supabaseAdmin>;
+  ordersDb: any;
   storeId: string;
   targetType: ReviewTargetType;
   targetId: string;
@@ -244,14 +246,21 @@ async function resolveVerifiedPurchase(args: {
   orderId?: string | null;
   orderItemId?: string | null;
 }) {
-  const { sb, storeId, targetType, targetId, customerId, orderId, orderItemId } =
-    args;
+  const {
+    ordersDb,
+    storeId,
+    targetType,
+    targetId,
+    customerId,
+    orderId,
+    orderItemId,
+  } = args;
 
   if (!customerId) return false;
   if (targetType !== "product") return false;
 
   if (orderItemId) {
-    const r = await sb
+    const r = await ordersDb
       .from("order_items")
       .select("id, product_id, order_id")
       .eq("id", orderItemId)
@@ -260,7 +269,7 @@ async function resolveVerifiedPurchase(args: {
       .maybeSingle();
 
     if (r.data?.id) {
-      const o = await sb
+      const o = await ordersDb
         .from("orders")
         .select("id, customer_id, store_id")
         .eq("id", r.data.order_id)
@@ -273,7 +282,7 @@ async function resolveVerifiedPurchase(args: {
   }
 
   if (orderId) {
-    const o = await sb
+    const o = await ordersDb
       .from("orders")
       .select("id, customer_id, store_id")
       .eq("id", orderId)
@@ -282,7 +291,7 @@ async function resolveVerifiedPurchase(args: {
       .maybeSingle();
 
     if (o.data?.id) {
-      const i = await sb
+      const i = await ordersDb
         .from("order_items")
         .select("id")
         .eq("order_id", orderId)
@@ -295,7 +304,7 @@ async function resolveVerifiedPurchase(args: {
     }
   }
 
-  const ordersR = await sb
+  const ordersR = await ordersDb
     .from("orders")
     .select("id")
     .eq("store_id", storeId)
@@ -304,7 +313,7 @@ async function resolveVerifiedPurchase(args: {
   const orderIds = (ordersR.data || []).map((x: any) => x.id).filter(Boolean);
   if (!orderIds.length) return false;
 
-  const itemR = await sb
+  const itemR = await ordersDb
     .from("order_items")
     .select("id")
     .eq("store_id", storeId)
@@ -316,10 +325,34 @@ async function resolveVerifiedPurchase(args: {
   return !!itemR.data?.id;
 }
 
+async function resolveStoreIdForReview(args: {
+  reviewId: string;
+  storeId?: string | null;
+}) {
+  const hintedStoreId = s(args.storeId);
+  if (hintedStoreId) return hintedStoreId;
+
+  const reviewId = s(args.reviewId);
+  if (!reviewId) return null;
+
+  const sb = (await controlDb()) as any;
+
+  const result = await sb
+    .from("review_entries")
+    .select("store_id")
+    .eq("id", reviewId)
+    .limit(1)
+    .maybeSingle();
+
+  return result.data?.store_id ? String(result.data.store_id) : null;
+}
+
 export async function listReviews(
   input: ListReviewsInput,
 ): Promise<ReviewListResult> {
-  const sb = supabaseAdmin();
+  const storeId = s(input.storeId);
+  const sb = (await getStoreDb(storeId)) as any;
+
   const page = clampPage(input.page);
   const pageSize = clampPageSize(input.pageSize);
   const from = (page - 1) * pageSize;
@@ -338,7 +371,7 @@ export async function listReviews(
       `,
       { count: "exact" },
     )
-    .eq("store_id", input.storeId)
+    .eq("store_id", storeId)
     .eq("target_type", input.targetType)
     .eq("target_id", input.targetId)
     .eq("status", "published");
@@ -359,7 +392,7 @@ export async function listReviews(
     const mediaR = await sb
       .from("review_media")
       .select("review_id")
-      .eq("store_id", input.storeId);
+      .eq("store_id", storeId);
 
     const reviewIds = Array.from(
       new Set((mediaR.data || []).map((x: any) => x.review_id).filter(Boolean)),
@@ -481,12 +514,13 @@ export async function getReviewSummary(args: {
   targetType: ReviewTargetType;
   targetId: string;
 }): Promise<ReviewSummary> {
-  const sb = supabaseAdmin();
+  const storeId = s(args.storeId);
+  const sb = (await getStoreDb(storeId)) as any;
 
   const reviewsR = await sb
     .from("review_entries")
     .select("id, review_type, rating, is_verified_purchase")
-    .eq("store_id", args.storeId)
+    .eq("store_id", storeId)
     .eq("target_type", args.targetType)
     .eq("target_id", args.targetId)
     .eq("status", "published");
@@ -576,14 +610,16 @@ export async function getReviewSummary(args: {
 }
 
 export async function createReview(input: CreateReviewInput) {
-  const sb = supabaseAdmin();
+  const storeId = s(input.storeId);
+  const storeDb = (await getStoreDb(storeId)) as any;
+  const ordersDb = (await getOrdersDb(storeId)) as any;
 
   const reviewType: ReviewType = input.reviewType ?? "review";
   const status: ReviewStatus = input.status ?? "pending";
 
   const verifiedPurchase = await resolveVerifiedPurchase({
-    sb,
-    storeId: input.storeId,
+    ordersDb,
+    storeId,
     targetType: input.targetType,
     targetId: input.targetId,
     customerId: input.customerId ?? null,
@@ -595,7 +631,7 @@ export async function createReview(input: CreateReviewInput) {
   let finalAuthorEmail = toNullableText(input.authorEmail);
 
   if (input.customerId) {
-    const customerR = await sb
+    const customerR = await storeDb
       .from("customers")
       .select("id, full_name, email")
       .eq("id", input.customerId)
@@ -605,6 +641,7 @@ export async function createReview(input: CreateReviewInput) {
       if (!finalAuthorName) {
         finalAuthorName = toNullableText(customerR.data.full_name);
       }
+
       if (!finalAuthorEmail) {
         finalAuthorEmail = toNullableText(customerR.data.email);
       }
@@ -612,7 +649,7 @@ export async function createReview(input: CreateReviewInput) {
   }
 
   const insertPayload = {
-    store_id: input.storeId,
+    store_id: storeId,
     target_type: input.targetType,
     target_id: input.targetId,
     customer_id: input.customerId ?? null,
@@ -630,7 +667,7 @@ export async function createReview(input: CreateReviewInput) {
     published_at: status === "published" ? new Date().toISOString() : null,
   };
 
-  const r = await sb
+  const r = await storeDb
     .from("review_entries")
     .insert(insertPayload)
     .select(
@@ -653,7 +690,7 @@ export async function createReview(input: CreateReviewInput) {
   const cleanMedia = mediaRows
     .map((m, idx) => ({
       review_id: r.data.id,
-      store_id: input.storeId,
+      store_id: storeId,
       media_type: m.media_type === "video" ? "video" : "image",
       file_url: s(m.file_url),
       thumbnail_url: toNullableText(m.thumbnail_url),
@@ -665,19 +702,19 @@ export async function createReview(input: CreateReviewInput) {
     .filter((m) => !!m.file_url);
 
   if (cleanMedia.length) {
-    const mediaInsert = await sb.from("review_media").insert(cleanMedia);
+    const mediaInsert = await storeDb.from("review_media").insert(cleanMedia);
+
     if (mediaInsert.error) {
-      throw new Error(mediaInsert.error.message || "FAILED_TO_CREATE_REVIEW_MEDIA");
+      throw new Error(
+        mediaInsert.error.message || "FAILED_TO_CREATE_REVIEW_MEDIA",
+      );
     }
   }
 
   return normalizeReviewEntryRow(r.data);
 }
 
-async function getPublishedReplyCount(
-  sb: ReturnType<typeof supabaseAdmin>,
-  reviewId: string,
-) {
+async function getPublishedReplyCount(sb: any, reviewId: string) {
   const r = await sb
     .from("review_replies")
     .select("*", { count: "exact", head: true })
@@ -696,7 +733,8 @@ export async function createReviewReply(input: {
   body: string;
   status?: "published" | "hidden";
 }) {
-  const sb = supabaseAdmin();
+  const storeId = s(input.storeId);
+  const sb = (await getStoreDb(storeId)) as any;
 
   const body = s(input.body);
   if (!body) throw new Error("REPLY_BODY_REQUIRED");
@@ -705,7 +743,7 @@ export async function createReviewReply(input: {
     .from("review_replies")
     .insert({
       review_id: input.reviewId,
-      store_id: input.storeId,
+      store_id: storeId,
       author_type: input.authorType,
       admin_user_id: input.adminUserId ?? null,
       customer_id: input.customerId ?? null,
@@ -727,17 +765,29 @@ export async function createReviewReply(input: {
       reply_count: replyCount,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", input.reviewId);
+    .eq("id", input.reviewId)
+    .eq("store_id", storeId);
 
   return normalizeReviewReplyRow(r.data);
 }
 
 export async function addHelpfulReaction(input: {
   reviewId: string;
+  storeId?: string | null;
   customerId?: string | null;
   sessionId?: string | null;
 }) {
-  const sb = supabaseAdmin();
+  const reviewId = s(input.reviewId);
+  if (!reviewId) throw new Error("REVIEW_ID_REQUIRED");
+
+  const storeId = await resolveStoreIdForReview({
+    reviewId,
+    storeId: input.storeId,
+  });
+
+  if (!storeId) throw new Error("REVIEW_STORE_NOT_FOUND");
+
+  const sb = (await getStoreDb(storeId)) as any;
 
   const customerId = input.customerId ?? null;
   const sessionId = toNullableText(input.sessionId);
@@ -749,7 +799,7 @@ export async function addHelpfulReaction(input: {
   let existsQuery = sb
     .from("review_reactions")
     .select("id")
-    .eq("review_id", input.reviewId)
+    .eq("review_id", reviewId)
     .eq("reaction_type", "helpful")
     .limit(1);
 
@@ -765,7 +815,8 @@ export async function addHelpfulReaction(input: {
     const current = await sb
       .from("review_entries")
       .select("helpful_count")
-      .eq("id", input.reviewId)
+      .eq("id", reviewId)
+      .eq("store_id", storeId)
       .maybeSingle();
 
     return {
@@ -775,7 +826,7 @@ export async function addHelpfulReaction(input: {
   }
 
   const insertR = await sb.from("review_reactions").insert({
-    review_id: input.reviewId,
+    review_id: reviewId,
     customer_id: customerId,
     session_id: customerId ? null : sessionId,
     reaction_type: "helpful",
@@ -788,7 +839,7 @@ export async function addHelpfulReaction(input: {
   const countR = await sb
     .from("review_reactions")
     .select("*", { count: "exact", head: true })
-    .eq("review_id", input.reviewId)
+    .eq("review_id", reviewId)
     .eq("reaction_type", "helpful");
 
   const helpfulCount = Number(countR.count ?? 0);
@@ -799,7 +850,8 @@ export async function addHelpfulReaction(input: {
       helpful_count: helpfulCount,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", input.reviewId);
+    .eq("id", reviewId)
+    .eq("store_id", storeId);
 
   return {
     helpful_count: helpfulCount,

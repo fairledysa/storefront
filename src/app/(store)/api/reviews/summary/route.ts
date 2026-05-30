@@ -1,7 +1,8 @@
-//app/(store)/api/reviews/summary/route.ts
+// FILE: apps/storefront/src/app/(store)/api/reviews/summary/route.ts
 import { NextRequest, NextResponse } from "next/server";
+
 import { getReviewSummary, type ReviewTargetType } from "@/data/reviews/reviews";
-import { supabaseAdmin } from "@/data/store/supabase.server";
+import { controlDb } from "@/data/db/control-db.server";
 
 function s(v: unknown) {
   return String(v ?? "").trim();
@@ -21,7 +22,7 @@ function normalizeHost(raw: string) {
 }
 
 async function resolveStoreId(req: NextRequest) {
-  const sb = supabaseAdmin();
+  const sb = (await controlDb()) as any;
 
   const host =
     req.headers.get("x-forwarded-host") ||

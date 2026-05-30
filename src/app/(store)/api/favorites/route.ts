@@ -2,8 +2,9 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
+
+import { getStoreDb } from "@/data/db/store-db.server";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
-import { supabaseAdmin } from "@/data/store/supabase.server";
 import { verifySession } from "@/lib/auth/session";
 
 const FAVORITES_SESSION_COOKIE = "elyaia_favorites_session";
@@ -69,7 +70,7 @@ function attachSessionCookie(response: NextResponse, sessionId: string | null) {
 }
 
 async function ensureProductBelongsToStore(storeId: string, productId: string) {
-  const sb: any = supabaseAdmin();
+  const sb: any = await getStoreDb(storeId);
 
   const { data, error } = await sb
     .from("products")
@@ -86,14 +87,18 @@ export async function GET() {
   const ctx = await resolveStoreContext();
 
   if (!ctx.store?.id) {
-    return json({
-      ok: false,
-      product_ids: [],
-      error: "store_not_found",
-    }, 404);
+    return json(
+      {
+        ok: false,
+        product_ids: [],
+        error: "store_not_found",
+      },
+      404,
+    );
   }
 
-  const sb: any = supabaseAdmin();
+  const storeId = ctx.store.id;
+  const sb: any = await getStoreDb(storeId);
   const owner = await readOwner(false);
   const productIds = new Set<string>();
 
@@ -108,15 +113,18 @@ export async function GET() {
     const { data, error } = await sb
       .from("customer_favorites")
       .select("product_id")
-      .eq("store_id", ctx.store.id)
+      .eq("store_id", storeId)
       .eq("customer_id", owner.customerId);
 
     if (error) {
-      return json({
-        ok: false,
-        product_ids: [],
-        error: "failed_to_load_customer_favorites",
-      }, 500);
+      return json(
+        {
+          ok: false,
+          product_ids: [],
+          error: "failed_to_load_customer_favorites",
+        },
+        500,
+      );
     }
 
     for (const row of data || []) {
@@ -129,16 +137,19 @@ export async function GET() {
     const { data, error } = await sb
       .from("customer_favorites")
       .select("product_id")
-      .eq("store_id", ctx.store.id)
+      .eq("store_id", storeId)
       .is("customer_id", null)
       .eq("session_id", owner.sessionId);
 
     if (error) {
-      return json({
-        ok: false,
-        product_ids: [],
-        error: "failed_to_load_session_favorites",
-      }, 500);
+      return json(
+        {
+          ok: false,
+          product_ids: [],
+          error: "failed_to_load_session_favorites",
+        },
+        500,
+      );
     }
 
     for (const row of data || []) {
@@ -157,51 +168,64 @@ export async function POST(request: NextRequest) {
   const ctx = await resolveStoreContext();
 
   if (!ctx.store?.id) {
-    return json({
-      ok: false,
-      error: "store_not_found",
-    }, 404);
+    return json(
+      {
+        ok: false,
+        error: "store_not_found",
+      },
+      404,
+    );
   }
 
+  const storeId = ctx.store.id;
   const body = await request.json().catch(() => ({}));
   const productId = s(body?.product_id || body?.productId || body?.id);
 
   if (!productId) {
-    return json({
-      ok: false,
-      error: "missing_product_id",
-    }, 400);
+    return json(
+      {
+        ok: false,
+        error: "missing_product_id",
+      },
+      400,
+    );
   }
 
-  const validProduct = await ensureProductBelongsToStore(ctx.store.id, productId);
+  const validProduct = await ensureProductBelongsToStore(storeId, productId);
 
   if (!validProduct) {
-    return json({
-      ok: false,
-      error: "product_not_found",
-    }, 404);
+    return json(
+      {
+        ok: false,
+        error: "product_not_found",
+      },
+      404,
+    );
   }
 
   const owner = await readOwner(true);
 
   if (!owner.customerId && !owner.sessionId) {
-    return json({
-      ok: false,
-      error: "missing_favorites_owner",
-    }, 401);
+    return json(
+      {
+        ok: false,
+        error: "missing_favorites_owner",
+      },
+      401,
+    );
   }
 
-  const sb: any = supabaseAdmin();
+  const sb: any = await getStoreDb(storeId);
 
   const payload = owner.customerId
     ? {
-        store_id: ctx.store.id,
+        store_id: storeId,
         customer_id: owner.customerId,
         session_id: null,
         product_id: productId,
       }
     : {
-        store_id: ctx.store.id,
+        store_id: storeId,
         customer_id: null,
         session_id: owner.sessionId,
         product_id: productId,
@@ -210,10 +234,13 @@ export async function POST(request: NextRequest) {
   const { error } = await sb.from("customer_favorites").insert(payload);
 
   if (error && error.code !== "23505") {
-    return json({
-      ok: false,
-      error: "failed_to_add_favorite",
-    }, 500);
+    return json(
+      {
+        ok: false,
+        error: "failed_to_add_favorite",
+      },
+      500,
+    );
   }
 
   const response = json({
@@ -233,20 +260,27 @@ export async function DELETE(request: NextRequest) {
   const ctx = await resolveStoreContext();
 
   if (!ctx.store?.id) {
-    return json({
-      ok: false,
-      error: "store_not_found",
-    }, 404);
+    return json(
+      {
+        ok: false,
+        error: "store_not_found",
+      },
+      404,
+    );
   }
 
+  const storeId = ctx.store.id;
   const body = await request.json().catch(() => ({}));
   const productId = s(body?.product_id || body?.productId || body?.id);
 
   if (!productId) {
-    return json({
-      ok: false,
-      error: "missing_product_id",
-    }, 400);
+    return json(
+      {
+        ok: false,
+        error: "missing_product_id",
+      },
+      400,
+    );
   }
 
   const owner = await readOwner(false);
@@ -259,21 +293,24 @@ export async function DELETE(request: NextRequest) {
     });
   }
 
-  const sb: any = supabaseAdmin();
+  const sb: any = await getStoreDb(storeId);
 
   if (owner.customerId) {
     const { error } = await sb
       .from("customer_favorites")
       .delete()
-      .eq("store_id", ctx.store.id)
+      .eq("store_id", storeId)
       .eq("customer_id", owner.customerId)
       .eq("product_id", productId);
 
     if (error) {
-      return json({
-        ok: false,
-        error: "failed_to_remove_customer_favorite",
-      }, 500);
+      return json(
+        {
+          ok: false,
+          error: "failed_to_remove_customer_favorite",
+        },
+        500,
+      );
     }
   }
 
@@ -281,16 +318,19 @@ export async function DELETE(request: NextRequest) {
     const { error } = await sb
       .from("customer_favorites")
       .delete()
-      .eq("store_id", ctx.store.id)
+      .eq("store_id", storeId)
       .is("customer_id", null)
       .eq("session_id", owner.sessionId)
       .eq("product_id", productId);
 
     if (error) {
-      return json({
-        ok: false,
-        error: "failed_to_remove_session_favorite",
-      }, 500);
+      return json(
+        {
+          ok: false,
+          error: "failed_to_remove_session_favorite",
+        },
+        500,
+      );
     }
   }
 

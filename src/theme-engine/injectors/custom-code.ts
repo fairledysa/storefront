@@ -2,7 +2,8 @@
 
 import { cache } from "react";
 import { unstable_cache } from "next/cache";
-import { supabaseAdmin } from "@/data/store/supabase.server";
+
+import { getStoreDb } from "@/data/db/store-db.server";
 
 export type CustomScriptUrl = {
   src: string;
@@ -43,11 +44,6 @@ function safeObject(value: any): Record<string, any> {
   return {};
 }
 
-/**
- * النظام القديم:
- * يقرأ من جدول store_custom_code.
- * نتركه كما هو حتى لا نكسر أي استخدام قديم في الثيمات الأخرى.
- */
 function normalize(row: StoreCustomCodeRow | null): {
   css: string;
   scripts: CustomScriptUrl[];
@@ -81,12 +77,15 @@ async function fetchCustomCodeRaw(
   store_id: string,
   status: "draft" | "published",
 ) {
-  const sb = supabaseAdmin();
+  const storeId = s(store_id);
+  if (!storeId) return null;
+
+  const sb = (await getStoreDb(storeId)) as any;
 
   const r = await sb
     .from("store_custom_code")
     .select("css,scripts,enabled,status,updated_at")
-    .eq("store_id", store_id)
+    .eq("store_id", storeId)
     .eq("status", status)
     .eq("enabled", true)
     .order("updated_at", { ascending: false })
@@ -105,13 +104,17 @@ function fetchCustomCodeCached(
   store_id: string,
   status: "draft" | "published",
 ) {
-  const key = `${store_id}:${status}`;
+  const storeId = s(store_id);
+
+  if (!storeId) return Promise.resolve(null);
+
+  const key = `${storeId}:${status}`;
   let fn = customCodeCache.get(key);
 
   if (!fn) {
     fn = unstable_cache(
-      () => fetchCustomCodeRaw(store_id, status),
-      ["store-custom-code", store_id, status],
+      () => fetchCustomCodeRaw(storeId, status),
+      ["store-custom-code", storeId, status],
       {
         revalidate: 120,
       },
@@ -131,25 +134,18 @@ export const loadCustomCode = cache(
     store_id: string;
     preview: boolean;
   }): Promise<{ css: string; scripts: CustomScriptUrl[] }> => {
+    const storeId = s(store_id);
+
+    if (!storeId) return { css: "", scripts: [] };
+
     const row =
-      (preview ? await fetchCustomCodeCached(store_id, "draft") : null) ??
-      (await fetchCustomCodeCached(store_id, "published"));
+      (preview ? await fetchCustomCodeCached(storeId, "draft") : null) ??
+      (await fetchCustomCodeCached(storeId, "published"));
 
     return normalize(row);
   },
 );
 
-/**
- * النظام الجديد:
- * هذا يقرأ custom_code من theme_options للثيم الحالي.
- * الإدارة تحفظه داخل:
- * theme_options.custom_code = {
- *   enabled: boolean,
- *   css: string,
- *   js_enabled: boolean,
- *   js: string
- * }
- */
 export function normalizeThemeCustomCode(value: any): ThemeCustomCode {
   const obj = safeObject(value);
 
@@ -240,8 +236,7 @@ export function sanitizeThemeCustomCode(value: any): ThemeCustomCode {
     enabled: normalized.enabled && !cssError && Boolean(s(normalized.css)),
     css: cssError ? "" : normalized.css,
 
-    js_enabled:
-      normalized.js_enabled && !jsError && Boolean(s(normalized.js)),
+    js_enabled: normalized.js_enabled && !jsError && Boolean(s(normalized.js)),
     js: jsError ? "" : normalized.js,
   };
 }

@@ -1,7 +1,9 @@
 // FILE: apps/storefront/src/theme-engine/runtime/resolve-theme.ts
-// FILE: apps/storefront/src/theme-engine/runtime/resolve-theme.ts
+
 import { cache } from "react";
-import { supabaseAdmin } from "@/data/store/supabase.server";
+
+import { controlDb } from "@/data/db/control-db.server";
+import { getStoreDb } from "@/data/db/store-db.server";
 import { themeRegistry, type ThemeCode } from "@/theme-engine/registry";
 
 export type ResolvedTheme = {
@@ -23,6 +25,10 @@ type ThemeRow = {
   default_settings: Record<string, any> | null;
 };
 
+function s(value: unknown) {
+  return String(value ?? "").trim();
+}
+
 function safeObject(value: any): Record<string, any> {
   if (!value) return {};
   if (typeof value === "object" && !Array.isArray(value)) return value;
@@ -41,12 +47,15 @@ async function fetchLatestStoreTheme(args: {
   store_id: string;
   status: "draft" | "published";
 }) {
-  const sb = supabaseAdmin();
+  const storeId = s(args.store_id);
+  if (!storeId) return null;
+
+  const sb = (await getStoreDb(storeId)) as any;
 
   const r = await sb
     .from("store_themes")
     .select("theme_id,status,settings,updated_at")
-    .eq("store_id", args.store_id)
+    .eq("store_id", storeId)
     .eq("status", args.status)
     .order("updated_at", { ascending: false })
     .limit(1)
@@ -56,12 +65,15 @@ async function fetchLatestStoreTheme(args: {
 }
 
 async function fetchThemeById(theme_id: string) {
-  const sb = supabaseAdmin();
+  const themeId = s(theme_id);
+  if (!themeId) return null;
+
+  const sb = (await controlDb()) as any;
 
   const r = await sb
     .from("themes")
     .select("id,code,catalog_theme_id,default_settings")
-    .eq("id", theme_id)
+    .eq("id", themeId)
     .limit(1)
     .maybeSingle();
 
@@ -69,12 +81,15 @@ async function fetchThemeById(theme_id: string) {
 }
 
 async function fetchThemeByCode(theme_code: string) {
-  const sb = supabaseAdmin();
+  const themeCode = s(theme_code);
+  if (!themeCode) return null;
+
+  const sb = (await controlDb()) as any;
 
   const r = await sb
     .from("themes")
     .select("id,code,catalog_theme_id,default_settings")
-    .eq("code", theme_code)
+    .eq("code", themeCode)
     .limit(1)
     .maybeSingle();
 
@@ -86,13 +101,18 @@ async function fetchStoreThemeSettings(args: {
   theme_id: string;
   status: "draft" | "published";
 }) {
-  const sb = supabaseAdmin();
+  const storeId = s(args.store_id);
+  const themeId = s(args.theme_id);
+
+  if (!storeId || !themeId) return null;
+
+  const sb = (await getStoreDb(storeId)) as any;
 
   const r = await sb
     .from("store_themes")
     .select("settings,updated_at")
-    .eq("store_id", args.store_id)
-    .eq("theme_id", args.theme_id)
+    .eq("store_id", storeId)
+    .eq("theme_id", themeId)
     .eq("status", args.status)
     .order("updated_at", { ascending: false })
     .limit(1)
@@ -105,14 +125,18 @@ async function fetchThemeOptionsFromStoreSettings(args: {
   store_id: string;
   theme_id: string;
 }) {
-  const sb = supabaseAdmin();
+  const storeId = s(args.store_id);
+  const themeId = s(args.theme_id);
 
-  const slug = buildThemeOptionsSlug(args.theme_id);
+  if (!storeId || !themeId) return null;
+
+  const sb = (await getStoreDb(storeId)) as any;
+  const slug = buildThemeOptionsSlug(themeId);
 
   const r = await sb
     .from("store_settings")
     .select("id,value,updated_at")
-    .eq("store_id", args.store_id)
+    .eq("store_id", storeId)
     .eq("slug", slug)
     .order("updated_at", { ascending: false })
     .limit(1)
@@ -132,16 +156,19 @@ async function fetchThemeVersionOptions(args: {
   catalog_theme_id?: string | null;
   preview: boolean;
 }) {
-  if (!args.catalog_theme_id) return null;
+  const storeId = s(args.store_id);
+  const catalogThemeId = s(args.catalog_theme_id);
 
-  const sb = supabaseAdmin();
+  if (!storeId || !catalogThemeId) return null;
+
+  const sb = (await getStoreDb(storeId)) as any;
   const wantedStatus = args.preview ? "draft" : "published";
 
   let versionQuery = await sb
     .from("store_theme_versions")
     .select("id, theme_id, status, is_default, last_updated_at, created_at")
-    .eq("store_id", args.store_id)
-    .eq("theme_id", args.catalog_theme_id)
+    .eq("store_id", storeId)
+    .eq("theme_id", catalogThemeId)
     .eq("status", wantedStatus)
     .order("is_default", { ascending: false })
     .order("last_updated_at", { ascending: false })
@@ -155,8 +182,8 @@ async function fetchThemeVersionOptions(args: {
     const fallbackPublished = await sb
       .from("store_theme_versions")
       .select("id, theme_id, status, is_default, last_updated_at, created_at")
-      .eq("store_id", args.store_id)
-      .eq("theme_id", args.catalog_theme_id)
+      .eq("store_id", storeId)
+      .eq("theme_id", catalogThemeId)
       .eq("status", "published")
       .order("is_default", { ascending: false })
       .order("last_updated_at", { ascending: false })
@@ -174,7 +201,7 @@ async function fetchThemeVersionOptions(args: {
   const settingRes = await sb
     .from("store_settings")
     .select("id,value,updated_at")
-    .eq("store_id", args.store_id)
+    .eq("store_id", storeId)
     .eq("slug", slug)
     .order("updated_at", { ascending: false })
     .limit(1)
@@ -199,7 +226,15 @@ export const resolveTheme = cache(
     preview: boolean;
     theme_code?: string;
   }): Promise<ResolvedTheme> => {
+    const storeId = s(store_id);
     const fallback = themeRegistry.defaultTheme();
+
+    if (!storeId) {
+      return {
+        code: fallback.code,
+        settings: safeObject(fallback.default_settings),
+      };
+    }
 
     if (theme_code) {
       const code = theme_code as ThemeCode;
@@ -222,22 +257,25 @@ export const resolveTheme = cache(
 
       const status: "draft" | "published" = preview ? "draft" : "published";
 
-      const storeTheme = await fetchStoreThemeSettings({
-        store_id,
-        theme_id: themeRow.id,
-        status,
-      });
+      const [storeTheme, themeOptionsByTheme, themeOptionsByVersion] =
+        await Promise.all([
+          fetchStoreThemeSettings({
+            store_id: storeId,
+            theme_id: themeRow.id,
+            status,
+          }),
 
-      const themeOptionsByTheme = await fetchThemeOptionsFromStoreSettings({
-        store_id,
-        theme_id: themeRow.id,
-      });
+          fetchThemeOptionsFromStoreSettings({
+            store_id: storeId,
+            theme_id: themeRow.id,
+          }),
 
-      const themeOptionsByVersion = await fetchThemeVersionOptions({
-        store_id,
-        catalog_theme_id: themeRow.catalog_theme_id ?? null,
-        preview,
-      });
+          fetchThemeVersionOptions({
+            store_id: storeId,
+            catalog_theme_id: themeRow.catalog_theme_id ?? null,
+            preview,
+          }),
+        ]);
 
       const settings = {
         ...safeObject(themeRow.default_settings),
@@ -251,9 +289,12 @@ export const resolveTheme = cache(
 
     const st =
       (preview
-        ? await fetchLatestStoreTheme({ store_id, status: "draft" })
+        ? await fetchLatestStoreTheme({ store_id: storeId, status: "draft" })
         : null) ??
-      (await fetchLatestStoreTheme({ store_id, status: "published" }));
+      (await fetchLatestStoreTheme({
+        store_id: storeId,
+        status: "published",
+      }));
 
     if (!st?.theme_id) {
       return {
@@ -280,16 +321,18 @@ export const resolveTheme = cache(
       };
     }
 
-    const themeOptionsByTheme = await fetchThemeOptionsFromStoreSettings({
-      store_id,
-      theme_id: themeRow.id,
-    });
+    const [themeOptionsByTheme, themeOptionsByVersion] = await Promise.all([
+      fetchThemeOptionsFromStoreSettings({
+        store_id: storeId,
+        theme_id: themeRow.id,
+      }),
 
-    const themeOptionsByVersion = await fetchThemeVersionOptions({
-      store_id,
-      catalog_theme_id: themeRow.catalog_theme_id ?? null,
-      preview,
-    });
+      fetchThemeVersionOptions({
+        store_id: storeId,
+        catalog_theme_id: themeRow.catalog_theme_id ?? null,
+        preview,
+      }),
+    ]);
 
     const settings = {
       ...safeObject(themeRow.default_settings),

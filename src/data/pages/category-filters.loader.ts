@@ -2,7 +2,7 @@
 import { unstable_cache } from "next/cache";
 import { createHash } from "node:crypto";
 
-import { supabaseAdmin } from "@/data/store/supabase.server";
+import { getStoreDb } from "@/data/db/store-db.server";
 
 /* ------------------------- helpers ------------------------ */
 
@@ -744,7 +744,7 @@ async function loadCategoryScopeIdsRaw(args: {
 
   if (!storeId || !categoryId) return [];
 
-  const sb: any = supabaseAdmin();
+  const sb = (await getStoreDb(storeId)) as any;
 
   const { data, error } = await sb
     .from("categories")
@@ -846,7 +846,7 @@ async function resolveOptionFilteredProductIds(args: {
 
   if (!storeId || !groups.length) return null;
 
-  const sb: any = supabaseAdmin();
+  const sb = (await getStoreDb(storeId)) as any;
 
   let currentSet: Set<string> | null = null;
 
@@ -933,7 +933,7 @@ async function queryIndexedProductIds(args: {
     };
   }
 
-  const sb: any = supabaseAdmin();
+  const sb = (await getStoreDb(storeId)) as any;
 
   let query: any = sb
     .from("product_filter_index")
@@ -1012,7 +1012,7 @@ async function loadOptionFacetRows(args: {
 
   if (!storeId || !ids.length) return [];
 
-  const sb: any = supabaseAdmin();
+  const sb = (await getStoreDb(storeId)) as any;
   const rows: any[] = [];
 
   for (const chunk of arrayChunks(ids, 450)) {
@@ -1149,7 +1149,7 @@ async function loadBrandFacetRows(args: {
 
   if (!storeId || !ids.length) return [];
 
-  const sb: any = supabaseAdmin();
+  const sb = (await getStoreDb(storeId)) as any;
   const rows: any[] = [];
 
   for (const chunk of arrayChunks(ids, 450)) {
@@ -1224,7 +1224,7 @@ async function loadCategoryFacets(args: {
 
   if (!storeId || !scopeIds.length) return [];
 
-  const sb: any = supabaseAdmin();
+  const sb = (await getStoreDb(storeId)) as any;
 
   const { data: categoriesData, error: categoriesError } = await sb
     .from("categories")
@@ -1391,7 +1391,7 @@ async function loadPriceFacet(args: {
     };
   }
 
-  const sb: any = supabaseAdmin();
+  const sb = (await getStoreDb(storeId)) as any;
   const prices: number[] = [];
 
   for (const chunk of arrayChunks(ids, 450)) {
@@ -1513,7 +1513,7 @@ async function loadCatalogFiltersSettingRaw(store_id: string) {
   const storeId = s(store_id);
   if (!storeId) return null;
 
-  const sb: any = supabaseAdmin();
+  const sb = (await getStoreDb(storeId)) as any;
 
   const { data, error } = await sb
     .from("store_settings")

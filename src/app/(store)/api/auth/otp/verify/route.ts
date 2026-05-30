@@ -1,9 +1,11 @@
 // FILE: apps/storefront/src/app/(store)/api/auth/otp/verify/route.ts
+
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
+import { getOrdersDb } from "@/data/db/orders-db.server";
+import { getStoreDb } from "@/data/db/store-db.server";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
-import { supabaseAdmin } from "@/data/store/supabase.server";
 import { hashOtp, signSession } from "@/lib/auth/session";
 
 const CART_COOKIE = "darb_cart_session";
@@ -12,11 +14,6 @@ const SESSION_COOKIE = "elyaia_session";
 async function setSessionCookie(token: string) {
   const cookieStore = await cookies();
 
-  /**
-   * مهم للـ multi-store:
-   * لا نضع domain هنا حتى تكون الجلسة خاصة بالدومين/المتجر الحالي.
-   * وجود SESSION_COOKIE_DOMAIN قد يشارك الجلسة بين أكثر من متجر.
-   */
   cookieStore.set({
     name: SESSION_COOKIE,
     value: token,
@@ -228,7 +225,6 @@ export async function POST(req: Request) {
   }
 
   const storeId = String(ctx.store.id);
-
   const body = await req.json().catch(() => ({}));
 
   const rawTarget = String(body?.target || "").trim();
@@ -242,18 +238,14 @@ export async function POST(req: Request) {
     );
   }
 
-  const sb: any = supabaseAdmin();
+  const storeDb: any = await getStoreDb(storeId);
+  const ordersDb: any = await getOrdersDb(storeId);
 
   const otpTable: any = "auth_email_otps";
   const customersTable: any = "customers";
   const storeCustomersTable: any = "store_customers";
 
-  /**
-   * مهم:
-   * صار البحث عن الرمز حسب store_id + email
-   * عشان رمز متجر لا يعمل في متجر آخر.
-   */
-  const row: any = await sb
+  const row: any = await storeDb
     .from(otpTable)
     .select(
       "id,store_id,email,code_hash,expires_at,attempts,max_attempts,consumed_at,created_at",
@@ -301,7 +293,7 @@ export async function POST(req: Request) {
   const actual: string = hashOtp(target, token);
 
   if (expected !== actual) {
-    await sb
+    await storeDb
       .from(otpTable)
       .update({ attempts: (otp.attempts ?? 0) + 1 })
       .eq("id", otp.id)
@@ -313,7 +305,7 @@ export async function POST(req: Request) {
     );
   }
 
-  await sb
+  await storeDb
     .from(otpTable)
     .update({ consumed_at: new Date().toISOString() })
     .eq("id", otp.id)
@@ -322,7 +314,7 @@ export async function POST(req: Request) {
   let auth_user_id: string;
 
   try {
-    auth_user_id = await ensureAuthUserId(sb, target);
+    auth_user_id = await ensureAuthUserId(storeDb, target);
   } catch (e: any) {
     return NextResponse.json(
       { error: "AUTH_USER_FAILED", message: e?.message || "AUTH_USER_FAILED" },
@@ -330,7 +322,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const existing: any = await sb
+  const existing: any = await storeDb
     .from(customersTable)
     .select("id,email,auth_user_id,birth_date,gender,city_id")
     .eq("auth_user_id", auth_user_id)
@@ -346,7 +338,7 @@ export async function POST(req: Request) {
   let customer_id: string;
 
   if (!existing?.data) {
-    const created: any = await sb
+    const created: any = await storeDb
       .from(customersTable)
       .upsert({ auth_user_id, email: target } as any, {
         onConflict: "auth_user_id",
@@ -368,13 +360,13 @@ export async function POST(req: Request) {
   } else {
     customer_id = String(existing.data.id);
 
-    await sb
+    await storeDb
       .from(customersTable)
       .update({ email: target } as any)
       .eq("id", customer_id);
   }
 
-  const link: any = await sb.from(storeCustomersTable).upsert(
+  const link: any = await storeDb.from(storeCustomersTable).upsert(
     {
       store_id: storeId,
       customer_id,
@@ -402,7 +394,7 @@ export async function POST(req: Request) {
 
   try {
     const merged = await mergeCartAfterLogin({
-      sb,
+      sb: ordersDb,
       store_id: storeId,
       customer_id,
       session_id: sid,

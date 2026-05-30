@@ -1,6 +1,9 @@
 // FILE: apps/storefront/src/data/pages/category.loader.ts
 import { unstable_cache } from "next/cache";
+import { createHash } from "node:crypto";
 
+import { cacheKey } from "@/data/cache/cache-keys";
+import { redisCached } from "@/data/cache/redis-cache.server";
 import {
   getCategoryByPublicNo,
   getCategoryByShortUrl,
@@ -9,13 +12,17 @@ import {
   getProductsByCategory,
   getProductsByIds,
 } from "@/data/catalog/products";
+import { getStoreDb } from "@/data/db/store-db.server";
 import { fromBase62 } from "@/lib/seo/base62";
-import { supabaseAdmin } from "@/data/store/supabase.server";
 
 /* ------------------------- helpers ------------------------ */
 
 function s(value: any) {
   return String(value ?? "").trim();
+}
+
+function hashText(value: string) {
+  return createHash("sha1").update(value).digest("hex");
 }
 
 function isCssColor(value: any) {
@@ -66,12 +73,15 @@ function uniqueStrings(values: any[]) {
 /* ------------------------- store options loader ------------------------ */
 
 async function loadStoreOptionsRaw(store_id: string) {
-  const sb: any = supabaseAdmin();
+  const storeId = s(store_id);
+  if (!storeId) return {};
+
+  const sb = await getStoreDb(storeId);
 
   const { data, error } = await sb
     .from("store_settings")
     .select("slug,value")
-    .eq("store_id", store_id)
+    .eq("store_id", storeId)
     .like("slug", "options:%");
 
   if (error || !Array.isArray(data)) {
@@ -103,7 +113,12 @@ function loadStoreOptions(store_id: string) {
 
   if (!fn) {
     fn = unstable_cache(
-      () => loadStoreOptionsRaw(storeId),
+      () =>
+        redisCached(
+          cacheKey("category", "store-options", storeId),
+          { ttlSeconds: 300 },
+          () => loadStoreOptionsRaw(storeId),
+        ),
       ["category-store-options", storeId],
       {
         revalidate: 120,
@@ -133,7 +148,7 @@ async function loadStoreCurrenciesRaw(
   const storeId = s(store_id);
   if (!storeId) return [];
 
-  const sb: any = supabaseAdmin();
+  const sb = await getStoreDb(storeId);
 
   const { data, error } = await sb
     .from("store_currencies")
@@ -179,7 +194,12 @@ function loadStoreCurrencies(store_id: string) {
 
   if (!fn) {
     fn = unstable_cache(
-      () => loadStoreCurrenciesRaw(storeId),
+      () =>
+        redisCached(
+          cacheKey("category", "store-currencies", storeId),
+          { ttlSeconds: 300 },
+          () => loadStoreCurrenciesRaw(storeId),
+        ),
       ["category-store-currencies-product-card", storeId],
       {
         revalidate: 120,
@@ -354,13 +374,15 @@ type ProductCardOptionForCategory = {
 type ProductCardOptionsMap = Record<string, ProductCardOptionForCategory[]>;
 
 async function loadProductCardOptionsMapRaw(args: {
+  store_id: string;
   productIds: string[];
 }): Promise<ProductCardOptionsMap> {
+  const storeId = s(args.store_id);
   const productIds = uniqueStrings(args.productIds).slice(0, 500);
 
-  if (!productIds.length) return {};
+  if (!storeId || !productIds.length) return {};
 
-  const sb: any = supabaseAdmin();
+  const sb = await getStoreDb(storeId);
 
   const optionsResult = await sb
     .from("product_options")
@@ -475,22 +497,33 @@ const productCardOptionsMapCache = new Map<
   () => Promise<ProductCardOptionsMap>
 >();
 
-function loadProductCardOptionsMap(productIds: string[]) {
-  const ids = uniqueStrings(productIds).sort();
+function loadProductCardOptionsMap(args: {
+  store_id: string;
+  productIds: string[];
+}) {
+  const storeId = s(args.store_id);
+  const ids = uniqueStrings(args.productIds).sort();
 
-  if (!ids.length) return Promise.resolve({} as ProductCardOptionsMap);
+  if (!storeId || !ids.length) return Promise.resolve({} as ProductCardOptionsMap);
 
-  const key = ids.join(",");
+  const idsHash = hashText(ids.join(","));
+  const key = `${storeId}:${idsHash}`;
 
   let fn = productCardOptionsMapCache.get(key);
 
   if (!fn) {
     fn = unstable_cache(
       () =>
-        loadProductCardOptionsMapRaw({
-          productIds: ids,
-        }),
-      ["category-product-card-options-map", key],
+        redisCached(
+          cacheKey("category", "product-card-options", storeId, idsHash),
+          { ttlSeconds: 180 },
+          () =>
+            loadProductCardOptionsMapRaw({
+              store_id: storeId,
+              productIds: ids,
+            }),
+        ),
+      ["category-product-card-options-map", storeId, idsHash],
       {
         revalidate: 120,
       },
@@ -503,11 +536,13 @@ function loadProductCardOptionsMap(productIds: string[]) {
 }
 
 async function attachProductCardOptions(args: {
+  store_id: string;
   products: any[];
 }): Promise<any[]> {
+  const storeId = s(args.store_id);
   const products = Array.isArray(args.products) ? args.products : [];
 
-  if (!products.length) return products;
+  if (!storeId || !products.length) return products;
 
   const productIds = Array.from(
     new Set(products.map((product) => s(product?.id)).filter(Boolean)),
@@ -515,7 +550,10 @@ async function attachProductCardOptions(args: {
 
   if (!productIds.length) return products;
 
-  const optionsMap = await loadProductCardOptionsMap(productIds);
+  const optionsMap = await loadProductCardOptionsMap({
+    store_id: storeId,
+    productIds,
+  });
 
   return products.map((product) => {
     const productId = s(product?.id);
@@ -577,6 +615,7 @@ async function loadCategoryProductsByIdsRaw(args: {
   });
 
   return await attachProductCardOptions({
+    store_id: storeId,
     products: productsWithCurrency,
   });
 }
@@ -596,19 +635,31 @@ export async function loadCategoryProductsByIds(args: {
 
   const ids = productIds.slice(0, limit);
   const sortedIds = [...ids].sort();
-  const key = `${storeId}:${limit}:${sortedIds.join(",")}`;
+  const idsHash = hashText(sortedIds.join(","));
+  const key = `${storeId}:${limit}:${idsHash}`;
 
   let fn = categoryProductsByIdsCache.get(key);
 
   if (!fn) {
     fn = unstable_cache(
       () =>
-        loadCategoryProductsByIdsRaw({
-          store_id: storeId,
-          productIds: sortedIds,
-          limit,
-        }),
-      ["category-products-by-ids", storeId, String(limit), sortedIds.join(",")],
+        redisCached(
+          cacheKey(
+            "category",
+            "products-by-ids",
+            storeId,
+            String(limit),
+            idsHash,
+          ),
+          { ttlSeconds: 120 },
+          () =>
+            loadCategoryProductsByIdsRaw({
+              store_id: storeId,
+              productIds: sortedIds,
+              limit,
+            }),
+        ),
+      ["category-products-by-ids", storeId, String(limit), idsHash],
       {
         revalidate: 60,
       },
@@ -641,6 +692,7 @@ async function buildCategoryProductsForDisplay(args: {
   });
 
   return await attachProductCardOptions({
+    store_id: args.store_id,
     products: productsWithCurrency,
   });
 }
@@ -754,10 +806,15 @@ export async function loadCategoryPageByPublicNo(args: {
   if (!fn) {
     fn = unstable_cache(
       () =>
-        loadCategoryPageByPublicNoRaw({
-          store_id: storeId,
-          publicNo,
-        }),
+        redisCached(
+          cacheKey("category", "page-public-no", storeId, String(publicNo)),
+          { ttlSeconds: 120 },
+          () =>
+            loadCategoryPageByPublicNoRaw({
+              store_id: storeId,
+              publicNo,
+            }),
+        ),
       ["category-page-public-no", storeId, String(publicNo)],
       {
         revalidate: 60,
@@ -781,18 +838,24 @@ export async function loadCategoryPageByShortCode(args: {
 
   if (!storeId || !code) return null;
 
-  const key = `${storeId}:short:${normalizeCacheKey(code)}`;
+  const normalizedCode = normalizeCacheKey(code);
+  const key = `${storeId}:short:${normalizedCode}`;
 
   let fn = categoryByShortCodeCache.get(key);
 
   if (!fn) {
     fn = unstable_cache(
       () =>
-        loadCategoryPageByShortCodeRaw({
-          store_id: storeId,
-          code,
-        }),
-      ["category-page-short-code", storeId, normalizeCacheKey(code)],
+        redisCached(
+          cacheKey("category", "page-short-code", storeId, normalizedCode),
+          { ttlSeconds: 120 },
+          () =>
+            loadCategoryPageByShortCodeRaw({
+              store_id: storeId,
+              code,
+            }),
+        ),
+      ["category-page-short-code", storeId, normalizedCode],
       {
         revalidate: 60,
       },

@@ -15,17 +15,17 @@ export const dynamic = "force-dynamic";
 
 const SESSION_COOKIE = "elyaia_session";
 
-function s(x: any) {
-  return String(x ?? "").trim();
+function s(value: unknown) {
+  return String(value ?? "").trim();
 }
 
-function n(x: any) {
-  const v = Number(x ?? 0);
-  return Number.isFinite(v) ? v : 0;
+function n(value: unknown) {
+  const num = Number(value ?? 0);
+  return Number.isFinite(num) ? num : 0;
 }
 
-function round2(x: number) {
-  return Math.round(x * 100) / 100;
+function round2(value: number) {
+  return Math.round(Number(value || 0) * 100) / 100;
 }
 
 function safeObject(value: any): Record<string, any> {
@@ -34,7 +34,6 @@ function safeObject(value: any): Record<string, any> {
   if (typeof value === "string") {
     try {
       const parsed = JSON.parse(value);
-
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
         return parsed;
       }
@@ -50,11 +49,8 @@ function cleanCurrencyCode(value: any, fallback = "") {
 }
 
 function clampDecimals(value: any, fallback = 2) {
-  const raw = value ?? fallback;
-  const num = Number(raw);
-
+  const num = Number(value ?? fallback);
   if (!Number.isFinite(num)) return fallback;
-
   return Math.max(0, Math.min(4, Math.floor(num)));
 }
 
@@ -65,10 +61,10 @@ function positiveRate(value: any, fallback = 1) {
 
 function uniqStrings(values: any[]) {
   return Array.from(
-    new Set<string>(
+    new Set(
       (Array.isArray(values) ? values : [])
-        .map((value: any) => s(value))
-        .filter((value: string) => value.length > 0),
+        .map((value) => s(value))
+        .filter(Boolean),
     ),
   );
 }
@@ -82,7 +78,11 @@ function hasIntersection(a: string[], b: string[]) {
 
 function jsonError(error: string, status = 400, extra?: any) {
   return NextResponse.json(
-    { ok: false, error, ...(extra ? { extra } : {}) },
+    {
+      ok: false,
+      error,
+      ...(extra ? { extra } : {}),
+    },
     {
       status,
       headers: {
@@ -92,18 +92,31 @@ function jsonError(error: string, status = 400, extra?: any) {
   );
 }
 
+function setCartCookie(response: NextResponse, sessionId: string) {
+  const sid = s(sessionId);
+  if (!sid) return response;
+
+  const c = cartSessionCookie(sid);
+
+  response.cookies.set(c.name, c.value, {
+    httpOnly: c.httpOnly,
+    sameSite: c.sameSite,
+    path: c.path,
+    secure: c.secure,
+    maxAge: c.maxAge,
+  });
+
+  return response;
+}
+
 function jsonOk(payload: Record<string, any>, sessionId: string) {
-  const res = NextResponse.json(payload, {
+  const response = NextResponse.json(payload, {
     headers: {
       "Cache-Control": "no-store",
     },
   });
 
-  if (sessionId) {
-    res.cookies.set(cartSessionCookie(sessionId));
-  }
-
-  return res;
+  return setCartCookie(response, sessionId);
 }
 
 type CurrencyRuntimeRow = {
@@ -127,6 +140,7 @@ type ShippingOption = {
   price_amount?: number;
   original_price?: string | null;
   original_price_amount?: number | null;
+
   free_shipping_applied?: boolean;
   free_shipping_source?: "coupon" | "rule" | null;
   free_shipping_rule_id?: string | null;
@@ -196,7 +210,7 @@ async function getCheckoutCustomerId(args: { sb: any; store_id: string }) {
       };
     }
 
-    const linkR = await args.sb
+    const linkR: any = await args.sb
       .from("store_customers")
       .select("store_id,customer_id")
       .eq("store_id", args.store_id)
@@ -285,7 +299,7 @@ async function fetchStoreCurrenciesForRuntime(sb: any, storeId: string) {
   let lastError: any = null;
 
   for (const select of selects) {
-    const res = await sb
+    const res: any = await sb
       .from("store_currencies")
       .select(select)
       .eq("store_id", storeId)
@@ -483,7 +497,7 @@ function formatMoney(args: {
   const value = round2(Math.max(0, n(args.amount)));
   const decimals = clampDecimals(args.decimals, 2);
 
-  const fixed =
+  const formatted =
     decimals === 0
       ? String(Math.round(value))
       : value.toLocaleString("en-US", {
@@ -491,7 +505,7 @@ function formatMoney(args: {
           maximumFractionDigits: decimals,
         });
 
-  return `${args.symbol || args.code} ${fixed}`;
+  return `${args.symbol || args.code} ${formatted}`;
 }
 
 function pickByCityScope(rate: any, cityId: string) {
@@ -505,8 +519,8 @@ function pickByCityScope(rate: any, cityId: string) {
     ? rate.excluded_city_ids.map((x: any) => String(x))
     : [];
 
-  if (excluded.includes(cityId)) return false;
-  if (scope === "include_cities") return included.includes(cityId);
+  if (cityId && excluded.includes(cityId)) return false;
+  if (scope === "include_cities") return cityId ? included.includes(cityId) : false;
 
   return true;
 }
@@ -518,7 +532,7 @@ async function loadCartProducts(args: {
   targetCurrency: string;
   currencyRuntime: ReturnType<typeof buildCurrencyRuntime>;
 }) {
-  const itemsR = await args.sb
+  const itemsR: any = await args.sb
     .from("cart_items")
     .select("product_id,qty,unit_price,currency")
     .eq("store_id", args.store_id)
@@ -531,11 +545,9 @@ async function loadCartProducts(args: {
     };
   }
 
-  const rows = Array.isArray(itemsR.data) ? itemsR.data : [];
+  const rows: any[] = Array.isArray(itemsR.data) ? itemsR.data : [];
 
-  const productIds: string[] = uniqStrings(
-    rows.map((row: any) => row?.product_id),
-  );
+  const productIds = uniqStrings(rows.map((row) => row?.product_id));
 
   const subtotal = round2(
     rows.reduce((sum: number, row: any) => {
@@ -568,7 +580,7 @@ async function loadCategoryIdsForProducts(args: {
 }) {
   if (!args.productIds.length) return [] as string[];
 
-  const [directR, fallbackR] = await Promise.all([
+  const [directR, fallbackR]: any[] = await Promise.all([
     args.sb
       .from("product_categories")
       .select("category_id")
@@ -598,7 +610,7 @@ async function hasActiveFreeShippingCoupon(args: {
   targetCurrency: string;
   currencyRuntime: ReturnType<typeof buildCurrencyRuntime>;
 }) {
-  const ccR = await args.sb
+  const ccR: any = await args.sb
     .from("cart_coupons")
     .select("coupon_id")
     .eq("store_id", args.store_id)
@@ -608,7 +620,7 @@ async function hasActiveFreeShippingCoupon(args: {
 
   if (ccR.error || !ccR.data?.coupon_id) return false;
 
-  const couponR = await args.sb
+  const couponR: any = await args.sb
     .from("coupons")
     .select("id,status,start_at,end_at,free_shipping,minimum_amount")
     .eq("id", String(ccR.data.coupon_id))
@@ -655,7 +667,7 @@ async function loadRuleLinks(args: {
 
   if (!args.ruleIds.length) return out;
 
-  const res = await args.sb
+  const res: any = await args.sb
     .from(args.table)
     .select(`rule_id,${args.column}`)
     .in("rule_id", args.ruleIds);
@@ -685,7 +697,7 @@ async function loadCustomerGroupIds(args: {
 }) {
   if (!args.customer_id) return [] as string[];
 
-  const res = await args.sb
+  const res: any = await args.sb
     .from("customer_group_members")
     .select("group_id,store_id")
     .eq("customer_id", args.customer_id);
@@ -730,7 +742,7 @@ async function loadFreeShippingContext(args: {
   store_id: string;
   customer_id: string;
 }): Promise<FreeShippingContext | null> {
-  const rulesR = await args.sb
+  const rulesR: any = await args.sb
     .from("store_free_shipping_rules")
     .select(
       [
@@ -759,15 +771,13 @@ async function loadFreeShippingContext(args: {
     return null;
   }
 
-  const rulesRaw: any[] = Array.isArray(rulesR.data) ? rulesR.data : [];
-
-  const rules: FreeShippingRule[] = rulesRaw
-    .map((row: any) => normalizeRule(row))
-    .filter((rule: FreeShippingRule) => Boolean(rule.id && rule.enabled));
+  const rules = (rulesR.data as any[])
+    .map((row) => normalizeRule(row))
+    .filter((rule) => Boolean(rule.id && rule.enabled));
 
   if (!rules.length) return null;
 
-  const ruleIds: string[] = rules.map((rule: FreeShippingRule) => rule.id);
+  const ruleIds = rules.map((rule) => rule.id);
 
   const [
     countryLinks,
@@ -884,23 +894,6 @@ function matchModeByAnyList(args: {
   return hasIntersection(selected, args.values);
 }
 
-function matchModeByEveryList(args: {
-  mode: "all" | "include";
-  map: Map<string, string[]>;
-  ruleId: string;
-  values: string[];
-}) {
-  if (args.mode === "all") return true;
-
-  const selected = ruleLinkValues(args.map, args.ruleId);
-  if (!selected.length) return false;
-  if (!args.values.length) return false;
-
-  const selectedSet = new Set(selected);
-
-  return args.values.every((value) => selectedSet.has(value));
-}
-
 function evaluateRuleFreeShipping(args: {
   context: FreeShippingContext | null;
   subtotal: number;
@@ -950,7 +943,7 @@ function evaluateRuleFreeShipping(args: {
 
     if (!cityOk) continue;
 
-    const productsOk = matchModeByEveryList({
+    const productsOk = matchModeByAnyList({
       mode: rule.products_mode,
       map: context.productLinks,
       ruleId: rule.id,
@@ -959,7 +952,7 @@ function evaluateRuleFreeShipping(args: {
 
     if (!productsOk) continue;
 
-    const categoriesOk = matchModeByEveryList({
+    const categoriesOk = matchModeByAnyList({
       mode: rule.categories_mode,
       map: context.categoryLinks,
       ruleId: rule.id,
@@ -1002,6 +995,35 @@ function evaluateRuleFreeShipping(args: {
   };
 }
 
+function buildEmptyContext(args: {
+  cart_id: string;
+  address_id: string;
+  country_id?: string | null;
+  city_id?: string | null;
+  customer_id?: string | null;
+  currency?: string | null;
+  subtotal?: number;
+  product_ids?: string[];
+  category_ids?: string[];
+  free_shipping_coupon_applied?: boolean;
+  free_shipping_rule_available?: boolean;
+}) {
+  return {
+    cart_id: args.cart_id,
+    address_id: args.address_id,
+    country_id: args.country_id || null,
+    city_id: args.city_id || null,
+    customer_id: args.customer_id || null,
+    currency: args.currency || null,
+    subtotal: round2(Math.max(0, n(args.subtotal))),
+    product_ids: args.product_ids ?? [],
+    category_ids: args.category_ids ?? [],
+    free_shipping_applied: Boolean(args.free_shipping_coupon_applied),
+    free_shipping_coupon_applied: Boolean(args.free_shipping_coupon_applied),
+    free_shipping_rule_available: Boolean(args.free_shipping_rule_available),
+  };
+}
+
 export async function GET() {
   try {
     const sb: any = supabaseAdmin();
@@ -1017,7 +1039,7 @@ export async function GET() {
       return jsonError(customer.error, customer.status);
     }
 
-    const cartR = await getCheckoutCart({
+    const cartR: any = await getCheckoutCart({
       sb,
       store_id,
       customer_id: customer.customer_id,
@@ -1026,8 +1048,9 @@ export async function GET() {
     if (cartR.error) return jsonError(cartR.error.message, 500);
     if (!cartR.data?.id) return jsonError("CART_NOT_FOUND", 404);
 
-    const cart_id = s(cartR.data.id);
-    const address_id = s(cartR.data.address_id) || "";
+    const cart = cartR.data as any;
+    const cart_id = s(cart.id);
+    const address_id = s(cart.address_id) || "";
 
     if (!address_id) {
       return jsonOk(
@@ -1040,7 +1063,7 @@ export async function GET() {
       );
     }
 
-    const [storeR, currencyRows, addressR] = await Promise.all([
+    const [storeR, currencyRowsRaw, addressR]: any[] = await Promise.all([
       sb
         .from("stores")
         .select("default_currency")
@@ -1059,21 +1082,27 @@ export async function GET() {
         .maybeSingle(),
     ]);
 
-    if (storeR.error) return jsonError(storeR.error.message, 500);
-    if (addressR.error) return jsonError(addressR.error.message, 500);
-    if (!addressR.data?.id) return jsonError("ADDRESS_NOT_FOUND", 404);
+    if (storeR?.error) return jsonError(storeR.error.message, 500);
+    if (addressR?.error) return jsonError(addressR.error.message, 500);
+    if (!addressR?.data?.id) return jsonError("ADDRESS_NOT_FOUND", 404);
+
+    const address = addressR.data as any;
 
     const storeCurrency = cleanCurrencyCode(
-      storeR.data?.default_currency,
+      storeR?.data?.default_currency,
       "SAR",
     );
+
+    const currencyRows: any[] = Array.isArray(currencyRowsRaw)
+      ? currencyRowsRaw
+      : [];
 
     const currencyRuntime = buildCurrencyRuntime(currencyRows, storeCurrency);
     const selectedCookieCurrency = await readSelectedCurrencyCodeFromCookies();
 
     const targetCurrency = resolveTargetCurrencyCode({
       selectedCode: selectedCookieCurrency,
-      fallbackCode: cartR.data.currency || storeCurrency,
+      fallbackCode: cart.currency || storeCurrency,
       runtime: currencyRuntime,
     });
 
@@ -1082,8 +1111,8 @@ export async function GET() {
       runtime: currencyRuntime,
     });
 
-    let country_id = addressR.data?.country_id ? s(addressR.data.country_id) : "";
-    const city_id = addressR.data?.city_id ? s(addressR.data.city_id) : "";
+    let country_id = address.country_id ? s(address.country_id) : "";
+    const city_id = address.city_id ? s(address.city_id) : "";
     const customer_id = customer.customer_id;
 
     const cartProducts = await loadCartProducts({
@@ -1094,144 +1123,134 @@ export async function GET() {
       currencyRuntime,
     });
 
-    const productIds: string[] = cartProducts.productIds;
+    const productIds = cartProducts.productIds;
 
-    const [cityR, categoryIds, couponFreeShipping, freeShippingContext, ratesR] =
-      await Promise.all([
-        !country_id && city_id
-          ? sb
-              .from("ref_cities")
-              .select("id,country_id")
-              .eq("id", city_id)
-              .maybeSingle()
-          : Promise.resolve({ data: null, error: null }),
+    const [cityR, categoryIds, couponFreeShipping, freeShippingContext, ratesR]:
+      any[] = await Promise.all([
+      !country_id && city_id
+        ? sb
+            .from("ref_cities")
+            .select("id,country_id")
+            .eq("id", city_id)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
 
-        loadCategoryIdsForProducts({
-          sb,
-          productIds,
-        }),
+      loadCategoryIdsForProducts({
+        sb,
+        productIds,
+      }),
 
-        hasActiveFreeShippingCoupon({
-          sb,
-          store_id,
-          cart_id,
-          subtotal: cartProducts.subtotal,
-          targetCurrency: currencyInfo.code,
-          currencyRuntime,
-        }),
+      hasActiveFreeShippingCoupon({
+        sb,
+        store_id,
+        cart_id,
+        subtotal: cartProducts.subtotal,
+        targetCurrency: currencyInfo.code,
+        currencyRuntime,
+      }),
 
-        loadFreeShippingContext({
-          sb,
-          store_id,
-          customer_id,
-        }),
+      loadFreeShippingContext({
+        sb,
+        store_id,
+        customer_id,
+      }),
 
-        sb
-          .from("store_shipping_rates")
-          .select(
-            [
-              "id",
-              "store_shipping_carrier_id",
-              "customer_price",
-              "eta_text",
-              "cod_enabled",
-              "cod_fee_customer",
-              "currency",
-              "enabled",
-              "status",
-              "scope",
-              "included_city_ids",
-              "excluded_city_ids",
-            ].join(","),
-          )
-          .eq("store_id", store_id)
-          .eq("enabled", true)
-          .eq("status", "active"),
-      ]);
+      sb
+        .from("store_shipping_rates")
+        .select(
+          [
+            "id",
+            "store_shipping_carrier_id",
+            "customer_price",
+            "eta_text",
+            "cod_enabled",
+            "cod_fee_customer",
+            "currency",
+            "enabled",
+            "status",
+            "scope",
+            "included_city_ids",
+            "excluded_city_ids",
+          ].join(","),
+        )
+        .eq("store_id", store_id)
+        .eq("enabled", true)
+        .eq("status", "active"),
+    ]);
 
-    if (!country_id && !cityR.error && cityR.data?.country_id) {
+    if (!country_id && !cityR?.error && cityR?.data?.country_id) {
       country_id = s(cityR.data.country_id);
     }
 
-    if (ratesR.error) return jsonError(ratesR.error.message, 500);
+    if (ratesR?.error) return jsonError(ratesR.error.message, 500);
 
-    const rates = Array.isArray(ratesR.data) ? ratesR.data : [];
+    const rates: any[] = Array.isArray((ratesR as any)?.data)
+      ? ((ratesR as any).data as any[])
+      : [];
+
+    const contextBase = buildEmptyContext({
+      cart_id,
+      address_id,
+      country_id,
+      city_id,
+      customer_id,
+      currency: currencyInfo.code,
+      subtotal: cartProducts.subtotal,
+      product_ids: productIds,
+      category_ids: Array.isArray(categoryIds) ? categoryIds : [],
+      free_shipping_coupon_applied: Boolean(couponFreeShipping),
+      free_shipping_rule_available: Boolean(freeShippingContext?.rules?.length),
+    });
 
     if (!rates.length) {
       return jsonOk(
         {
           ok: true,
-          context: {
-            cart_id,
-            address_id,
-            country_id: country_id || null,
-            city_id: city_id || null,
-            customer_id: customer_id || null,
-            currency: currencyInfo.code,
-            subtotal: cartProducts.subtotal,
-            product_ids: productIds,
-            category_ids: categoryIds,
-            free_shipping_applied: couponFreeShipping,
-            free_shipping_coupon_applied: couponFreeShipping,
-            free_shipping_rule_available: Boolean(freeShippingContext?.rules?.length),
-          },
+          context: contextBase,
           options: [],
         },
         session_id,
       );
     }
 
-    const carrierIds: string[] = Array.from(
-      new Set<string>(
-        rates
-          .map((r: any) => s(r?.store_shipping_carrier_id))
-          .filter((id: string) => id.length > 0),
-      ),
+    const carrierIds = uniqStrings(
+      rates.map((rate) => rate?.store_shipping_carrier_id),
     );
 
     if (!carrierIds.length) {
       return jsonOk(
         {
           ok: true,
-          context: {
-            cart_id,
-            address_id,
-            country_id: country_id || null,
-            city_id: city_id || null,
-            customer_id: customer_id || null,
-            currency: currencyInfo.code,
-            subtotal: cartProducts.subtotal,
-            product_ids: productIds,
-            category_ids: categoryIds,
-            free_shipping_applied: couponFreeShipping,
-            free_shipping_coupon_applied: couponFreeShipping,
-            free_shipping_rule_available: Boolean(freeShippingContext?.rules?.length),
-          },
+          context: contextBase,
           options: [],
         },
         session_id,
       );
     }
 
-    const carriersR = await sb
+    const carriersR: any = await sb
       .from("store_shipping_carriers")
       .select("id,type,display_name,enabled,is_enabled,status")
       .eq("store_id", store_id)
       .in("id", carrierIds);
 
-    if (carriersR.error) return jsonError(carriersR.error.message, 500);
+    if (carriersR?.error) return jsonError(carriersR.error.message, 500);
 
-    const carriersArr = Array.isArray(carriersR.data) ? carriersR.data : [];
+    const carriersArr: any[] = Array.isArray((carriersR as any)?.data)
+      ? ((carriersR as any).data as any[])
+      : [];
+
     const carriers = new Map<string, any>();
 
-    for (const c of carriersArr) {
-      carriers.set(String(c.id), c);
+    for (const carrier of carriersArr) {
+      const id = s(carrier?.id);
+      if (id) carriers.set(id, carrier);
     }
 
     const out: Array<ShippingOption & { _sort_price: number }> = [];
 
-    for (const r of rates) {
-      const carrierId = s(r?.store_shipping_carrier_id);
+    for (const rate of rates) {
+      const carrierId = s((rate as any)?.store_shipping_carrier_id);
       const carrier = carriers.get(carrierId);
 
       if (!carrier) continue;
@@ -1239,21 +1258,22 @@ export async function GET() {
       const carrierEnabled =
         carrier.enabled === true ||
         carrier.is_enabled === true ||
-        carrier.enabled === 1;
+        carrier.enabled === 1 ||
+        carrier.is_enabled === 1;
 
       if (!carrierEnabled || s(carrier.status) !== "active") continue;
 
-      if (city_id && !pickByCityScope(r, city_id)) continue;
+      if (city_id && !pickByCityScope(rate, city_id)) continue;
 
       const carrierType = s(carrier.type);
       const rateCurrency = cleanCurrencyCode(
-        r.currency,
+        rate.currency,
         currencyRuntime.defaultCode,
       );
 
       const convertedShipping = round2(
         convertMoney({
-          amount: Math.max(0, n(r.customer_price)),
+          amount: Math.max(0, n(rate.customer_price)),
           sourceCode: rateCurrency,
           targetCode: currencyInfo.code,
           runtime: currencyRuntime,
@@ -1273,7 +1293,7 @@ export async function GET() {
             countryId: country_id,
             cityId: city_id,
             productIds,
-            categoryIds,
+            categoryIds: Array.isArray(categoryIds) ? categoryIds : [],
             carrierId,
             minimumSubtotalToCartCurrency: (amount: number) =>
               convertMoney({
@@ -1290,8 +1310,8 @@ export async function GET() {
 
       const displayedShipping = freeShippingApplied ? 0 : convertedShipping;
 
-      const codAllowed = Boolean(r.cod_enabled) && carrierType !== "pickup";
-      const codFeeRaw = Math.max(0, n(r.cod_fee_customer));
+      const codAllowed = Boolean(rate.cod_enabled) && carrierType !== "pickup";
+      const codFeeRaw = Math.max(0, n(rate.cod_fee_customer));
 
       const convertedCodFee = round2(
         convertMoney({
@@ -1303,9 +1323,9 @@ export async function GET() {
       );
 
       out.push({
-        id: String(r.id),
+        id: String(rate.id),
         name: s(carrier.display_name) || "شركة شحن",
-        eta: s(r.eta_text) || "—",
+        eta: s(rate.eta_text) || "—",
 
         price: formatMoney({
           amount: displayedShipping,
@@ -1352,19 +1372,19 @@ export async function GET() {
 
     if (out.length) {
       let bestIdx = 0;
-      let best = Infinity;
+      let bestPrice = Infinity;
 
       for (let i = 0; i < out.length; i++) {
-        const num = out[i]._sort_price;
+        const price = out[i]._sort_price;
 
-        if (Number.isFinite(num) && num < best) {
-          best = num;
+        if (Number.isFinite(price) && price < bestPrice) {
+          bestPrice = price;
           bestIdx = i;
         }
       }
 
-      out.forEach((x, i) => {
-        if (i === bestIdx) x.recommended = true;
+      out.forEach((option, index) => {
+        if (index === bestIdx) option.recommended = true;
       });
     }
 
@@ -1377,24 +1397,14 @@ export async function GET() {
       {
         ok: true,
         context: {
-          cart_id,
-          address_id,
-          country_id: country_id || null,
-          city_id: city_id || null,
-          customer_id: customer_id || null,
-          currency: currencyInfo.code,
-          subtotal: cartProducts.subtotal,
-          product_ids: productIds,
-          category_ids: categoryIds,
+          ...contextBase,
           free_shipping_applied: hasFreeShippingOption,
-          free_shipping_coupon_applied: couponFreeShipping,
-          free_shipping_rule_available: Boolean(freeShippingContext?.rules?.length),
         },
         options,
       },
       session_id,
     );
-  } catch (e: any) {
-    return jsonError(e?.message || "SHIPPING_OPTIONS_FAILED", 500);
+  } catch (error: any) {
+    return jsonError(error?.message || "SHIPPING_OPTIONS_FAILED", 500);
   }
 }
