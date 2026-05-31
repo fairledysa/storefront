@@ -27,19 +27,7 @@ type RedisCachedWithMetaResult<T> = {
   meta: RedisCacheMeta;
 };
 
-declare global {
-  // eslint-disable-next-line no-var
-  var __redis_cache_health:
-    | {
-        failures: number;
-        disabledUntil: number;
-      }
-    | undefined;
-}
-
-const DEFAULT_TIMEOUT_MS = 350;
-const DEFAULT_BREAKER_MS = 10_000;
-const DEFAULT_FAILURE_THRESHOLD = 1;
+const DEFAULT_TIMEOUT_MS = 1200;
 
 function n(value: unknown, fallback: number) {
   const num = Number(value);
@@ -50,52 +38,16 @@ function nowMs() {
   return Date.now();
 }
 
-function redisTimeoutMs() {
-  return Math.max(
-    120,
-    Math.min(1200, n(process.env.REDIS_CACHE_TIMEOUT_MS, DEFAULT_TIMEOUT_MS)),
-  );
-}
-
-function redisBreakerMs() {
-  return Math.max(
-    1000,
-    Math.min(
-      60_000,
-      n(process.env.REDIS_CACHE_BREAKER_MS, DEFAULT_BREAKER_MS),
-    ),
-  );
-}
-
-function redisFailureThreshold() {
-  return Math.max(
-    1,
-    Math.min(
-      5,
-      n(process.env.REDIS_CACHE_FAILURE_THRESHOLD, DEFAULT_FAILURE_THRESHOLD),
-    ),
-  );
-}
-
-function getRedisHealth() {
-  if (!globalThis.__redis_cache_health) {
-    globalThis.__redis_cache_health = {
-      failures: 0,
-      disabledUntil: 0,
-    };
-  }
-
-  return globalThis.__redis_cache_health;
-}
-
-function isTruthyDisabled(value: unknown) {
-  const text = String(value ?? "").trim().toLowerCase();
+function isRedisDisabledByEnv() {
+  const text = String(process.env.REDIS_CACHE_ENABLED ?? "")
+    .trim()
+    .toLowerCase();
 
   return text === "0" || text === "false" || text === "off" || text === "no";
 }
 
-function isRedisConfigured() {
-  if (isTruthyDisabled(process.env.REDIS_CACHE_ENABLED)) return false;
+function isRedisEnabled() {
+  if (isRedisDisabledByEnv()) return false;
 
   return Boolean(
     process.env.UPSTASH_REDIS_REST_URL &&
@@ -103,14 +55,11 @@ function isRedisConfigured() {
   );
 }
 
-function isRedisBreakerOpen() {
-  const health = getRedisHealth();
-
-  return health.disabledUntil > nowMs();
-}
-
-function isRedisAvailable() {
-  return isRedisConfigured() && !isRedisBreakerOpen();
+function redisTimeoutMs() {
+  return Math.max(
+    500,
+    Math.min(3000, n(process.env.REDIS_CACHE_TIMEOUT_MS, DEFAULT_TIMEOUT_MS)),
+  );
 }
 
 function redisUrl() {
@@ -135,43 +84,17 @@ function debugRedis(message: string, data?: Record<string, unknown>) {
   console.info("[redis-cache]", message, data ?? {});
 }
 
-function recordRedisSuccess() {
-  const health = getRedisHealth();
-
-  health.failures = 0;
-  health.disabledUntil = 0;
-}
-
-function recordRedisFailure(reason: string) {
-  const health = getRedisHealth();
-
-  health.failures += 1;
-
-  if (health.failures >= redisFailureThreshold()) {
-    health.disabledUntil = nowMs() + redisBreakerMs();
-
-    debugRedis("temporary-disabled", {
-      reason,
-      failures: health.failures,
-      disabledForMs: redisBreakerMs(),
-    });
-  } else {
-    debugRedis("failure", {
-      reason,
-      failures: health.failures,
-    });
-  }
-}
-
 async function redisCommand<T = unknown>(
   command: Array<string | number>,
 ): Promise<RedisCommandResult<T> | null> {
-  if (!isRedisAvailable()) return null;
+  if (!isRedisEnabled()) return null;
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), redisTimeoutMs());
-
   const startedAt = nowMs();
+
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, redisTimeoutMs());
 
   try {
     const res = await fetch(redisUrl(), {
@@ -188,8 +111,6 @@ async function redisCommand<T = unknown>(
     const durationMs = nowMs() - startedAt;
 
     if (!res.ok) {
-      recordRedisFailure(`http_${res.status}`);
-
       debugRedis("http-error", {
         command: command[0],
         status: res.status,
@@ -202,8 +123,6 @@ async function redisCommand<T = unknown>(
     const json = (await res.json()) as RedisCommandResult<T>;
 
     if (json?.error) {
-      recordRedisFailure("redis_error");
-
       debugRedis("command-error", {
         command: command[0],
         error: json.error,
@@ -213,8 +132,6 @@ async function redisCommand<T = unknown>(
       return json;
     }
 
-    recordRedisSuccess();
-
     debugRedis("command-ok", {
       command: command[0],
       durationMs,
@@ -223,8 +140,6 @@ async function redisCommand<T = unknown>(
     return json;
   } catch (error: any) {
     const durationMs = nowMs() - startedAt;
-
-    recordRedisFailure(error?.name === "AbortError" ? "timeout" : "fetch_error");
 
     debugRedis("fetch-error", {
       command: command[0],
@@ -271,7 +186,7 @@ async function redisSetEnvelope<T>(
   value: T,
   ttlSeconds: number,
 ): Promise<boolean> {
-  if (!isRedisAvailable()) return false;
+  if (!isRedisEnabled()) return false;
   if (typeof value === "undefined") return false;
 
   const ttl = Math.max(5, Math.floor(Number(ttlSeconds || 60)));
@@ -297,7 +212,7 @@ export async function redisCached<T>(
   options: RedisCachedOptions,
   loader: () => Promise<T>,
 ): Promise<T> {
-  if (!isRedisAvailable()) {
+  if (!isRedisEnabled()) {
     return loader();
   }
 
@@ -321,7 +236,7 @@ export async function redisCachedWithMeta<T>(
 ): Promise<RedisCachedWithMetaResult<T>> {
   const startedAt = nowMs();
 
-  if (!isRedisAvailable()) {
+  if (!isRedisEnabled()) {
     const value = await loader();
 
     return {
@@ -361,7 +276,7 @@ export async function redisCachedWithMeta<T>(
 }
 
 export async function redisDelete(key: string) {
-  if (!isRedisAvailable()) return false;
+  if (!isRedisEnabled()) return false;
 
   const response = await redisCommand(["DEL", key]);
 
@@ -369,18 +284,12 @@ export async function redisDelete(key: string) {
 }
 
 export function redisCacheStatus() {
-  const health = getRedisHealth();
-
   return {
-    enabled: isRedisAvailable(),
-    configured: isRedisConfigured(),
-    breakerOpen: isRedisBreakerOpen(),
-    failures: health.failures,
-    disabledUntil: health.disabledUntil,
+    enabled: isRedisEnabled(),
+    configured: isRedisEnabled(),
     hasUrl: Boolean(process.env.UPSTASH_REDIS_REST_URL),
     hasToken: Boolean(process.env.UPSTASH_REDIS_REST_TOKEN),
     timeoutMs: redisTimeoutMs(),
-    breakerMs: redisBreakerMs(),
     prefix: process.env.REDIS_CACHE_PREFIX || "madrar:storefront",
     version: process.env.REDIS_CACHE_VERSION || "v1",
   };

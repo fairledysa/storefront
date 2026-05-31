@@ -3,17 +3,19 @@ import { NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 
 import { cacheKey } from "@/data/cache/cache-keys";
+import { redisCachedWithMeta } from "@/data/cache/redis-cache.server";
 import { getProductsBySearch } from "@/data/catalog/products";
 import { getStoreDb } from "@/data/db/store-db.server";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const SEARCH_LIMIT = 10;
 const DB_FETCH_LIMIT = 45;
 const VOCAB_CACHE_TTL = 120_000;
 const CURRENCY_CACHE_TTL = 30_000;
-
-const REDIS_ROUTE_CACHE_TTL_SECONDS = 180;
-const REDIS_TIMEOUT_MS = 900;
+const SEARCH_REDIS_TTL_SECONDS = 90;
 
 type TimedCache<T> = {
   expiresAt: number;
@@ -47,15 +49,10 @@ type CurrencyCandidate = StoreCurrencyDisplay & {
   score: number;
 };
 
-type SearchResponsePayload = {
+type SearchPayload = {
   suggestions: string[];
   didYouMean: { query: string; confidence: number } | null;
   items: any[];
-};
-
-type RedisEnvelope<T> = {
-  __mk_api_search_cache: 1;
-  value: T;
 };
 
 const vocabularyCache = new Map<string, TimedCache<Map<string, string>>>();
@@ -165,113 +162,6 @@ function parseJsonMaybe(value: any) {
 
   return value;
 }
-
-/* ------------------------- Redis route cache ------------------------- */
-
-function isRedisEnabled() {
-  if (process.env.REDIS_CACHE_ENABLED === "0") return false;
-  if (process.env.REDIS_CACHE_ENABLED === "false") return false;
-
-  return Boolean(
-    process.env.UPSTASH_REDIS_REST_URL &&
-      process.env.UPSTASH_REDIS_REST_TOKEN,
-  );
-}
-
-function redisUrl() {
-  return String(process.env.UPSTASH_REDIS_REST_URL || "").replace(/\/+$/, "");
-}
-
-function redisToken() {
-  return String(process.env.UPSTASH_REDIS_REST_TOKEN || "");
-}
-
-async function redisCommand<T = unknown>(
-  command: Array<string | number>,
-): Promise<{ result?: T; error?: string } | null> {
-  if (!isRedisEnabled()) return null;
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REDIS_TIMEOUT_MS);
-
-  try {
-    const res = await fetch(redisUrl(), {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${redisToken()}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(command),
-      cache: "no-store",
-      signal: controller.signal,
-    });
-
-    if (!res.ok) return null;
-
-    return (await res.json()) as { result?: T; error?: string };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function redisGetSearchPayload(
-  key: string,
-): Promise<SearchResponsePayload | null> {
-  const response = await redisCommand<string | null>(["GET", key]);
-
-  if (!response || response.error || response.result == null) {
-    return null;
-  }
-
-  try {
-    const parsed = JSON.parse(response.result) as RedisEnvelope<SearchResponsePayload>;
-
-    if (parsed && parsed.__mk_api_search_cache === 1) {
-      return parsed.value;
-    }
-
-    return parsed as any;
-  } catch {
-    return null;
-  }
-}
-
-async function redisSetSearchPayload(
-  key: string,
-  value: SearchResponsePayload,
-): Promise<boolean> {
-  if (!isRedisEnabled()) return false;
-
-  const payload: RedisEnvelope<SearchResponsePayload> = {
-    __mk_api_search_cache: 1,
-    value,
-  };
-
-  const response = await redisCommand([
-    "SET",
-    key,
-    JSON.stringify(payload),
-    "EX",
-    REDIS_ROUTE_CACHE_TTL_SECONDS,
-  ]);
-
-  return Boolean(response && !response.error);
-}
-
-function jsonWithCacheStatus(
-  payload: SearchResponsePayload,
-  status: "HIT" | "MISS" | "BYPASS",
-) {
-  return NextResponse.json(payload, {
-    headers: {
-      "x-mk-search-cache": status,
-    },
-  });
-}
-
-/* ------------------------- currency helpers ------------------------- */
 
 function makeCurrencyCandidate(
   value: any,
@@ -470,8 +360,8 @@ async function resolveStoreCurrencyDisplay(args: {
   const storeId = s(args.storeId);
   if (!storeId) return null;
 
-  const cacheKeyValue = `store-currency:${storeId}`;
-  const cached = getCached(currencyCache, cacheKeyValue);
+  const cacheKey = `store-currency:${storeId}`;
+  const cached = getCached(currencyCache, cacheKey);
 
   if (cached !== null) return cached;
 
@@ -532,12 +422,10 @@ async function resolveStoreCurrencyDisplay(args: {
       }
     : null;
 
-  setCached(currencyCache, cacheKeyValue, currency, CURRENCY_CACHE_TTL);
+  setCached(currencyCache, cacheKey, currency, CURRENCY_CACHE_TTL);
 
   return currency;
 }
-
-/* ------------------------- search normalize ------------------------- */
 
 function normalizeArabic(value: unknown) {
   return s(value)
@@ -802,8 +690,6 @@ function findClosestCandidate(
   };
 }
 
-/* ------------------------- DB search ------------------------- */
-
 function rankRow(row: SearchIndexRow, query: string) {
   const q = normalizeArabic(query);
   const title = normalizeArabic(row.title);
@@ -926,8 +812,8 @@ async function loadVocabulary(storeId: string) {
   const store_id = s(storeId);
   if (!store_id) return new Map<string, string>();
 
-  const cacheKeyValue = `product-search-index-vocab:${store_id}`;
-  const cached = getCached(vocabularyCache, cacheKeyValue);
+  const cacheKey = `product-search-index-vocab:${store_id}`;
+  const cached = getCached(vocabularyCache, cacheKey);
 
   if (cached) return cached;
 
@@ -955,7 +841,7 @@ async function loadVocabulary(storeId: string) {
     }
   }
 
-  setCached(vocabularyCache, cacheKeyValue, candidates, VOCAB_CACHE_TTL);
+  setCached(vocabularyCache, cacheKey, candidates, VOCAB_CACHE_TTL);
 
   return candidates;
 }
@@ -1000,8 +886,6 @@ async function resolveDidYouMean(storeId: string, query: string) {
     confidence: Number(confidence.toFixed(3)),
   };
 }
-
-/* ------------------------- serializers ------------------------- */
 
 function getProductImage(product: any) {
   return pickText(
@@ -1179,19 +1063,67 @@ function buildSuggestions(
   return Array.from(out).slice(0, 5);
 }
 
-/* ------------------------- main handler ------------------------- */
+function emptyPayload(): SearchPayload {
+  return {
+    suggestions: [],
+    didYouMean: null,
+    items: [],
+  };
+}
+
+function normalizeSearchCacheHeader(value: unknown) {
+  const cache = String(value ?? "").trim().toLowerCase();
+
+  if (cache === "hit") return "HIT";
+  if (cache === "miss") return "MISS";
+  if (cache === "disabled") return "DISABLED";
+  if (cache === "error") return "ERROR";
+
+  return "UNKNOWN";
+}
+
+function jsonWithSearchHeaders(
+  payload: SearchPayload,
+  cacheStatus: unknown,
+  durationMs?: number,
+) {
+  const headers = new Headers();
+
+  headers.set("Cache-Control", "no-store, max-age=0");
+  headers.set("X-Mk-Search-Cache", normalizeSearchCacheHeader(cacheStatus));
+
+  if (typeof durationMs === "number" && Number.isFinite(durationMs)) {
+    headers.set("X-Mk-Search-Cache-Ms", String(Math.max(0, Math.round(durationMs))));
+  }
+
+  return NextResponse.json(payload, {
+    headers,
+  });
+}
+
+function makeSearchRedisKey(storeId: string, query: string) {
+  const normalized = normalizeArabic(query) || normalizeDbSearchTerm(query);
+  return cacheKey("api-search", storeId, hashText(normalized));
+}
 
 async function buildSearchPayload(args: {
   storeId: string;
-  store: any;
-  q: string;
-}): Promise<SearchResponsePayload> {
+  store?: any;
+  query: string;
+}): Promise<SearchPayload> {
+  const storeId = s(args.storeId);
+  const q = normalizeDbSearchTerm(args.query);
+
+  if (!storeId || !q || q.length < 2) {
+    return emptyPayload();
+  }
+
   const displayCurrency = await resolveStoreCurrencyDisplay({
-    storeId: args.storeId,
+    storeId,
     store: args.store,
   });
 
-  let ranked = await collectRows(args.storeId, args.q);
+  let ranked = await collectRows(storeId, q);
 
   let didYouMean: { query: string; confidence: number } | null = null;
 
@@ -1199,10 +1131,10 @@ async function buildSearchPayload(args: {
   const shouldTryCorrection = ranked.length === 0 || topScore < 160;
 
   if (shouldTryCorrection) {
-    didYouMean = await resolveDidYouMean(args.storeId, args.q);
+    didYouMean = await resolveDidYouMean(storeId, q);
 
     if (didYouMean?.query) {
-      const correctedRanked = await collectRows(args.storeId, didYouMean.query);
+      const correctedRanked = await collectRows(storeId, didYouMean.query);
 
       if (correctedRanked.length > ranked.length || topScore < 120) {
         const merged = new Map<string, { row: SearchIndexRow; score: number }>();
@@ -1231,15 +1163,15 @@ async function buildSearchPayload(args: {
     const items = rows.map((row) => serializeRow(row, displayCurrency));
 
     return {
-      suggestions: buildSuggestions(args.q, rows, items, didYouMean?.query),
+      suggestions: buildSuggestions(q, rows, items, didYouMean?.query),
       didYouMean,
       items,
     };
   }
 
   const fallbackProducts = await getProductsBySearch({
-    store_id: args.storeId,
-    q: args.q,
+    store_id: storeId,
+    q,
     limit: SEARCH_LIMIT,
   });
 
@@ -1248,7 +1180,7 @@ async function buildSearchPayload(args: {
     .filter((item) => item.id && item.title && item.href);
 
   return {
-    suggestions: buildSuggestions(args.q, [], fallbackItems, didYouMean?.query),
+    suggestions: buildSuggestions(q, [], fallbackItems, didYouMean?.query),
     didYouMean,
     items: fallbackItems,
   };
@@ -1259,47 +1191,34 @@ export async function GET(req: Request) {
   const q = normalizeDbSearchTerm(url.searchParams.get("q"));
 
   if (!q || q.length < 2) {
-    return jsonWithCacheStatus(
-      {
-        suggestions: [],
-        didYouMean: null,
-        items: [],
-      },
-      "BYPASS",
-    );
+    return jsonWithSearchHeaders(emptyPayload(), "disabled", 0);
   }
 
   const ctx = await resolveStoreContext();
 
   if (!ctx.store) {
-    return jsonWithCacheStatus(
-      {
-        suggestions: [],
-        didYouMean: null,
-        items: [],
-      },
-      "BYPASS",
-    );
+    return jsonWithSearchHeaders(emptyPayload(), "disabled", 0);
   }
 
   const storeId = ctx.store.id;
-  const qHash = hashText(normalizeArabic(q));
+  const redisKey = makeSearchRedisKey(storeId, q);
 
-  const redisKey = cacheKey("api-search", storeId, qHash);
+  const cached = await redisCachedWithMeta(
+    redisKey,
+    {
+      ttlSeconds: SEARCH_REDIS_TTL_SECONDS,
+    },
+    () =>
+      buildSearchPayload({
+        storeId,
+        store: ctx.store,
+        query: q,
+      }),
+  );
 
-  const cachedPayload = await redisGetSearchPayload(redisKey);
-
-  if (cachedPayload) {
-    return jsonWithCacheStatus(cachedPayload, "HIT");
-  }
-
-  const payload = await buildSearchPayload({
-    storeId,
-    store: ctx.store,
-    q,
-  });
-
-  await redisSetSearchPayload(redisKey, payload);
-
-  return jsonWithCacheStatus(payload, isRedisEnabled() ? "MISS" : "BYPASS");
+  return jsonWithSearchHeaders(
+    cached.value,
+    cached.meta.cache,
+    cached.meta.durationMs,
+  );
 }
