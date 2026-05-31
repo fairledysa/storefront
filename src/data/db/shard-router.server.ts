@@ -8,11 +8,24 @@ import {
   DEFAULT_STORE_SHARD_KEY,
   getShardConfig,
   type ShardConfig,
+  type ShardKind,
 } from "./shards.config";
 
 declare global {
   // eslint-disable-next-line no-var
   var __sb_shard_clients: Record<string, SupabaseClient> | undefined;
+
+  // eslint-disable-next-line no-var
+  var __sb_store_shard_routes:
+    | Record<
+        string,
+        {
+          storeShardKey: string;
+          ordersShardKey: string;
+          expiresAt: number;
+        }
+      >
+    | undefined;
 }
 
 type ShardCredentials = {
@@ -20,12 +33,27 @@ type ShardCredentials = {
   serviceRoleKey: string;
 };
 
+type StoreShardRoute = {
+  storeShardKey: string;
+  ordersShardKey: string;
+};
+
+const STORE_SHARD_ROUTE_TTL_MS = 30_000;
+
 function getClientCache() {
   if (!globalThis.__sb_shard_clients) {
     globalThis.__sb_shard_clients = {};
   }
 
   return globalThis.__sb_shard_clients;
+}
+
+function getStoreShardRouteCache() {
+  if (!globalThis.__sb_store_shard_routes) {
+    globalThis.__sb_store_shard_routes = {};
+  }
+
+  return globalThis.__sb_store_shard_routes;
 }
 
 function readShardCredentials(config: ShardConfig): ShardCredentials {
@@ -57,6 +85,122 @@ function readShardCredentials(config: ShardConfig): ShardCredentials {
     url,
     serviceRoleKey,
   };
+}
+
+function normalizeStoreId(storeId: string): string {
+  return String(storeId ?? "").trim();
+}
+
+function fallbackStoreShardRoute(): StoreShardRoute {
+  return {
+    storeShardKey: DEFAULT_STORE_SHARD_KEY,
+    ordersShardKey: DEFAULT_ORDERS_SHARD_KEY,
+  };
+}
+
+function safeShardKey(args: {
+  value: unknown;
+  expectedKind: ShardKind;
+  fallback: string;
+}) {
+  const shardKey = String(args.value ?? "").trim();
+
+  if (!shardKey) return args.fallback;
+
+  try {
+    const config = getShardConfig(shardKey);
+
+    if (config.kind !== args.expectedKind) {
+      return args.fallback;
+    }
+
+    return config.key;
+  } catch {
+    return args.fallback;
+  }
+}
+
+function cacheStoreShardRoute(storeId: string, route: StoreShardRoute) {
+  const cache = getStoreShardRouteCache();
+
+  cache[storeId] = {
+    ...route,
+    expiresAt: Date.now() + STORE_SHARD_ROUTE_TTL_MS,
+  };
+}
+
+function readCachedStoreShardRoute(storeId: string): StoreShardRoute | null {
+  const cache = getStoreShardRouteCache();
+  const cached = cache[storeId];
+
+  if (!cached) return null;
+
+  if (cached.expiresAt <= Date.now()) {
+    delete cache[storeId];
+    return null;
+  }
+
+  return {
+    storeShardKey: cached.storeShardKey,
+    ordersShardKey: cached.ordersShardKey,
+  };
+}
+
+async function readStoreShardRouteFromDb(
+  storeId: string,
+): Promise<StoreShardRoute> {
+  const cleanStoreId = normalizeStoreId(storeId);
+
+  assertStoreId(cleanStoreId);
+
+  const cached = readCachedStoreShardRoute(cleanStoreId);
+
+  if (cached) {
+    return cached;
+  }
+
+  const fallback = fallbackStoreShardRoute();
+
+  try {
+    const control = getShardClient(CONTROL_SHARD_KEY);
+
+    const { data, error } = await control
+      .from("store_shards")
+      .select("store_shard_key, orders_shard_key, status")
+      .eq("store_id", cleanStoreId)
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data) {
+      cacheStoreShardRoute(cleanStoreId, fallback);
+      return fallback;
+    }
+
+    if (String(data.status ?? "active") !== "active") {
+      cacheStoreShardRoute(cleanStoreId, fallback);
+      return fallback;
+    }
+
+    const route: StoreShardRoute = {
+      storeShardKey: safeShardKey({
+        value: data.store_shard_key,
+        expectedKind: "store",
+        fallback: DEFAULT_STORE_SHARD_KEY,
+      }),
+      ordersShardKey: safeShardKey({
+        value: data.orders_shard_key,
+        expectedKind: "orders",
+        fallback: DEFAULT_ORDERS_SHARD_KEY,
+      }),
+    };
+
+    cacheStoreShardRoute(cleanStoreId, route);
+
+    return route;
+  } catch {
+    cacheStoreShardRoute(cleanStoreId, fallback);
+    return fallback;
+  }
 }
 
 export function getShardClient(shardKey: string): SupabaseClient {
@@ -94,17 +238,17 @@ export function getControlShardKey(): string {
 export async function getStoreShardKey(storeId: string): Promise<string> {
   assertStoreId(storeId);
 
-  // الآن كل المتاجر على نفس الشارد.
-  // لاحقًا هذا المكان يقرأ من جدول store_shards.
-  return DEFAULT_STORE_SHARD_KEY;
+  const route = await readStoreShardRouteFromDb(storeId);
+
+  return route.storeShardKey;
 }
 
 export async function getOrdersShardKey(storeId: string): Promise<string> {
   assertStoreId(storeId);
 
-  // الآن كل الطلبات على نفس الشارد.
-  // لاحقًا هذا المكان يقرأ من جدول store_shards.
-  return DEFAULT_ORDERS_SHARD_KEY;
+  const route = await readStoreShardRouteFromDb(storeId);
+
+  return route.ordersShardKey;
 }
 
 export function assertStoreId(storeId: string): void {
