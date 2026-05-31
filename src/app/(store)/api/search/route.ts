@@ -446,6 +446,96 @@ function normalizeDbSearchTerm(value: unknown) {
     .slice(0, 90);
 }
 
+function emptySearchApiResponse(): SearchApiResponse {
+  return {
+    suggestions: [],
+    didYouMean: null,
+    items: [],
+  };
+}
+
+function cleanRequestHost(raw: string) {
+  return s(raw)
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/.*$/, "")
+    .replace(/:\d+$/, "");
+}
+
+function getRequestHost(req: Request) {
+  return cleanRequestHost(
+    req.headers.get("x-forwarded-host") ||
+      req.headers.get("host") ||
+      new URL(req.url).host,
+  );
+}
+
+function parseCookieHeader(cookieHeader: string) {
+  const pairs = new Map<string, string>();
+
+  for (const part of cookieHeader.split(";")) {
+    const index = part.indexOf("=");
+    if (index <= 0) continue;
+
+    const name = part.slice(0, index).trim();
+    const rawValue = part.slice(index + 1).trim();
+
+    if (!name) continue;
+
+    try {
+      pairs.set(name, decodeURIComponent(rawValue));
+    } catch {
+      pairs.set(name, rawValue);
+    }
+  }
+
+  return pairs;
+}
+
+function readSelectedCurrencyCodeFromRequest(req: Request) {
+  const cookies = parseCookieHeader(req.headers.get("cookie") || "");
+
+  const legacyCookieNames = [
+    "mk_selected_currency",
+    "mk_currency",
+    "malak_currency",
+    "currency",
+    "store_currency",
+    "selected_currency",
+  ];
+
+  for (const name of legacyCookieNames) {
+    const code = s(cookies.get(name)).toUpperCase();
+    if (/^[A-Z]{3}$/.test(code)) return code;
+  }
+
+  for (const [name, value] of cookies.entries()) {
+    if (!name.startsWith("mk_currency_")) continue;
+
+    const code = s(value).toUpperCase();
+    if (/^[A-Z]{3}$/.test(code)) return code;
+  }
+
+  return "auto";
+}
+
+function makeFastApiSearchCacheKey(req: Request, q: string) {
+  const host = getRequestHost(req) || "unknown-host";
+  const queryHash = hashText(normalizeArabic(q));
+  const currencyCode = readSelectedCurrencyCodeFromRequest(req);
+
+  return cacheKey(
+    "api-search",
+    "suggestions-by-host",
+    "v2",
+    host,
+    queryHash,
+    currencyCode,
+    String(SEARCH_LIMIT),
+  );
+}
+
+
 function tokenize(value: unknown) {
   const normalized = normalizeArabic(value);
 
@@ -1141,37 +1231,27 @@ export async function GET(req: Request) {
   const q = normalizeDbSearchTerm(url.searchParams.get("q"));
 
   if (!q || q.length < 2) {
-    return NextResponse.json({
-      suggestions: [],
-      didYouMean: null,
-      items: [],
-    } satisfies SearchApiResponse);
+    return NextResponse.json(emptySearchApiResponse());
   }
-
-  const ctx = await resolveStoreContext();
-
-  if (!ctx.store) {
-    return NextResponse.json({
-      suggestions: [],
-      didYouMean: null,
-      items: [],
-    } satisfies SearchApiResponse);
-  }
-
-  const storeId = ctx.store.id;
-  const qHash = hashText(normalizeArabic(q));
 
   const response = await redisCached<SearchApiResponse>(
-    cacheKey("api-search", "suggestions", storeId, qHash, String(SEARCH_LIMIT)),
+    makeFastApiSearchCacheKey(req, q),
     {
       ttlSeconds: API_SEARCH_CACHE_TTL_SECONDS,
     },
-    () =>
-      buildSearchResponseRaw({
-        storeId,
+    async () => {
+      const ctx = await resolveStoreContext();
+
+      if (!ctx.store) {
+        return emptySearchApiResponse();
+      }
+
+      return await buildSearchResponseRaw({
+        storeId: ctx.store.id,
         store: ctx.store,
         q,
-      }),
+      });
+    },
   );
 
   return NextResponse.json(response);
