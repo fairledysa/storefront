@@ -1,4 +1,5 @@
 // FILE: apps/storefront/src/app/(store)/api/search/route.ts
+
 import { NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 
@@ -12,9 +13,10 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const SEARCH_LIMIT = 10;
-const DB_FETCH_LIMIT = 45;
+const DB_FETCH_LIMIT = 70;
+const TOKEN_FETCH_LIMIT = 30;
 const VOCAB_CACHE_TTL = 120_000;
-const CURRENCY_CACHE_TTL = 30_000;
+const CURRENCY_CACHE_TTL = 120_000;
 const SEARCH_REDIS_TTL_SECONDS = 90;
 
 type TimedCache<T> = {
@@ -45,14 +47,15 @@ type StoreCurrencyDisplay = {
   decimals: number | null;
 };
 
-type CurrencyCandidate = StoreCurrencyDisplay & {
-  score: number;
-};
-
-type SearchPayload = {
+type SearchApiResponse = {
   suggestions: string[];
   didYouMean: { query: string; confidence: number } | null;
   items: any[];
+};
+
+type RankedSearchRow = {
+  row: SearchIndexRow;
+  score: number;
 };
 
 const vocabularyCache = new Map<string, TimedCache<Map<string, string>>>();
@@ -111,23 +114,9 @@ function pickText(...values: unknown[]) {
   return "";
 }
 
-function readBool(value: any, fallback = false) {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "number") return value === 1;
-
-  if (typeof value === "string") {
-    const text = value.trim().toLowerCase();
-
-    if (["true", "1", "yes", "on", "enabled", "active"].includes(text)) {
-      return true;
-    }
-
-    if (["false", "0", "no", "off", "disabled", "inactive"].includes(text)) {
-      return false;
-    }
-  }
-
-  return fallback;
+function cleanCurrencyCode(value: any, fallback = "SAR") {
+  const code = s(value).toUpperCase();
+  return code || fallback;
 }
 
 function clampDecimals(value: any): number | null {
@@ -137,294 +126,6 @@ function clampDecimals(value: any): number | null {
   if (!Number.isFinite(n)) return null;
 
   return Math.max(0, Math.min(4, Math.floor(n)));
-}
-
-function isPlainObject(value: any): value is Record<string, any> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
-function parseJsonMaybe(value: any) {
-  if (typeof value !== "string") return value;
-
-  const text = value.trim();
-  if (!text) return value;
-
-  if (
-    (text.startsWith("{") && text.endsWith("}")) ||
-    (text.startsWith("[") && text.endsWith("]"))
-  ) {
-    try {
-      return JSON.parse(text);
-    } catch {
-      return value;
-    }
-  }
-
-  return value;
-}
-
-function makeCurrencyCandidate(
-  value: any,
-  baseScore = 0,
-): CurrencyCandidate | null {
-  const parsed = parseJsonMaybe(value);
-
-  if (typeof parsed === "string") {
-    const code = s(parsed);
-    if (!code) return null;
-
-    return {
-      code,
-      symbol: code,
-      label: code,
-      decimals: null,
-      score: baseScore + 5,
-    };
-  }
-
-  if (!isPlainObject(parsed)) return null;
-
-  const code = pickText(
-    parsed.code,
-    parsed.currency_code,
-    parsed.currencyCode,
-    parsed.iso_code,
-    parsed.isoCode,
-    parsed.currency,
-    parsed.value,
-  );
-
-  const symbol = pickText(
-    parsed.symbol,
-    parsed.currency_symbol,
-    parsed.currencySymbol,
-    parsed.short_symbol,
-    parsed.shortSymbol,
-    parsed.sign,
-  );
-
-  const label = pickText(
-    parsed.label,
-    parsed.name,
-    parsed.title,
-    parsed.currency_name,
-    parsed.currencyName,
-    parsed.display_name,
-    parsed.displayName,
-  );
-
-  const finalLabel = symbol || code || label;
-
-  if (!code && !symbol && !label) return null;
-
-  const activeBoost =
-    readBool(
-      firstDefined(
-        parsed.is_default,
-        parsed.isDefault,
-        parsed.default,
-        parsed.is_base,
-        parsed.isBase,
-        parsed.is_active,
-        parsed.isActive,
-        parsed.active,
-        parsed.enabled,
-        parsed.selected,
-      ),
-      false,
-    )
-      ? 80
-      : 0;
-
-  return {
-    code,
-    symbol: symbol || code || label,
-    label: finalLabel,
-    decimals: clampDecimals(
-      firstDefined(
-        parsed.decimal_digits,
-        parsed.decimalDigits,
-        parsed.decimals,
-        parsed.precision,
-      ),
-    ),
-    score: baseScore + activeBoost + (symbol ? 18 : 0) + (code ? 12 : 0),
-  };
-}
-
-function collectCurrencyCandidates(
-  value: any,
-  baseScore = 0,
-  depth = 0,
-): CurrencyCandidate[] {
-  if (depth > 4) return [];
-
-  const parsed = parseJsonMaybe(value);
-  const out: CurrencyCandidate[] = [];
-
-  const direct = makeCurrencyCandidate(parsed, baseScore);
-  if (direct) out.push(direct);
-
-  if (Array.isArray(parsed)) {
-    parsed.forEach((item, index) => {
-      out.push(...collectCurrencyCandidates(item, baseScore - index, depth + 1));
-    });
-  } else if (isPlainObject(parsed)) {
-    const selectedCode = pickText(
-      parsed.selected,
-      parsed.selected_code,
-      parsed.selectedCode,
-      parsed.active,
-      parsed.active_code,
-      parsed.activeCode,
-      parsed.default,
-      parsed.default_code,
-      parsed.defaultCode,
-      parsed.current,
-      parsed.current_code,
-      parsed.currentCode,
-      parsed.base,
-      parsed.base_code,
-      parsed.baseCode,
-    );
-
-    const arrays = [
-      parsed.currencies,
-      parsed.items,
-      parsed.list,
-      parsed.options,
-      parsed.available,
-      parsed.enabled_currencies,
-      parsed.enabledCurrencies,
-    ];
-
-    for (const arr of arrays) {
-      if (!Array.isArray(arr)) continue;
-
-      arr.forEach((item, index) => {
-        const itemCode = pickText(
-          item?.code,
-          item?.currency_code,
-          item?.currencyCode,
-          item?.currency,
-          item?.value,
-        );
-
-        const matchBoost =
-          selectedCode &&
-          itemCode &&
-          selectedCode.toLowerCase() === itemCode.toLowerCase()
-            ? 120
-            : 0;
-
-        out.push(
-          ...collectCurrencyCandidates(
-            item,
-            baseScore + matchBoost - index,
-            depth + 1,
-          ),
-        );
-      });
-    }
-
-    const nestedObjects = [
-      parsed.currency,
-      parsed.store_currency,
-      parsed.storeCurrency,
-      parsed.default_currency,
-      parsed.defaultCurrency,
-      parsed.active_currency,
-      parsed.activeCurrency,
-      parsed.base_currency,
-      parsed.baseCurrency,
-      parsed.current_currency,
-      parsed.currentCurrency,
-      parsed.money,
-      parsed.pricing,
-    ];
-
-    for (const item of nestedObjects) {
-      if (item) {
-        out.push(...collectCurrencyCandidates(item, baseScore + 20, depth + 1));
-      }
-    }
-  }
-
-  return out;
-}
-
-async function resolveStoreCurrencyDisplay(args: {
-  storeId: string;
-  store?: any;
-}): Promise<StoreCurrencyDisplay | null> {
-  const storeId = s(args.storeId);
-  if (!storeId) return null;
-
-  const cacheKey = `store-currency:${storeId}`;
-  const cached = getCached(currencyCache, cacheKey);
-
-  if (cached !== null) return cached;
-
-  const candidates: CurrencyCandidate[] = [];
-
-  candidates.push(...collectCurrencyCandidates(args.store, 120));
-
-  const sb = (await getStoreDb(storeId)) as any;
-
-  const settingsR = await sb
-    .from("store_settings")
-    .select("slug,value")
-    .eq("store_id", storeId)
-    .limit(1000);
-
-  if (!settingsR.error && Array.isArray(settingsR.data)) {
-    for (const row of settingsR.data) {
-      const slug = s(row?.slug).toLowerCase();
-
-      if (
-        !slug.includes("currency") &&
-        !slug.includes("currencies") &&
-        !slug.includes("money") &&
-        !slug.includes("عملة") &&
-        !slug.includes("العملة")
-      ) {
-        continue;
-      }
-
-      let score = 60;
-
-      if (
-        slug.includes("active") ||
-        slug.includes("current") ||
-        slug.includes("default") ||
-        slug.includes("base") ||
-        slug.includes("primary") ||
-        slug.includes("selected")
-      ) {
-        score += 80;
-      }
-
-      candidates.push(...collectCurrencyCandidates(row?.value, score));
-    }
-  }
-
-  const best =
-    candidates
-      .filter((item) => item.label || item.symbol || item.code)
-      .sort((a, b) => b.score - a.score)[0] ?? null;
-
-  const currency = best
-    ? {
-        code: best.code,
-        symbol: best.symbol,
-        label: best.label || best.symbol || best.code,
-        decimals: best.decimals,
-      }
-    : null;
-
-  setCached(currencyCache, cacheKey, currency, CURRENCY_CACHE_TTL);
-
-  return currency;
 }
 
 function normalizeArabic(value: unknown) {
@@ -444,9 +145,10 @@ function normalizeArabic(value: unknown) {
 
 function normalizeDbSearchTerm(value: unknown) {
   return s(value)
-    .replace(/[%_]/g, "")
+    .replace(/[%_(),]/g, " ")
     .replace(/\s+/g, " ")
-    .slice(0, 90);
+    .slice(0, 90)
+    .trim();
 }
 
 function tokenize(value: unknown) {
@@ -459,7 +161,7 @@ function tokenize(value: unknown) {
         .map((x) => x.trim())
         .filter((x) => x.length >= 2),
     ),
-  ).slice(0, 8);
+  ).slice(0, 6);
 }
 
 function splitRawTokens(value: unknown) {
@@ -467,24 +169,7 @@ function splitRawTokens(value: unknown) {
     .split(/\s+/)
     .map((x) => x.trim())
     .filter(Boolean)
-    .slice(0, 8);
-}
-
-function makeArabicVariants(value: unknown) {
-  const raw = normalizeDbSearchTerm(value);
-  if (!raw) return [];
-
-  const variants = new Set<string>();
-
-  variants.add(raw);
-  variants.add(raw.replace(/ه/g, "ة"));
-  variants.add(raw.replace(/ة/g, "ه"));
-  variants.add(raw.replace(/[إأآ]/g, "ا"));
-
-  return Array.from(variants)
-    .map((x) => normalizeDbSearchTerm(x))
-    .filter(Boolean)
-    .slice(0, 4);
+    .slice(0, 6);
 }
 
 function toNumber(value: unknown) {
@@ -528,6 +213,78 @@ function getDisplayCurrencyText(
     s(displayCurrency?.label) ||
     s(fallbackCurrency)
   );
+}
+
+async function resolveStoreCurrencyDisplay(args: {
+  storeId: string;
+  store?: any;
+}): Promise<StoreCurrencyDisplay | null> {
+  const storeId = s(args.storeId);
+  if (!storeId) return null;
+
+  const cacheKeyValue = `store-currency:${storeId}`;
+  const cached = getCached(currencyCache, cacheKeyValue);
+
+  if (cached !== null) return cached;
+
+  const fallbackCode = cleanCurrencyCode(
+    args.store?.default_currency ?? args.store?.currency,
+    "SAR",
+  );
+
+  let currency: StoreCurrencyDisplay | null = null;
+
+  try {
+    const sb = (await getStoreDb(storeId)) as any;
+
+    const result = await sb
+      .from("store_currencies")
+      .select(
+        "currency_code,symbol,decimal_digits,is_default,is_enabled,sort_order",
+      )
+      .eq("store_id", storeId)
+      .eq("is_enabled", true)
+      .order("is_default", { ascending: false })
+      .order("sort_order", { ascending: true })
+      .limit(20);
+
+    const rows = Array.isArray(result.data) ? (result.data as any[]) : [];
+
+    const row =
+      rows.find((item) => item?.is_default === true) ||
+      rows.find(
+        (item) =>
+          cleanCurrencyCode(item?.currency_code, "") === fallbackCode,
+      ) ||
+      rows[0] ||
+      null;
+
+    if (row) {
+      const code = cleanCurrencyCode(row?.currency_code, fallbackCode);
+
+      currency = {
+        code,
+        symbol: s(row?.symbol) || code,
+        label: s(row?.symbol) || code,
+        decimals: clampDecimals(row?.decimal_digits),
+      };
+    }
+  } catch {
+    currency = null;
+  }
+
+  if (!currency) {
+    currency = {
+      code: fallbackCode,
+      symbol: fallbackCode,
+      label: fallbackCode,
+      decimals: 0,
+    };
+  }
+
+  setCached(currencyCache, cacheKeyValue, currency, CURRENCY_CACHE_TTL);
+
+  return currency;
 }
 
 function addCandidateWordsFromText(
@@ -734,6 +491,23 @@ function mergeRows(rows: SearchIndexRow[]) {
   return Array.from(map.values());
 }
 
+function rankAndSortRows(rows: SearchIndexRow[], query: string): RankedSearchRow[] {
+  return mergeRows(rows)
+    .map((row) => ({
+      row,
+      score: rankRow(row, query),
+    }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+
+      const aDate = new Date(a.row.updated_at || 0).getTime();
+      const bDate = new Date(b.row.updated_at || 0).getTime();
+
+      return bDate - aDate;
+    });
+}
+
 async function queryIndexByTerm(args: {
   sb: any;
   storeId: string;
@@ -751,7 +525,6 @@ async function queryIndexByTerm(args: {
     .eq("store_id", args.storeId)
     .eq("is_visible", true)
     .ilike("search_text_normalized", `%${clean}%`)
-    .order("updated_at", { ascending: false })
     .limit(args.limit ?? DB_FETCH_LIMIT);
 
   if (result.error || !Array.isArray(result.data)) return [];
@@ -761,23 +534,30 @@ async function queryIndexByTerm(args: {
 
 async function collectRows(storeId: string, query: string) {
   const store_id = s(storeId);
-  if (!store_id) return [];
+  const normalizedQuery = normalizeArabic(query);
+
+  if (!store_id || normalizedQuery.length < 2) return [];
 
   const sb = (await getStoreDb(store_id)) as any;
 
-  const variants = makeArabicVariants(query);
-  const tokens = tokenize(query);
+  const primaryRows = await queryIndexByTerm({
+    sb,
+    storeId: store_id,
+    term: normalizedQuery,
+    limit: DB_FETCH_LIMIT,
+  });
 
-  const phraseResults = await Promise.all(
-    variants.map((term) =>
-      queryIndexByTerm({
-        sb,
-        storeId: store_id,
-        term,
-        limit: DB_FETCH_LIMIT,
-      }),
-    ),
-  );
+  const primaryRanked = rankAndSortRows(primaryRows, query);
+
+  if (primaryRanked.length > 0) {
+    return primaryRanked;
+  }
+
+  const tokens = tokenize(query).filter((token) => token !== normalizedQuery);
+
+  if (!tokens.length) {
+    return [];
+  }
 
   const tokenResults = await Promise.all(
     tokens.map((token) =>
@@ -785,35 +565,20 @@ async function collectRows(storeId: string, query: string) {
         sb,
         storeId: store_id,
         term: token,
-        limit: 24,
+        limit: TOKEN_FETCH_LIMIT,
       }),
     ),
   );
 
-  const rows = mergeRows([...phraseResults.flat(), ...tokenResults.flat()]);
-
-  return rows
-    .map((row) => ({
-      row,
-      score: rankRow(row, query),
-    }))
-    .filter((item) => item.score > 0)
-    .sort((a, b) => {
-      if (b.score !== a.score) return b.score - a.score;
-
-      const aDate = new Date(a.row.updated_at || 0).getTime();
-      const bDate = new Date(b.row.updated_at || 0).getTime();
-
-      return bDate - aDate;
-    });
+  return rankAndSortRows(tokenResults.flat(), query);
 }
 
 async function loadVocabulary(storeId: string) {
   const store_id = s(storeId);
   if (!store_id) return new Map<string, string>();
 
-  const cacheKey = `product-search-index-vocab:${store_id}`;
-  const cached = getCached(vocabularyCache, cacheKey);
+  const cacheKeyValue = `product-search-index-vocab:${store_id}`;
+  const cached = getCached(vocabularyCache, cacheKeyValue);
 
   if (cached) return cached;
 
@@ -821,7 +586,7 @@ async function loadVocabulary(storeId: string) {
 
   const result = await sb
     .from("product_search_index")
-    .select("title,search_text,suggestion_terms,suggestion_terms_text")
+    .select("title,suggestion_terms,suggestion_terms_text")
     .eq("store_id", store_id)
     .eq("is_visible", true)
     .limit(2000);
@@ -841,7 +606,7 @@ async function loadVocabulary(storeId: string) {
     }
   }
 
-  setCached(vocabularyCache, cacheKey, candidates, VOCAB_CACHE_TTL);
+  setCached(vocabularyCache, cacheKeyValue, candidates, VOCAB_CACHE_TTL);
 
   return candidates;
 }
@@ -988,14 +753,15 @@ function serializeProductFallback(
 
   const finalCurrency = getDisplayCurrencyText(rawCurrency, displayCurrency);
   const imageUrl = getProductImage(product);
+  const href = getProductHref(product);
 
   return {
     id: s(product?.id),
     name: pickText(product?.name, product?.title),
     title: pickText(product?.name, product?.title),
     description: s(product?.description),
-    href: getProductHref(product),
-    url: getProductHref(product),
+    href,
+    url: href,
 
     imageUrl,
     image_url: imageUrl,
@@ -1063,60 +829,13 @@ function buildSuggestions(
   return Array.from(out).slice(0, 5);
 }
 
-function emptyPayload(): SearchPayload {
-  return {
-    suggestions: [],
-    didYouMean: null,
-    items: [],
-  };
-}
-
-function normalizeSearchCacheHeader(value: unknown) {
-  const cache = String(value ?? "").trim().toLowerCase();
-
-  if (cache === "hit") return "HIT";
-  if (cache === "miss") return "MISS";
-  if (cache === "disabled") return "DISABLED";
-  if (cache === "error") return "ERROR";
-
-  return "UNKNOWN";
-}
-
-function jsonWithSearchHeaders(
-  payload: SearchPayload,
-  cacheStatus: unknown,
-  durationMs?: number,
-) {
-  const headers = new Headers();
-
-  headers.set("Cache-Control", "no-store, max-age=0");
-  headers.set("X-Mk-Search-Cache", normalizeSearchCacheHeader(cacheStatus));
-
-  if (typeof durationMs === "number" && Number.isFinite(durationMs)) {
-    headers.set("X-Mk-Search-Cache-Ms", String(Math.max(0, Math.round(durationMs))));
-  }
-
-  return NextResponse.json(payload, {
-    headers,
-  });
-}
-
-function makeSearchRedisKey(storeId: string, query: string) {
-  const normalized = normalizeArabic(query) || normalizeDbSearchTerm(query);
-  return cacheKey("api-search", storeId, hashText(normalized));
-}
-
-async function buildSearchPayload(args: {
+async function buildSearchResponseRaw(args: {
   storeId: string;
   store?: any;
-  query: string;
-}): Promise<SearchPayload> {
+  q: string;
+}): Promise<SearchApiResponse> {
   const storeId = s(args.storeId);
-  const q = normalizeDbSearchTerm(args.query);
-
-  if (!storeId || !q || q.length < 2) {
-    return emptyPayload();
-  }
+  const q = normalizeDbSearchTerm(args.q);
 
   const displayCurrency = await resolveStoreCurrencyDisplay({
     storeId,
@@ -1124,36 +843,13 @@ async function buildSearchPayload(args: {
   });
 
   let ranked = await collectRows(storeId, q);
-
   let didYouMean: { query: string; confidence: number } | null = null;
 
-  const topScore = ranked[0]?.score ?? 0;
-  const shouldTryCorrection = ranked.length === 0 || topScore < 160;
-
-  if (shouldTryCorrection) {
+  if (ranked.length === 0) {
     didYouMean = await resolveDidYouMean(storeId, q);
 
     if (didYouMean?.query) {
-      const correctedRanked = await collectRows(storeId, didYouMean.query);
-
-      if (correctedRanked.length > ranked.length || topScore < 120) {
-        const merged = new Map<string, { row: SearchIndexRow; score: number }>();
-
-        for (const item of correctedRanked) {
-          merged.set(s(item.row.product_id), item);
-        }
-
-        for (const item of ranked) {
-          const id = s(item.row.product_id);
-          const current = merged.get(id);
-
-          if (!current || item.score > current.score) {
-            merged.set(id, item);
-          }
-        }
-
-        ranked = Array.from(merged.values()).sort((a, b) => b.score - a.score);
-      }
+      ranked = await collectRows(storeId, didYouMean.query);
     }
   }
 
@@ -1186,39 +882,69 @@ async function buildSearchPayload(args: {
   };
 }
 
+function emptyResponse(): SearchApiResponse {
+  return {
+    suggestions: [],
+    didYouMean: null,
+    items: [],
+  };
+}
+
+function jsonWithCacheHeaders(
+  payload: SearchApiResponse,
+  args: {
+    cache: string;
+    durationMs: number;
+  },
+) {
+  const res = NextResponse.json(payload);
+
+  res.headers.set("Cache-Control", "no-store, max-age=0");
+  res.headers.set("X-Mk-Search-Cache", args.cache.toUpperCase());
+  res.headers.set("X-Mk-Search-Cache-Ms", String(Math.max(0, args.durationMs)));
+
+  return res;
+}
+
 export async function GET(req: Request) {
+  const startedAt = nowMs();
   const url = new URL(req.url);
   const q = normalizeDbSearchTerm(url.searchParams.get("q"));
 
   if (!q || q.length < 2) {
-    return jsonWithSearchHeaders(emptyPayload(), "disabled", 0);
+    return jsonWithCacheHeaders(emptyResponse(), {
+      cache: "skip",
+      durationMs: nowMs() - startedAt,
+    });
   }
 
   const ctx = await resolveStoreContext();
 
-  if (!ctx.store) {
-    return jsonWithSearchHeaders(emptyPayload(), "disabled", 0);
+  if (!ctx.store?.id) {
+    return jsonWithCacheHeaders(emptyResponse(), {
+      cache: "skip",
+      durationMs: nowMs() - startedAt,
+    });
   }
 
   const storeId = ctx.store.id;
-  const redisKey = makeSearchRedisKey(storeId, q);
+  const qHash = hashText(normalizeArabic(q));
 
-  const cached = await redisCachedWithMeta(
-    redisKey,
+  const cached = await redisCachedWithMeta<SearchApiResponse>(
+    cacheKey("api-search", "suggestions", storeId, qHash, String(SEARCH_LIMIT)),
     {
       ttlSeconds: SEARCH_REDIS_TTL_SECONDS,
     },
     () =>
-      buildSearchPayload({
+      buildSearchResponseRaw({
         storeId,
         store: ctx.store,
-        query: q,
+        q,
       }),
   );
 
-  return jsonWithSearchHeaders(
-    cached.value,
-    cached.meta.cache,
-    cached.meta.durationMs,
-  );
+  return jsonWithCacheHeaders(cached.value, {
+    cache: cached.meta.cache,
+    durationMs: nowMs() - startedAt,
+  });
 }
