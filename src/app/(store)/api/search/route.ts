@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 
 import { cacheKey } from "@/data/cache/cache-keys";
-import { redisCached } from "@/data/cache/redis-cache.server";
 import { getProductsBySearch } from "@/data/catalog/products";
 import { getStoreDb } from "@/data/db/store-db.server";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
@@ -12,7 +11,9 @@ const SEARCH_LIMIT = 10;
 const DB_FETCH_LIMIT = 45;
 const VOCAB_CACHE_TTL = 120_000;
 const CURRENCY_CACHE_TTL = 30_000;
-const API_SEARCH_CACHE_TTL_SECONDS = 90;
+
+const REDIS_ROUTE_CACHE_TTL_SECONDS = 180;
+const REDIS_TIMEOUT_MS = 900;
 
 type TimedCache<T> = {
   expiresAt: number;
@@ -46,10 +47,15 @@ type CurrencyCandidate = StoreCurrencyDisplay & {
   score: number;
 };
 
-type SearchApiResponse = {
+type SearchResponsePayload = {
   suggestions: string[];
   didYouMean: { query: string; confidence: number } | null;
   items: any[];
+};
+
+type RedisEnvelope<T> = {
+  __mk_api_search_cache: 1;
+  value: T;
 };
 
 const vocabularyCache = new Map<string, TimedCache<Map<string, string>>>();
@@ -57,10 +63,6 @@ const currencyCache = new Map<string, TimedCache<StoreCurrencyDisplay | null>>()
 
 function nowMs() {
   return Date.now();
-}
-
-function hashText(value: string) {
-  return createHash("sha1").update(value).digest("hex");
 }
 
 function getCached<T>(map: Map<string, TimedCache<T>>, key: string): T | null {
@@ -89,6 +91,10 @@ function setCached<T>(
 
 function s(value: unknown) {
   return String(value ?? "").trim();
+}
+
+function hashText(value: string) {
+  return createHash("sha1").update(value).digest("hex");
 }
 
 function firstDefined(...values: any[]) {
@@ -159,6 +165,113 @@ function parseJsonMaybe(value: any) {
 
   return value;
 }
+
+/* ------------------------- Redis route cache ------------------------- */
+
+function isRedisEnabled() {
+  if (process.env.REDIS_CACHE_ENABLED === "0") return false;
+  if (process.env.REDIS_CACHE_ENABLED === "false") return false;
+
+  return Boolean(
+    process.env.UPSTASH_REDIS_REST_URL &&
+      process.env.UPSTASH_REDIS_REST_TOKEN,
+  );
+}
+
+function redisUrl() {
+  return String(process.env.UPSTASH_REDIS_REST_URL || "").replace(/\/+$/, "");
+}
+
+function redisToken() {
+  return String(process.env.UPSTASH_REDIS_REST_TOKEN || "");
+}
+
+async function redisCommand<T = unknown>(
+  command: Array<string | number>,
+): Promise<{ result?: T; error?: string } | null> {
+  if (!isRedisEnabled()) return null;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REDIS_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(redisUrl(), {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${redisToken()}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(command),
+      cache: "no-store",
+      signal: controller.signal,
+    });
+
+    if (!res.ok) return null;
+
+    return (await res.json()) as { result?: T; error?: string };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function redisGetSearchPayload(
+  key: string,
+): Promise<SearchResponsePayload | null> {
+  const response = await redisCommand<string | null>(["GET", key]);
+
+  if (!response || response.error || response.result == null) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(response.result) as RedisEnvelope<SearchResponsePayload>;
+
+    if (parsed && parsed.__mk_api_search_cache === 1) {
+      return parsed.value;
+    }
+
+    return parsed as any;
+  } catch {
+    return null;
+  }
+}
+
+async function redisSetSearchPayload(
+  key: string,
+  value: SearchResponsePayload,
+): Promise<boolean> {
+  if (!isRedisEnabled()) return false;
+
+  const payload: RedisEnvelope<SearchResponsePayload> = {
+    __mk_api_search_cache: 1,
+    value,
+  };
+
+  const response = await redisCommand([
+    "SET",
+    key,
+    JSON.stringify(payload),
+    "EX",
+    REDIS_ROUTE_CACHE_TTL_SECONDS,
+  ]);
+
+  return Boolean(response && !response.error);
+}
+
+function jsonWithCacheStatus(
+  payload: SearchResponsePayload,
+  status: "HIT" | "MISS" | "BYPASS",
+) {
+  return NextResponse.json(payload, {
+    headers: {
+      "x-mk-search-cache": status,
+    },
+  });
+}
+
+/* ------------------------- currency helpers ------------------------- */
 
 function makeCurrencyCandidate(
   value: any,
@@ -357,8 +470,8 @@ async function resolveStoreCurrencyDisplay(args: {
   const storeId = s(args.storeId);
   if (!storeId) return null;
 
-  const cacheKey = `store-currency:${storeId}`;
-  const cached = getCached(currencyCache, cacheKey);
+  const cacheKeyValue = `store-currency:${storeId}`;
+  const cached = getCached(currencyCache, cacheKeyValue);
 
   if (cached !== null) return cached;
 
@@ -419,10 +532,12 @@ async function resolveStoreCurrencyDisplay(args: {
       }
     : null;
 
-  setCached(currencyCache, cacheKey, currency, CURRENCY_CACHE_TTL);
+  setCached(currencyCache, cacheKeyValue, currency, CURRENCY_CACHE_TTL);
 
   return currency;
 }
+
+/* ------------------------- search normalize ------------------------- */
 
 function normalizeArabic(value: unknown) {
   return s(value)
@@ -445,96 +560,6 @@ function normalizeDbSearchTerm(value: unknown) {
     .replace(/\s+/g, " ")
     .slice(0, 90);
 }
-
-function emptySearchApiResponse(): SearchApiResponse {
-  return {
-    suggestions: [],
-    didYouMean: null,
-    items: [],
-  };
-}
-
-function cleanRequestHost(raw: string) {
-  return s(raw)
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/\/.*$/, "")
-    .replace(/:\d+$/, "");
-}
-
-function getRequestHost(req: Request) {
-  return cleanRequestHost(
-    req.headers.get("x-forwarded-host") ||
-      req.headers.get("host") ||
-      new URL(req.url).host,
-  );
-}
-
-function parseCookieHeader(cookieHeader: string) {
-  const pairs = new Map<string, string>();
-
-  for (const part of cookieHeader.split(";")) {
-    const index = part.indexOf("=");
-    if (index <= 0) continue;
-
-    const name = part.slice(0, index).trim();
-    const rawValue = part.slice(index + 1).trim();
-
-    if (!name) continue;
-
-    try {
-      pairs.set(name, decodeURIComponent(rawValue));
-    } catch {
-      pairs.set(name, rawValue);
-    }
-  }
-
-  return pairs;
-}
-
-function readSelectedCurrencyCodeFromRequest(req: Request) {
-  const cookies = parseCookieHeader(req.headers.get("cookie") || "");
-
-  const legacyCookieNames = [
-    "mk_selected_currency",
-    "mk_currency",
-    "malak_currency",
-    "currency",
-    "store_currency",
-    "selected_currency",
-  ];
-
-  for (const name of legacyCookieNames) {
-    const code = s(cookies.get(name)).toUpperCase();
-    if (/^[A-Z]{3}$/.test(code)) return code;
-  }
-
-  for (const [name, value] of cookies.entries()) {
-    if (!name.startsWith("mk_currency_")) continue;
-
-    const code = s(value).toUpperCase();
-    if (/^[A-Z]{3}$/.test(code)) return code;
-  }
-
-  return "auto";
-}
-
-function makeFastApiSearchCacheKey(req: Request, q: string) {
-  const host = getRequestHost(req) || "unknown-host";
-  const queryHash = hashText(normalizeArabic(q));
-  const currencyCode = readSelectedCurrencyCodeFromRequest(req);
-
-  return cacheKey(
-    "api-search",
-    "suggestions-by-host",
-    "v2",
-    host,
-    queryHash,
-    currencyCode,
-    String(SEARCH_LIMIT),
-  );
-}
-
 
 function tokenize(value: unknown) {
   const normalized = normalizeArabic(value);
@@ -777,6 +802,8 @@ function findClosestCandidate(
   };
 }
 
+/* ------------------------- DB search ------------------------- */
+
 function rankRow(row: SearchIndexRow, query: string) {
   const q = normalizeArabic(query);
   const title = normalizeArabic(row.title);
@@ -899,8 +926,8 @@ async function loadVocabulary(storeId: string) {
   const store_id = s(storeId);
   if (!store_id) return new Map<string, string>();
 
-  const cacheKey = `product-search-index-vocab:${store_id}`;
-  const cached = getCached(vocabularyCache, cacheKey);
+  const cacheKeyValue = `product-search-index-vocab:${store_id}`;
+  const cached = getCached(vocabularyCache, cacheKeyValue);
 
   if (cached) return cached;
 
@@ -928,7 +955,7 @@ async function loadVocabulary(storeId: string) {
     }
   }
 
-  setCached(vocabularyCache, cacheKey, candidates, VOCAB_CACHE_TTL);
+  setCached(vocabularyCache, cacheKeyValue, candidates, VOCAB_CACHE_TTL);
 
   return candidates;
 }
@@ -973,6 +1000,8 @@ async function resolveDidYouMean(storeId: string, query: string) {
     confidence: Number(confidence.toFixed(3)),
   };
 }
+
+/* ------------------------- serializers ------------------------- */
 
 function getProductImage(product: any) {
   return pickText(
@@ -1150,20 +1179,19 @@ function buildSuggestions(
   return Array.from(out).slice(0, 5);
 }
 
-async function buildSearchResponseRaw(args: {
-  storeId: string;
-  store?: any;
-  q: string;
-}): Promise<SearchApiResponse> {
-  const storeId = s(args.storeId);
-  const q = normalizeDbSearchTerm(args.q);
+/* ------------------------- main handler ------------------------- */
 
+async function buildSearchPayload(args: {
+  storeId: string;
+  store: any;
+  q: string;
+}): Promise<SearchResponsePayload> {
   const displayCurrency = await resolveStoreCurrencyDisplay({
-    storeId,
+    storeId: args.storeId,
     store: args.store,
   });
 
-  let ranked = await collectRows(storeId, q);
+  let ranked = await collectRows(args.storeId, args.q);
 
   let didYouMean: { query: string; confidence: number } | null = null;
 
@@ -1171,10 +1199,10 @@ async function buildSearchResponseRaw(args: {
   const shouldTryCorrection = ranked.length === 0 || topScore < 160;
 
   if (shouldTryCorrection) {
-    didYouMean = await resolveDidYouMean(storeId, q);
+    didYouMean = await resolveDidYouMean(args.storeId, args.q);
 
     if (didYouMean?.query) {
-      const correctedRanked = await collectRows(storeId, didYouMean.query);
+      const correctedRanked = await collectRows(args.storeId, didYouMean.query);
 
       if (correctedRanked.length > ranked.length || topScore < 120) {
         const merged = new Map<string, { row: SearchIndexRow; score: number }>();
@@ -1203,15 +1231,15 @@ async function buildSearchResponseRaw(args: {
     const items = rows.map((row) => serializeRow(row, displayCurrency));
 
     return {
-      suggestions: buildSuggestions(q, rows, items, didYouMean?.query),
+      suggestions: buildSuggestions(args.q, rows, items, didYouMean?.query),
       didYouMean,
       items,
     };
   }
 
   const fallbackProducts = await getProductsBySearch({
-    store_id: storeId,
-    q,
+    store_id: args.storeId,
+    q: args.q,
     limit: SEARCH_LIMIT,
   });
 
@@ -1220,7 +1248,7 @@ async function buildSearchResponseRaw(args: {
     .filter((item) => item.id && item.title && item.href);
 
   return {
-    suggestions: buildSuggestions(q, [], fallbackItems, didYouMean?.query),
+    suggestions: buildSuggestions(args.q, [], fallbackItems, didYouMean?.query),
     didYouMean,
     items: fallbackItems,
   };
@@ -1231,28 +1259,47 @@ export async function GET(req: Request) {
   const q = normalizeDbSearchTerm(url.searchParams.get("q"));
 
   if (!q || q.length < 2) {
-    return NextResponse.json(emptySearchApiResponse());
+    return jsonWithCacheStatus(
+      {
+        suggestions: [],
+        didYouMean: null,
+        items: [],
+      },
+      "BYPASS",
+    );
   }
 
-  const response = await redisCached<SearchApiResponse>(
-    makeFastApiSearchCacheKey(req, q),
-    {
-      ttlSeconds: API_SEARCH_CACHE_TTL_SECONDS,
-    },
-    async () => {
-      const ctx = await resolveStoreContext();
+  const ctx = await resolveStoreContext();
 
-      if (!ctx.store) {
-        return emptySearchApiResponse();
-      }
+  if (!ctx.store) {
+    return jsonWithCacheStatus(
+      {
+        suggestions: [],
+        didYouMean: null,
+        items: [],
+      },
+      "BYPASS",
+    );
+  }
 
-      return await buildSearchResponseRaw({
-        storeId: ctx.store.id,
-        store: ctx.store,
-        q,
-      });
-    },
-  );
+  const storeId = ctx.store.id;
+  const qHash = hashText(normalizeArabic(q));
 
-  return NextResponse.json(response);
+  const redisKey = cacheKey("api-search", storeId, qHash);
+
+  const cachedPayload = await redisGetSearchPayload(redisKey);
+
+  if (cachedPayload) {
+    return jsonWithCacheStatus(cachedPayload, "HIT");
+  }
+
+  const payload = await buildSearchPayload({
+    storeId,
+    store: ctx.store,
+    q,
+  });
+
+  await redisSetSearchPayload(redisKey, payload);
+
+  return jsonWithCacheStatus(payload, isRedisEnabled() ? "MISS" : "BYPASS");
 }
