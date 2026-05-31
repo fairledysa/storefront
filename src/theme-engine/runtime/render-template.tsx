@@ -42,6 +42,11 @@ export type StorefrontTemplate =
   | "account/refer"
   | "account/favorites";
 
+type TimingMark = {
+  name: string;
+  ms: number;
+};
+
 function detectDeviceFromUA(ua: string) {
   const raw = String(ua || "").toLowerCase();
 
@@ -61,6 +66,63 @@ function safeObject(value: any): Record<string, any> {
   return {};
 }
 
+function nowMs() {
+  return Date.now();
+}
+
+function readNumberEnv(name: string, fallback: number) {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function isRenderTimingEnabled() {
+  const value = String(process.env.STOREFRONT_RENDER_TIMING || "")
+    .trim()
+    .toLowerCase();
+
+  return value === "1" || value === "true" || value === "yes";
+}
+
+function renderTimingThresholdMs() {
+  return Math.max(
+    300,
+    Math.min(
+      10_000,
+      readNumberEnv("STOREFRONT_RENDER_TIMING_THRESHOLD_MS", 1200),
+    ),
+  );
+}
+
+function formatTimingMarks(marks: TimingMark[]) {
+  return marks.map((mark) => `${mark.name}=${mark.ms}ms`).join("; ");
+}
+
+function logRenderTiming(args: {
+  template: StorefrontTemplate;
+  storeId: string;
+  storeSlug: string;
+  themeCode: string;
+  device?: "desktop" | "mobile";
+  totalMs: number;
+  marks: TimingMark[];
+}) {
+  if (!isRenderTimingEnabled()) return;
+
+  const threshold = renderTimingThresholdMs();
+  if (args.totalMs < threshold) return;
+
+  console.info("[storefront-render-timing]", {
+    template: args.template,
+    storeId: args.storeId,
+    storeSlug: args.storeSlug,
+    themeCode: args.themeCode,
+    device: args.device ?? "unknown",
+    totalMs: args.totalMs,
+    thresholdMs: threshold,
+    marks: formatTimingMarks(args.marks),
+  });
+}
+
 export async function renderTemplate({
   template,
   themeCode,
@@ -78,22 +140,51 @@ export async function renderTemplate({
   data?: any;
   children?: ReactNode;
 }) {
+  const totalStartedAt = nowMs();
+  const timingMarks: TimingMark[] = [];
+
+  const mark = (name: string, startedAt: number) => {
+    timingMarks.push({
+      name,
+      ms: nowMs() - startedAt,
+    });
+  };
+
   const safeCode = (themeCode as any) || (theme?.code as any);
   const kind = THEME_KIND[safeCode as ThemeCode] || "legacy";
   const themeOptions = safeObject(theme?.settings);
 
   if (kind === "app-shell") {
+    const headersStartedAt = nowMs();
     const h = await headers();
     const ua = h.get("user-agent") || "";
     const device = detectDeviceFromUA(ua);
+    mark("headers_device", headersStartedAt);
 
+    const loadThemeStartedAt = nowMs();
     const loaded = loadTheme(safeCode as ThemeCode);
     const C = loaded.Component;
+    mark("load_theme", loadThemeStartedAt);
 
-    if (!C) return null;
+    if (!C) {
+      logRenderTiming({
+        template,
+        storeId: store.id,
+        storeSlug: store.slug,
+        themeCode: String(safeCode),
+        device,
+        totalMs: nowMs() - totalStartedAt,
+        marks: timingMarks,
+      });
 
+      return null;
+    }
+
+    const seoStartedAt = nowMs();
     const seoMode = await getSeoUrlMode(store.id);
+    mark("seo_mode", seoStartedAt);
 
+    const bootstrapStartedAt = nowMs();
     const [bootstrap, initialCartCount] = await Promise.all([
       getMalakBootstrap({
         store: {
@@ -110,7 +201,9 @@ export async function renderTemplate({
 
       getInitialCartCount(store.id),
     ]);
+    mark("bootstrap_cart", bootstrapStartedAt);
 
+    const pageDataStartedAt = nowMs();
     const pageData = {
       ...safeObject(data),
 
@@ -140,6 +233,19 @@ export async function renderTemplate({
         bootstrap,
       },
     };
+    mark("page_data", pageDataStartedAt);
+
+    const totalMs = nowMs() - totalStartedAt;
+
+    logRenderTiming({
+      template,
+      storeId: store.id,
+      storeSlug: store.slug,
+      themeCode: String(safeCode),
+      device,
+      totalMs,
+      marks: timingMarks,
+    });
 
     return (
       <C
@@ -166,13 +272,37 @@ export async function renderTemplate({
     );
   }
 
+  const registryStartedAt = nowMs();
   const reg = themeRegistry.has(safeCode)
     ? themeRegistry.get(safeCode)
     : themeRegistry.defaultTheme();
 
   const T = reg.templates[template as keyof typeof reg.templates];
+  mark("legacy_registry", registryStartedAt);
 
-  if (!T) return null;
+  if (!T) {
+    logRenderTiming({
+      template,
+      storeId: store.id,
+      storeSlug: store.slug,
+      themeCode: String(safeCode),
+      totalMs: nowMs() - totalStartedAt,
+      marks: timingMarks,
+    });
+
+    return null;
+  }
+
+  const totalMs = nowMs() - totalStartedAt;
+
+  logRenderTiming({
+    template,
+    storeId: store.id,
+    storeSlug: store.slug,
+    themeCode: String(safeCode),
+    totalMs,
+    marks: timingMarks,
+  });
 
   return (
     <T
