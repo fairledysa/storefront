@@ -8,15 +8,11 @@ import { getProductsBySearch } from "@/data/catalog/products";
 import { getStoreDb } from "@/data/db/store-db.server";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
 
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
-
 const SEARCH_LIMIT = 10;
 const DB_FETCH_LIMIT = 45;
 const VOCAB_CACHE_TTL = 120_000;
 const CURRENCY_CACHE_TTL = 30_000;
-const API_SEARCH_REDIS_TTL_SECONDS = 45;
-const API_SEARCH_CACHE_SCHEMA = "v1";
+const API_SEARCH_CACHE_TTL_SECONDS = 90;
 
 type TimedCache<T> = {
   expiresAt: number;
@@ -63,6 +59,10 @@ function nowMs() {
   return Date.now();
 }
 
+function hashText(value: string) {
+  return createHash("sha1").update(value).digest("hex");
+}
+
 function getCached<T>(map: Map<string, TimedCache<T>>, key: string): T | null {
   const hit = map.get(key);
   if (!hit) return null;
@@ -89,26 +89,6 @@ function setCached<T>(
 
 function s(value: unknown) {
   return String(value ?? "").trim();
-}
-
-function hashText(value: string) {
-  return createHash("sha1").update(value).digest("hex");
-}
-
-function emptySearchResponse(): SearchApiResponse {
-  return {
-    suggestions: [],
-    didYouMean: null,
-    items: [],
-  };
-}
-
-function jsonSearch(data: SearchApiResponse) {
-  return NextResponse.json(data, {
-    headers: {
-      "Cache-Control": "private, no-store",
-    },
-  });
 }
 
 function firstDefined(...values: any[]) {
@@ -1080,17 +1060,20 @@ function buildSuggestions(
   return Array.from(out).slice(0, 5);
 }
 
-async function buildSearchResponse(args: {
+async function buildSearchResponseRaw(args: {
   storeId: string;
-  store: any;
+  store?: any;
   q: string;
 }): Promise<SearchApiResponse> {
+  const storeId = s(args.storeId);
+  const q = normalizeDbSearchTerm(args.q);
+
   const displayCurrency = await resolveStoreCurrencyDisplay({
-    storeId: args.storeId,
+    storeId,
     store: args.store,
   });
 
-  let ranked = await collectRows(args.storeId, args.q);
+  let ranked = await collectRows(storeId, q);
 
   let didYouMean: { query: string; confidence: number } | null = null;
 
@@ -1098,10 +1081,10 @@ async function buildSearchResponse(args: {
   const shouldTryCorrection = ranked.length === 0 || topScore < 160;
 
   if (shouldTryCorrection) {
-    didYouMean = await resolveDidYouMean(args.storeId, args.q);
+    didYouMean = await resolveDidYouMean(storeId, q);
 
     if (didYouMean?.query) {
-      const correctedRanked = await collectRows(args.storeId, didYouMean.query);
+      const correctedRanked = await collectRows(storeId, didYouMean.query);
 
       if (correctedRanked.length > ranked.length || topScore < 120) {
         const merged = new Map<string, { row: SearchIndexRow; score: number }>();
@@ -1130,15 +1113,15 @@ async function buildSearchResponse(args: {
     const items = rows.map((row) => serializeRow(row, displayCurrency));
 
     return {
-      suggestions: buildSuggestions(args.q, rows, items, didYouMean?.query),
+      suggestions: buildSuggestions(q, rows, items, didYouMean?.query),
       didYouMean,
       items,
     };
   }
 
   const fallbackProducts = await getProductsBySearch({
-    store_id: args.storeId,
-    q: args.q,
+    store_id: storeId,
+    q,
     limit: SEARCH_LIMIT,
   });
 
@@ -1147,7 +1130,7 @@ async function buildSearchResponse(args: {
     .filter((item) => item.id && item.title && item.href);
 
   return {
-    suggestions: buildSuggestions(args.q, [], fallbackItems, didYouMean?.query),
+    suggestions: buildSuggestions(q, [], fallbackItems, didYouMean?.query),
     didYouMean,
     items: fallbackItems,
   };
@@ -1158,28 +1141,38 @@ export async function GET(req: Request) {
   const q = normalizeDbSearchTerm(url.searchParams.get("q"));
 
   if (!q || q.length < 2) {
-    return jsonSearch(emptySearchResponse());
+    return NextResponse.json({
+      suggestions: [],
+      didYouMean: null,
+      items: [],
+    } satisfies SearchApiResponse);
   }
 
   const ctx = await resolveStoreContext();
 
   if (!ctx.store) {
-    return jsonSearch(emptySearchResponse());
+    return NextResponse.json({
+      suggestions: [],
+      didYouMean: null,
+      items: [],
+    } satisfies SearchApiResponse);
   }
 
   const storeId = ctx.store.id;
-  const qHash = hashText(q);
+  const qHash = hashText(normalizeArabic(q));
 
   const response = await redisCached<SearchApiResponse>(
-    cacheKey("api-search", API_SEARCH_CACHE_SCHEMA, storeId, qHash),
-    { ttlSeconds: API_SEARCH_REDIS_TTL_SECONDS },
+    cacheKey("api-search", "suggestions", storeId, qHash, String(SEARCH_LIMIT)),
+    {
+      ttlSeconds: API_SEARCH_CACHE_TTL_SECONDS,
+    },
     () =>
-      buildSearchResponse({
+      buildSearchResponseRaw({
         storeId,
         store: ctx.store,
         q,
       }),
   );
 
-  return jsonSearch(response);
+  return NextResponse.json(response);
 }
