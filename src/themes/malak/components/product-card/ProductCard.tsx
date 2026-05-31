@@ -82,12 +82,22 @@ export type ProductCardItem = {
   metadata?: Record<string, any> | null;
 
   imageUrl: string;
+  image_url?: string | null;
+
+  /**
+   * صور مخصصة للكرت فقط.
+   * هذه أخف من الصورة الأصلية وتستخدم في الرئيسية/القسم/البحث/الجوال.
+   */
+  cardImageUrl?: string | null;
+  card_image_url?: string | null;
+  thumbnailUrl?: string | null;
+  thumbnail_url?: string | null;
+
   hoverImageUrl?: string | null;
   hover_image_url?: string | null;
   secondImageUrl?: string | null;
   second_image_url?: string | null;
 
-  image_url?: string | null;
   images?: any[];
   media?: any[];
   seo?: Record<string, any> | null;
@@ -824,7 +834,7 @@ function getRootSettingsSnapshot() {
     root.getAttribute("data-mk-tax-prices-include-tax") || "false",
     root.getAttribute("data-mk-tax-included-in-price") || "false",
     root.getAttribute("data-mk-tax-display-label") || "",
-root.getAttribute("data-mk-device") || "desktop",
+    root.getAttribute("data-mk-device") || "desktop",
   ].join("|");
 }
 
@@ -895,7 +905,7 @@ function parseRootSettingsSnapshot(
     taxPricesIncludeTax: boolFromAttr(parts[8], false),
     taxIncludedInPrice: boolFromAttr(parts[9], false),
     taxDisplayLabel: s(parts[10]),
-device: s(parts[11]) || "desktop",
+    device: s(parts[11]) || "desktop",
   };
 }
 
@@ -909,21 +919,41 @@ function useProductCardRootSettings() {
   return useMemo(() => parseRootSettingsSnapshot(snapshot), [snapshot]);
 }
 
-function readMediaUrl(value: any) {
+/**
+ * لكرت المنتج نفضّل الصورة المصغرة.
+ * هذا لا يغير أبعاد العرض؛ الأبعاد تبقى من إعدادات الثيم و CSS.
+ */
+function readCardMediaUrl(value: any) {
   if (!value) return "";
 
   if (typeof value === "string") return s(value);
 
-  return (
-    s(value.original_url) ||
-    s(value.public_url) ||
-    s(value.image_url) ||
-    s(value.imageUrl) ||
-    s(value.url) ||
-    s(value.src) ||
-    s(value.path) ||
-    ""
+  return firstText(
+    value.cardImageUrl,
+    value.card_image_url,
+    value.thumbnail_url,
+    value.thumbnailUrl,
+    value.thumb,
+    value.thumb_url,
+    value.thumbUrl,
+    value.preview_url,
+    value.previewUrl,
+    value.small_url,
+    value.smallUrl,
+    value.image_url,
+    value.imageUrl,
+    value.public_url,
+    value.publicUrl,
+    value.url,
+    value.src,
+    value.path,
+    value.original_url,
+    value.originalUrl,
   );
+}
+
+function readMediaUrl(value: any) {
+  return readCardMediaUrl(value);
 }
 
 function isImageMedia(value: any) {
@@ -965,8 +995,83 @@ function firstDifferentImage(mainImage: string, ...values: any[]) {
   return "";
 }
 
+function getImageBuckets(item: ProductCardItem) {
+  const anyItem = item as any;
+
+  return [
+    item.media,
+    item.images,
+    item.metadata?.media,
+    item.metadata?.images,
+    item.metadata?.gallery,
+    item.metadata?.product_images,
+    item.metadata?.seo?.media,
+    item.metadata?.seo?.images,
+    item.seo?.media,
+    item.seo?.images,
+    anyItem.gallery,
+    anyItem.product_images,
+  ];
+}
+
+function getFirstImageFromBuckets(item: ProductCardItem) {
+  for (const bucket of getImageBuckets(item)) {
+    const images = getSortedMediaImages(bucket);
+    const found = images.find(Boolean);
+
+    if (found) return found;
+  }
+
+  return "";
+}
+
+function getProductCardMainImage(item: ProductCardItem) {
+  const anyItem = item as any;
+
+  const directCardImage = firstText(
+    anyItem.cardImageUrl,
+    anyItem.card_image_url,
+    anyItem.thumbnailUrl,
+    anyItem.thumbnail_url,
+    anyItem.thumb,
+    anyItem.thumb_url,
+    anyItem.thumbUrl,
+    anyItem.preview_url,
+    anyItem.previewUrl,
+    anyItem.small_url,
+    anyItem.smallUrl,
+    anyItem.metadata?.cardImageUrl,
+    anyItem.metadata?.card_image_url,
+    anyItem.metadata?.thumbnailUrl,
+    anyItem.metadata?.thumbnail_url,
+    anyItem.metadata?.thumb,
+  );
+
+  if (directCardImage) return directCardImage;
+
+  const mediaImage = getFirstImageFromBuckets(item);
+  if (mediaImage) return mediaImage;
+
+  return firstText(
+    item.imageUrl,
+    item.image_url,
+    anyItem.image,
+    anyItem.url,
+    anyItem.original_url,
+    anyItem.originalUrl,
+  );
+}
+
 function getHoverImage(item: ProductCardItem, mainImage: string) {
   const anyItem = item as any;
+  const main = s(mainImage);
+
+  for (const bucket of getImageBuckets(item)) {
+    const images = getSortedMediaImages(bucket);
+    const found = images.find((url) => url && url !== main);
+
+    if (found) return found;
+  }
 
   const direct = firstDifferentImage(
     mainImage,
@@ -989,37 +1094,13 @@ function getHoverImage(item: ProductCardItem, mainImage: string) {
     item.seo?.hover_image_url,
     item.seo?.secondImageUrl,
     item.seo?.second_image_url,
-    anyItem?.thumbnail_hover_url,
-    anyItem?.thumbnailHoverUrl,
-    anyItem?.cover_hover_url,
-    anyItem?.coverHoverUrl,
+    anyItem.thumbnail_hover_url,
+    anyItem.thumbnailHoverUrl,
+    anyItem.cover_hover_url,
+    anyItem.coverHoverUrl,
   );
 
-  if (direct) return direct;
-
-  const buckets = [
-    item.images,
-    item.media,
-    item.metadata?.images,
-    item.metadata?.media,
-    item.metadata?.gallery,
-    item.metadata?.product_images,
-    item.metadata?.seo?.images,
-    item.metadata?.seo?.media,
-    item.seo?.images,
-    item.seo?.media,
-    anyItem?.gallery,
-    anyItem?.product_images,
-  ];
-
-  for (const bucket of buckets) {
-    const images = getSortedMediaImages(bucket);
-    const found = images.find((url) => url && url !== mainImage);
-
-    if (found) return found;
-  }
-
-  return "";
+  return direct || "";
 }
 
 function getHoverStyleClass(style: string) {
@@ -1126,23 +1207,24 @@ export default function ProductCard({ item }: { item: ProductCardItem }) {
   const subtitleRaw = item.subtitle ?? item.metadata?.subtitle ?? null;
   const promoRaw = item.promotionTitle ?? item.metadata?.promotionTitle ?? null;
 
-const imageUrl = s(item.imageUrl || item.image_url);
-const isMobileDevice = rootSettings.device === "mobile";
+  const imageUrl = getProductCardMainImage(item);
+  const isMobileDevice = rootSettings.device === "mobile";
 
-const rawHoverImageUrl =
-  !isMobileDevice && switchImageOnHover ? getHoverImage(item, imageUrl) : "";
+  const rawHoverImageUrl =
+    !isMobileDevice && switchImageOnHover ? getHoverImage(item, imageUrl) : "";
 
-const hoverImageUrl =
-  rawHoverImageUrl && rawHoverImageUrl !== imageUrl ? rawHoverImageUrl : "";
+  const hoverImageUrl =
+    rawHoverImageUrl && rawHoverImageUrl !== imageUrl ? rawHoverImageUrl : "";
 
   const brand = s(item.brand);
   const title = s(item.title);
 
   const visibleOptions = useMemo(() => getVisibleOptions(item), [item]);
   const hasOptionsOverlay = showOptionsOnCard && visibleOptions.length > 0;
-const canSwitchImage = Boolean(
-  !isMobileDevice && switchImageOnHover && imageUrl && hoverImageUrl,
-);
+  const canSwitchImage = Boolean(
+    !isMobileDevice && switchImageOnHover && imageUrl && hoverImageUrl,
+  );
+
   const subtitle = useMemo(() => {
     const value = String(subtitleRaw ?? "").trim();
     return value ? value.slice(0, 58) : "";
@@ -1182,7 +1264,9 @@ const canSwitchImage = Boolean(
           canSwitchImage ? "mkpc-card--switch-image" : "",
           hasOptionsOverlay ? "mkpc-card--has-options" : "",
           getHoverStyleClass(hoverStyle),
-        ].join(" ")}
+        ]
+          .filter(Boolean)
+          .join(" ")}
         href={item.href}
         dir="rtl"
         data-mk-product-card-id={productCardId || undefined}
