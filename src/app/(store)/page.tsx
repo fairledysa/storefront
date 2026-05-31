@@ -14,7 +14,6 @@ import { renderTemplate } from "@/theme-engine/runtime/render-template";
 
 import MalakTheme from "@/themes/malak";
 import { getMalakBootstrap } from "@/themes/malak/bootstrap/get-malak-bootstrap";
-import { getInitialCartCount } from "@/themes/malak/runtime/get-cart-count.server";
 import { renderMalakMaintenancePage } from "@/themes/malak/screens/maintenance/render-maintenance-page";
 
 import { getSeoMeta, getSeoUrlMode } from "@/data/store/settings";
@@ -219,8 +218,6 @@ export default async function StoreHomePage({
       themeOptions,
     });
 
-    const initialCartCountPromise = getInitialCartCount(store.id);
-
     const bootstrapPromise = seoModePromise.then((seoMode) =>
       getMalakBootstrap({
         store: {
@@ -236,11 +233,10 @@ export default async function StoreHomePage({
       }),
     );
 
-    const [seoMode, homeData, bootstrap, initialCartCount] = await Promise.all([
+    const [seoMode, homeData, bootstrap] = await Promise.all([
       seoModePromise,
       homeDataPromise,
       bootstrapPromise,
-      initialCartCountPromise,
     ]);
 
     const mergedData = {
@@ -268,7 +264,14 @@ export default async function StoreHomePage({
       seoMode,
       data: mergedData,
       bootstrap,
-      initialCartCount,
+
+      /*
+       * مهم للأداء:
+       * لا نقرأ عدد السلة من السيرفر في الصفحة الرئيسية العامة.
+       * السلة بيانات شخصية وتتحدث لاحقًا من runtime/API.
+       */
+      initialCartCount: 0,
+
       theme: {
         key: "malak",
         version_id: ctx.theme?.version_id ?? "published",
