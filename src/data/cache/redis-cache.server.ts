@@ -29,25 +29,13 @@ type RedisCachedWithMetaResult<T> = {
 
 const DEFAULT_TIMEOUT_MS = 1200;
 
-function n(value: unknown, fallback: number) {
-  const num = Number(value);
-  return Number.isFinite(num) ? num : fallback;
-}
-
 function nowMs() {
   return Date.now();
 }
 
-function isRedisDisabledByEnv() {
-  const text = String(process.env.REDIS_CACHE_ENABLED ?? "")
-    .trim()
-    .toLowerCase();
-
-  return text === "0" || text === "false" || text === "off" || text === "no";
-}
-
 function isRedisEnabled() {
-  if (isRedisDisabledByEnv()) return false;
+  if (process.env.REDIS_CACHE_ENABLED === "0") return false;
+  if (process.env.REDIS_CACHE_ENABLED === "false") return false;
 
   return Boolean(
     process.env.UPSTASH_REDIS_REST_URL &&
@@ -55,33 +43,19 @@ function isRedisEnabled() {
   );
 }
 
-function redisTimeoutMs() {
-  return Math.max(
-    500,
-    Math.min(3000, n(process.env.REDIS_CACHE_TIMEOUT_MS, DEFAULT_TIMEOUT_MS)),
-  );
-}
-
 function redisUrl() {
-  return String(process.env.UPSTASH_REDIS_REST_URL || "").replace(/\/+$/, "");
+  return String(process.env.UPSTASH_REDIS_REST_URL || "")
+    .trim()
+    .replace(/^"+|"+$/g, "")
+    .replace(/^'+|'+$/g, "")
+    .replace(/\/+$/, "");
 }
 
 function redisToken() {
-  return String(process.env.UPSTASH_REDIS_REST_TOKEN || "");
-}
-
-function shouldDebugRedis() {
-  const value = String(process.env.REDIS_CACHE_DEBUG || "")
+  return String(process.env.UPSTASH_REDIS_REST_TOKEN || "")
     .trim()
-    .toLowerCase();
-
-  return value === "1" || value === "true" || value === "yes";
-}
-
-function debugRedis(message: string, data?: Record<string, unknown>) {
-  if (!shouldDebugRedis()) return;
-
-  console.info("[redis-cache]", message, data ?? {});
+    .replace(/^"+|"+$/g, "")
+    .replace(/^'+|'+$/g, "");
 }
 
 async function redisCommand<T = unknown>(
@@ -90,11 +64,7 @@ async function redisCommand<T = unknown>(
   if (!isRedisEnabled()) return null;
 
   const controller = new AbortController();
-  const startedAt = nowMs();
-
-  const timer = setTimeout(() => {
-    controller.abort();
-  }, redisTimeoutMs());
+  const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
 
   try {
     const res = await fetch(redisUrl(), {
@@ -108,45 +78,10 @@ async function redisCommand<T = unknown>(
       signal: controller.signal,
     });
 
-    const durationMs = nowMs() - startedAt;
+    if (!res.ok) return null;
 
-    if (!res.ok) {
-      debugRedis("http-error", {
-        command: command[0],
-        status: res.status,
-        durationMs,
-      });
-
-      return null;
-    }
-
-    const json = (await res.json()) as RedisCommandResult<T>;
-
-    if (json?.error) {
-      debugRedis("command-error", {
-        command: command[0],
-        error: json.error,
-        durationMs,
-      });
-
-      return json;
-    }
-
-    debugRedis("command-ok", {
-      command: command[0],
-      durationMs,
-    });
-
-    return json;
-  } catch (error: any) {
-    const durationMs = nowMs() - startedAt;
-
-    debugRedis("fetch-error", {
-      command: command[0],
-      error: error?.name || error?.message || String(error),
-      durationMs,
-    });
-
+    return (await res.json()) as RedisCommandResult<T>;
+  } catch {
     return null;
   } finally {
     clearTimeout(timer);
@@ -207,6 +142,19 @@ async function redisSetEnvelope<T>(
   return Boolean(response && !response.error);
 }
 
+function writeRedisInBackground<T>(
+  key: string,
+  value: T,
+  ttlSeconds: number,
+) {
+  if (!isRedisEnabled()) return;
+  if (typeof value === "undefined") return;
+
+  void redisSetEnvelope(key, value, ttlSeconds).catch(() => {
+    // Redis مساعد فقط، لا نخليه يعطل الطلب.
+  });
+}
+
 export async function redisCached<T>(
   key: string,
   options: RedisCachedOptions,
@@ -224,7 +172,7 @@ export async function redisCached<T>(
 
   const fresh = await loader();
 
-  await redisSetEnvelope(key, fresh, options.ttlSeconds);
+  writeRedisInBackground(key, fresh, options.ttlSeconds);
 
   return fresh;
 }
@@ -263,12 +211,13 @@ export async function redisCachedWithMeta<T>(
   }
 
   const fresh = await loader();
-  const stored = await redisSetEnvelope(key, fresh, options.ttlSeconds);
+
+  writeRedisInBackground(key, fresh, options.ttlSeconds);
 
   return {
     value: fresh,
     meta: {
-      cache: stored ? "miss" : "error",
+      cache: "miss",
       key,
       durationMs: nowMs() - startedAt,
     },
@@ -286,11 +235,10 @@ export async function redisDelete(key: string) {
 export function redisCacheStatus() {
   return {
     enabled: isRedisEnabled(),
-    configured: isRedisEnabled(),
     hasUrl: Boolean(process.env.UPSTASH_REDIS_REST_URL),
     hasToken: Boolean(process.env.UPSTASH_REDIS_REST_TOKEN),
-    timeoutMs: redisTimeoutMs(),
-    prefix: process.env.REDIS_CACHE_PREFIX || "madrar:storefront",
+    timeoutMs: DEFAULT_TIMEOUT_MS,
+    prefix: process.env.REDIS_CACHE_PREFIX || "storefront",
     version: process.env.REDIS_CACHE_VERSION || "v1",
   };
 }
