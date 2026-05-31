@@ -10,7 +10,8 @@ import {
 } from "@/data/viewmodels/product.vm";
 
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
-import { supabaseAdmin } from "@/data/store/supabase.server";
+import { getOrdersDb } from "@/data/db/orders-db.server";
+import { getStoreDb } from "@/data/db/store-db.server";
 
 import { fromBase62 } from "@/lib/seo/base62";
 import {
@@ -258,7 +259,7 @@ async function loadInfoPageBySlug(args: {
 
   if (!storeId || !incomingSlug) return null;
 
-  const sb: any = supabaseAdmin();
+  const sb: any = await getStoreDb(storeId);
 
   const { data, error } = await sb
     .from("store_pages")
@@ -2135,7 +2136,8 @@ export default async function Page(props: PageProps) {
       ? String(slug[2] ?? "")
       : String(slug[1] ?? "");
 
-    const sb: any = supabaseAdmin();
+    const ordersDb: any = await getOrdersDb(ctx.store.id);
+    const storeDb: any = await getStoreDb(ctx.store.id);
 
     let order: any = null;
 
@@ -2160,7 +2162,7 @@ export default async function Page(props: PageProps) {
       "shipping_snapshot",
     ].join(",");
 
-    const byToken = await sb
+    const byToken = await ordersDb
       .from("orders")
       .select(ORDER_SELECT)
       .eq("store_id", ctx.store.id)
@@ -2170,7 +2172,7 @@ export default async function Page(props: PageProps) {
     if (!byToken.error && byToken.data?.id) {
       order = byToken.data;
     } else if (isDigits(token)) {
-      const byPublicNo = await sb
+      const byPublicNo = await ordersDb
         .from("orders")
         .select(ORDER_SELECT)
         .eq("store_id", ctx.store.id)
@@ -2184,7 +2186,7 @@ export default async function Page(props: PageProps) {
 
     if (!order?.id) return notFound();
 
-    const orderItemsR = await sb
+    const orderItemsR = await ordersDb
       .from("order_items")
       .select(
         [
@@ -2222,7 +2224,7 @@ export default async function Page(props: PageProps) {
 
     const mediaR =
       productIds.length > 0
-        ? await sb
+        ? await storeDb
             .from("product_media")
             .select("product_id,original_url,is_default,sort_order")
             .eq("store_id", ctx.store.id)
@@ -2350,7 +2352,7 @@ export default async function Page(props: PageProps) {
         ? checkoutSnapshot
         : shippingSnapshot;
 
-    const orderOptionsR = await sb
+    const orderOptionsR = await ordersDb
       .from("order_option_answers")
       .select(
         [

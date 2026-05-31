@@ -4,10 +4,10 @@ import Script from "next/script";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
+import { getStoreDb } from "@/data/db/store-db.server";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
 import { loadCustomCode } from "@/theme-engine/injectors/custom-code";
 import { THEME_KIND, type ThemeCode } from "@/theme-engine/types";
-import { supabaseAdmin } from "@/data/store/supabase.server";
 
 const PWA_SETTING_SLUGS = ["app/pwa", "store.pwa", "pwa"];
 
@@ -48,7 +48,7 @@ function cleanColor(value: unknown, fallback: string) {
 }
 
 async function loadPwaSettings(storeId: string) {
-  const sb: any = supabaseAdmin();
+  const sb: any = await getStoreDb(storeId);
 
   const { data, error } = await sb
     .from("store_settings")

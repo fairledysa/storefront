@@ -1,14 +1,15 @@
 // FILE: apps/storefront/src/theme-engine/get-active-theme.ts
+
 import { cache } from "react";
 import { unstable_noStore as noStore } from "next/cache";
 import type { ThemeCode } from "./types";
-import { supabaseAdmin } from "@/data/store/supabase.server";
+import { controlDb } from "@/data/db/control-db.server";
 
 export const getActiveThemeCode = cache(
   async (storeId: string): Promise<ThemeCode> => {
     noStore();
 
-    const sb = supabaseAdmin();
+    const sb = controlDb();
 
     // 1) جيب theme_id حق published
     const { data: st, error: stErr } = await sb

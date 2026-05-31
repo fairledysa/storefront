@@ -1,7 +1,7 @@
 // FILE: apps/storefront/src/app/(store)/manifest.webmanifest/route.ts
 
+import { getStoreDb } from "@/data/db/store-db.server";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
-import { supabaseAdmin } from "@/data/store/supabase.server";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +44,7 @@ function cleanColor(value: unknown, fallback: string) {
 }
 
 async function loadPwaSettings(storeId: string) {
-  const sb: any = supabaseAdmin();
+  const sb: any = await getStoreDb(storeId);
 
   const { data, error } = await sb
     .from("store_settings")
