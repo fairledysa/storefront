@@ -1,6 +1,7 @@
 // FILE: apps/storefront/src/app/(store)/api/checkout/lib/checkout.server.ts
 
-import { supabaseAdmin } from "@/data/store/supabase.server";
+import { getOrdersDb } from "@/data/db/orders-db.server";
+import { getStoreDb } from "@/data/db/store-db.server";
 import { isProductVisibleInWeb } from "@/data/catalog/products";
 
 /* -------------------------------- Types --------------------------------- */
@@ -338,7 +339,7 @@ export async function findCouponByCodeWithReason(args: {
   store_id: string;
   code: string;
 }): Promise<CouponLookupResult> {
-  const sb: any = supabaseAdmin();
+  const sb: any = await getStoreDb(args.store_id);
 
   const codeInput = s(args.code);
   const normalizedInput = normalizeCouponCode(codeInput);
@@ -681,12 +682,11 @@ export async function prepareCheckout(args: {
   cart: CartRow;
   city_id?: string | null;
 }): Promise<CheckoutPrepared> {
-  const sb: any = supabaseAdmin();
-
   const cart_id = String(args.cart.id);
   const store_id = String(args.cart.store_id);
   const currency = String(args.cart.currency || "SAR");
   const customer_id = args.cart.user_id ? String(args.cart.user_id) : null;
+  const sb: any = await getOrdersDb(store_id);
 
   const itemsR = await sb
     .from("cart_items")

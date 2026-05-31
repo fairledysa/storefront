@@ -1,27 +1,23 @@
+// FILE: apps/storefront/src/app/(store)/api/checkout/addresses/route.ts
+
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { supabaseAdmin } from "@/data/store/supabase.server";
+
+import { getOrdersDb } from "@/data/db/orders-db.server";
 import { verifySession } from "@/lib/auth/session";
 import { getStoreIdOrThrow } from "../../_cart/cart.server";
 
 export const dynamic = "force-dynamic";
 
-/**
- * ✅ مهم للتعديل:
- * رجّعنا مع كل عنوان الحقول الخام (city_id/district_id/address_line1..)
- * + أضفنا اسم المستلم والجوال والدولة (country_id)
- */
 export type AddressOut = {
   id: string;
   label: string;
   full: string;
   national?: string | null;
 
-  // ✅ recipient fields
   recipient_name: string | null;
   phone_e164: string | null;
 
-  // raw fields for edit form
   country_id: string | null;
   city_id: string | null;
   district_id: string | null;
@@ -50,16 +46,10 @@ async function getCustomerIdFromCookie() {
 function normalizePhone(x: any) {
   const v = s(x);
   if (!v) return null;
-  // تنظيف بسيط فقط (بدون فرض صيغة)
   const cleaned = v.replace(/\s+/g, "");
   return cleaned || null;
 }
 
-/**
- * ✅ نحاول نجيب default من الحساب:
- * - الاسم من customers.full_name
- * - الجوال من user_identities.phone_e164 (مرتبط بـ customers.auth_user_id)
- */
 async function getProfileDefaults(sb: any, customer_id: string) {
   const cR = await sb
     .from("customers")
@@ -75,6 +65,7 @@ async function getProfileDefaults(sb: any, customer_id: string) {
     : null;
 
   let phone_e164: string | null = null;
+
   if (auth_user_id) {
     const pR = await sb
       .from("user_identities")
@@ -110,7 +101,6 @@ function mapRowToOut(row: any): AddressOut {
 
   const full = parts.join(" - ") || "—";
 
-  // national نص مختصر (اختياري)
   const national =
     [countryName, cityName, districtName].filter(Boolean).join(" - ") || null;
 
@@ -137,7 +127,6 @@ async function validateCityAndDistrict(
   city_id: string,
   district_id: string | null,
 ) {
-  // validate city
   const cityR = await sb
     .from("ref_cities")
     .select("id")
@@ -148,11 +137,11 @@ async function validateCityAndDistrict(
   if (cityR.error) {
     return { ok: false as const, status: 500, error: cityR.error.message };
   }
+
   if (!cityR.data?.id) {
     return { ok: false as const, status: 400, error: "CITY_NOT_FOUND" };
   }
 
-  // validate district belongs to city
   if (district_id) {
     const dR = await sb
       .from("ref_districts")
@@ -164,9 +153,11 @@ async function validateCityAndDistrict(
     if (dR.error) {
       return { ok: false as const, status: 500, error: dR.error.message };
     }
+
     if (!dR.data?.id) {
       return { ok: false as const, status: 400, error: "DISTRICT_NOT_FOUND" };
     }
+
     if (String(dR.data.city_id) !== String(city_id)) {
       return {
         ok: false as const,
@@ -187,19 +178,24 @@ async function validateCountry(sb: any, country_id: string) {
     .limit(1)
     .maybeSingle();
 
-  if (r.error)
+  if (r.error) {
     return { ok: false as const, status: 500, error: r.error.message };
-  if (!r.data?.id)
+  }
+
+  if (!r.data?.id) {
     return { ok: false as const, status: 400, error: "COUNTRY_NOT_FOUND" };
+  }
+
   return { ok: true as const };
 }
 
 export async function GET() {
   try {
-    const sb: any = supabaseAdmin();
-    await getStoreIdOrThrow(); // للتوافق مع نمط مشروعكم
+    const store_id = await getStoreIdOrThrow();
+    const sb: any = await getOrdersDb(store_id);
 
     const customer_id = await getCustomerIdFromCookie();
+
     if (!customer_id) {
       return NextResponse.json({ ok: true, addresses: [] as AddressOut[] });
     }
@@ -249,10 +245,11 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const sb: any = supabaseAdmin();
-    await getStoreIdOrThrow();
+    const store_id = await getStoreIdOrThrow();
+    const sb: any = await getOrdersDb(store_id);
 
     const customer_id = await getCustomerIdFromCookie();
+
     if (!customer_id) {
       return NextResponse.json(
         { ok: false, error: "LOGIN_REQUIRED" },
@@ -271,7 +268,6 @@ export async function POST(req: Request) {
     const postal_code = s(body?.postal_code) || null;
     const label = s(body?.label) || null;
 
-    // ✅ NEW: recipient fields
     let recipient_name = s(body?.recipient_name) || null;
     let phone_e164 = normalizePhone(body?.phone_e164);
 
@@ -282,7 +278,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // validate optional country
     if (country_id) {
       const vc = await validateCountry(sb, country_id);
       if (!vc.ok) {
@@ -294,6 +289,7 @@ export async function POST(req: Request) {
     }
 
     const v = await validateCityAndDistrict(sb, city_id, district_id);
+
     if (!v.ok) {
       return NextResponse.json(
         { ok: false, error: v.error },
@@ -301,7 +297,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ منطق سلة: لو ما أرسل مستلم/جوال → خذها من الحساب
     if (!recipient_name || !phone_e164) {
       const defaults = await getProfileDefaults(sb, customer_id);
       if (!recipient_name) recipient_name = defaults.full_name;
@@ -319,12 +314,8 @@ export async function POST(req: Request) {
         address_line2,
         postal_code,
         label,
-
-        // ✅ now saved:
         recipient_name,
         phone_e164,
-
-        // other optional fields
         notes: null,
         lat: null,
         lng: null,
@@ -368,10 +359,11 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
-    const sb: any = supabaseAdmin();
-    await getStoreIdOrThrow();
+    const store_id = await getStoreIdOrThrow();
+    const sb: any = await getOrdersDb(store_id);
 
     const customer_id = await getCustomerIdFromCookie();
+
     if (!customer_id) {
       return NextResponse.json(
         { ok: false, error: "LOGIN_REQUIRED" },
@@ -391,7 +383,6 @@ export async function PATCH(req: Request) {
     const postal_code = s(body?.postal_code) || null;
     const label = s(body?.label) || null;
 
-    // ✅ NEW: recipient fields
     let recipient_name = s(body?.recipient_name) || null;
     let phone_e164 = normalizePhone(body?.phone_e164);
 
@@ -402,7 +393,6 @@ export async function PATCH(req: Request) {
       );
     }
 
-    // تأكد العنوان ملك العميل
     const own = await sb
       .from("customer_addresses")
       .select("id")
@@ -417,6 +407,7 @@ export async function PATCH(req: Request) {
         { status: 500 },
       );
     }
+
     if (!own.data?.id) {
       return NextResponse.json(
         { ok: false, error: "ADDRESS_NOT_FOUND" },
@@ -424,7 +415,6 @@ export async function PATCH(req: Request) {
       );
     }
 
-    // validate optional country
     if (country_id) {
       const vc = await validateCountry(sb, country_id);
       if (!vc.ok) {
@@ -436,6 +426,7 @@ export async function PATCH(req: Request) {
     }
 
     const v = await validateCityAndDistrict(sb, city_id, district_id);
+
     if (!v.ok) {
       return NextResponse.json(
         { ok: false, error: v.error },
@@ -443,7 +434,6 @@ export async function PATCH(req: Request) {
       );
     }
 
-    // ✅ لو ما أرسل مستلم/جوال في التعديل، لا نجبره… بس لو مرسل فاضي نعمل fallback من الحساب
     if (!recipient_name || !phone_e164) {
       const defaults = await getProfileDefaults(sb, customer_id);
       if (!recipient_name) recipient_name = defaults.full_name;
@@ -460,11 +450,8 @@ export async function PATCH(req: Request) {
         address_line2,
         postal_code,
         label,
-
-        // ✅ update recipient fields
         recipient_name,
         phone_e164,
-
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
@@ -507,10 +494,11 @@ export async function PATCH(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
-    const sb: any = supabaseAdmin();
-    await getStoreIdOrThrow();
+    const store_id = await getStoreIdOrThrow();
+    const sb: any = await getOrdersDb(store_id);
 
     const customer_id = await getCustomerIdFromCookie();
+
     if (!customer_id) {
       return NextResponse.json(
         { ok: false, error: "LOGIN_REQUIRED" },
@@ -528,7 +516,6 @@ export async function DELETE(req: Request) {
       );
     }
 
-    // تأكد العنوان ملك العميل
     const own = await sb
       .from("customer_addresses")
       .select("id")

@@ -1,9 +1,10 @@
-// FILE: apps/storefront/src/app/api/cart/claim/route.ts
+// FILE: apps/storefront/src/app/(store)/api/cart/claim/route.ts
+
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/data/store/supabase.server";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
+import { getOrdersDb } from "@/data/db/orders-db.server";
 import { getCartSessionId, getStoreIdOrThrow } from "../../_cart/cart.server";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +33,7 @@ async function getUserIdOrNull(): Promise<string | null> {
 export async function POST() {
   try {
     const user_id = await getUserIdOrNull();
+
     if (!user_id) {
       return NextResponse.json({ error: "UNAUTHENTICATED" }, { status: 401 });
     }
@@ -39,9 +41,9 @@ export async function POST() {
     const store_id = await getStoreIdOrThrow();
     const session_id = await getCartSessionId();
 
-    const sb: any = supabaseAdmin();
+    const sb: any = await getOrdersDb(store_id);
 
-    // 1) سلة المستخدم المفتوحة (إن وجدت)
+    // 1) سلة المستخدم المفتوحة إن وجدت
     const userCartR = await sb
       .from("carts")
       .select("id")
@@ -53,7 +55,7 @@ export async function POST() {
 
     if (userCartR.error) throw new Error(userCartR.error.message);
 
-    // 2) سلة الجلسة المفتوحة (إن وجدت)
+    // 2) سلة الجلسة المفتوحة إن وجدت
     const sessionCartR = await sb
       .from("carts")
       .select("id")
@@ -75,7 +77,7 @@ export async function POST() {
       return NextResponse.json({ ok: true, merged: false });
     }
 
-    // لا يوجد سلة مستخدم ولا سلة جلسة => خلاص
+    // لا يوجد سلة مستخدم ولا سلة جلسة
     if (!sessionCartId && !userCartId) {
       return NextResponse.json({ ok: true, merged: false });
     }

@@ -1,4 +1,5 @@
 // FILE: apps/storefront/src/app/checkout/page.tsx
+
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { cookies } from "next/headers";
@@ -9,9 +10,9 @@ import CheckoutSummarySlot from "./_components/CheckoutSummarySlot";
 import CompleteProfileGate from "./_components/CompleteProfileGate";
 import CheckoutUiLock from "./_components/CheckoutUiLock";
 
+import { getOrdersDb } from "@/data/db/orders-db.server";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
 import { verifySession } from "@/lib/auth/session";
-import { supabaseAdmin } from "@/data/store/supabase.server";
 import { getStoreMaintenanceSettings } from "@/data/store/maintenance";
 import { renderMalakMaintenancePage } from "@/themes/malak/screens/maintenance/render-maintenance-page";
 import {
@@ -36,6 +37,7 @@ type CheckoutPageState = {
 async function getCustomerIdFromSession() {
   const jar = await cookies();
   const token = jar.get("elyaia_session")?.value || "";
+
   if (!token) return null;
 
   try {
@@ -50,7 +52,7 @@ async function getOpenCartCheckoutState(
   storeId: string,
   customerId: string,
 ): Promise<CheckoutPageState> {
-  const sb: any = supabaseAdmin();
+  const sb: any = await getOrdersDb(storeId);
 
   const emptyState: CheckoutInitialState = {
     address_id: null,
@@ -185,6 +187,7 @@ function CheckoutUnavailableState() {
 
 export default async function CheckoutPage() {
   const ctx = await resolveStoreContext();
+
   if (!ctx.store) return notFound();
 
   const maintenance = await getStoreMaintenanceSettings(ctx.store.id);

@@ -3,7 +3,9 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
-import { supabaseAdmin } from "@/data/store/supabase.server";
+import { controlDb } from "@/data/db/control-db.server";
+import { getOrdersDb } from "@/data/db/orders-db.server";
+import { getStoreDb } from "@/data/db/store-db.server";
 import { verifySession } from "@/lib/auth/session";
 import {
   cartSessionCookie,
@@ -584,12 +586,15 @@ function getCodDisabledHelp(args: {
 
 export async function GET() {
   try {
-    const sb: any = supabaseAdmin();
     const store_id = await getStoreIdOrThrow();
     const session_id = await getCartSessionId();
 
+    const ordersDb: any = await getOrdersDb(store_id);
+    const storeDb: any = await getStoreDb(store_id);
+    const control: any = controlDb();
+
     const customer = await getCheckoutCustomerId({
-      sb,
+      sb: ordersDb,
       store_id,
     });
 
@@ -598,7 +603,7 @@ export async function GET() {
     }
 
     const cartR = await getCheckoutCart({
-      sb,
+      sb: ordersDb,
       store_id,
       customer_id: customer.customer_id,
     });
@@ -613,22 +618,22 @@ export async function GET() {
     let customer_id = s(cartR.data.user_id) || customer.customer_id;
 
     const [storeR, currencyRows, pmR, banksR] = await Promise.all([
-      sb
+      control
         .from("stores")
         .select("default_currency")
         .eq("id", store_id)
         .limit(1)
         .maybeSingle(),
 
-      fetchStoreCurrenciesForRuntime(sb, store_id),
+      fetchStoreCurrenciesForRuntime(storeDb, store_id),
 
-      sb
+      storeDb
         .from("store_payment_methods")
         .select("id,provider_code,enabled,status,sort_order")
         .eq("store_id", store_id)
         .order("sort_order", { ascending: true }),
 
-      sb
+      storeDb
         .from("store_bank_accounts")
         .select("id,bank_name,account_holder,iban,is_primary,status")
         .eq("store_id", store_id)
@@ -657,7 +662,7 @@ export async function GET() {
     let city_id = "";
 
     if (address_id) {
-      const aR = await sb
+      const aR = await ordersDb
         .from("customer_addresses")
         .select("id,city_id,customer_id")
         .eq("id", address_id)
@@ -683,7 +688,7 @@ export async function GET() {
     let codRestrictions: CodRestrictionEvaluation | null = null;
 
     if (shipping_id) {
-      const rateR = await sb
+      const rateR = await storeDb
         .from("store_shipping_rates")
         .select(
           "id,cod_enabled,cod_fee_customer,currency,store_shipping_carrier_id",
@@ -715,7 +720,7 @@ export async function GET() {
           }),
         );
 
-        const carrierR = await sb
+        const carrierR = await storeDb
           .from("store_shipping_carriers")
           .select("id,type,enabled,is_enabled,status")
           .eq("id", String(rateR.data.store_shipping_carrier_id))
@@ -749,13 +754,13 @@ export async function GET() {
 
     if (codAllowed) {
       const cartProductsSubtotal = await loadCartProductsSubtotal({
-        sb,
+        sb: ordersDb,
         storeId: store_id,
         cartId: cart_id,
       });
 
       codRestrictions = await evaluateCodRestrictions({
-        sb,
+        sb: ordersDb,
         storeId: store_id,
         cartId: cart_id,
         cartSubtotal: cartProductsSubtotal,

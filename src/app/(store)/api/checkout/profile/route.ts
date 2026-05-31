@@ -1,8 +1,9 @@
-//apps/storefront/src/app/(store)/api/checkout/profile/route.ts
+// FILE: apps/storefront/src/app/(store)/api/checkout/profile/route.ts
+
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { supabaseAdmin } from "@/data/store/supabase.server";
 import { verifySession } from "@/lib/auth/session";
+import { getOrdersDb } from "@/data/db/orders-db.server";
 import { getStoreIdOrThrow } from "../../_cart/cart.server";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,7 @@ function s(x: any) {
 async function getSession() {
   const jar = await cookies();
   const token = jar.get("elyaia_session")?.value || "";
+
   if (!token) return null;
 
   try {
@@ -25,17 +27,18 @@ async function getSession() {
 }
 
 function normalizePhoneRaw(x: any) {
-  // نخزن كما هو (لكن نشيل مسافات)
+  // نخزن كما هو لكن نشيل مسافات
   const v = s(x).replace(/\s+/g, "");
   return v || null;
 }
 
 export async function GET() {
-  const sb: any = supabaseAdmin();
-  await getStoreIdOrThrow();
+  const store_id = await getStoreIdOrThrow();
+  const sb: any = await getOrdersDb(store_id);
 
   const session = await getSession();
   const customer_id = session?.customer_id ? String(session.customer_id) : null;
+
   if (!customer_id) {
     return NextResponse.json(
       { ok: false, error: "LOGIN_REQUIRED" },
@@ -58,6 +61,7 @@ export async function GET() {
   }
 
   const customer = cR.data;
+
   if (!customer?.id) {
     return NextResponse.json(
       { ok: false, error: "CUSTOMER_NOT_FOUND" },
@@ -101,11 +105,12 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
-  const sb: any = supabaseAdmin();
-  await getStoreIdOrThrow();
+  const store_id = await getStoreIdOrThrow();
+  const sb: any = await getOrdersDb(store_id);
 
   const session = await getSession();
   const customer_id = session?.customer_id ? String(session.customer_id) : null;
+
   if (!customer_id) {
     return NextResponse.json(
       { ok: false, error: "LOGIN_REQUIRED" },
@@ -146,6 +151,7 @@ export async function PATCH(req: Request) {
   const auth_user_id = cR.data?.auth_user_id
     ? String(cR.data.auth_user_id)
     : null;
+
   if (!auth_user_id) {
     return NextResponse.json(
       { ok: false, error: "AUTH_USER_ID_MISSING" },
@@ -168,7 +174,7 @@ export async function PATCH(req: Request) {
     );
   }
 
-  // upsert user_identities (لو ما كان موجود ننشئه)
+  // upsert user_identities لو ما كان موجود ننشئه
   const exist = await sb
     .from("user_identities")
     .select("user_id,phone_verified")

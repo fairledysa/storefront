@@ -1,13 +1,14 @@
 // FILE: apps/storefront/src/app/(store)/api/checkout/order-options/answers/route.ts
 
 import { NextResponse } from "next/server";
+
+import { getOrdersDb } from "@/data/db/orders-db.server";
 import {
   cartSessionCookie,
   getCartSessionId,
   getOrCreateOpenCart,
   getStoreIdOrThrow,
 } from "../../../_cart/cart.server";
-import { supabaseAdmin } from "@/data/store/supabase.server";
 import { buildCartSummary } from "../../lib/summary";
 import { saveCartOrderOptionsFromPayload } from "../../lib/order-options";
 
@@ -35,12 +36,11 @@ function jsonError(error: string, status = 400, extra?: any) {
 
 export async function POST(req: Request) {
   try {
-    const sb: any = supabaseAdmin();
-
     const store_id = await getStoreIdOrThrow();
     const session_id = await getCartSessionId();
-    const cart = await getOrCreateOpenCart({ store_id, session_id });
+    const sb: any = await getOrdersDb(store_id);
 
+    const cart = await getOrCreateOpenCart({ store_id, session_id });
     const cartId = s(cart?.id);
 
     if (!cartId) {

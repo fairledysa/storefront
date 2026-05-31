@@ -2,7 +2,8 @@
 
 import { NextResponse } from "next/server";
 
-import { supabaseAdmin } from "@/data/store/supabase.server";
+import { getOrdersDb } from "@/data/db/orders-db.server";
+import { getStoreDb } from "@/data/db/store-db.server";
 import {
   cartSessionCookie,
   getCartSessionIdFromCookie,
@@ -175,11 +176,12 @@ function emptySummary(currencyInfo: any) {
 }
 
 async function loadCartItemsForDisplay(args: {
-  sb: any;
+  ordersDb: any;
+  storeDb: any;
   store_id: string;
   cart_id: string;
 }) {
-  const itemsR = await args.sb
+  const itemsR = await args.ordersDb
     .from("cart_items")
     .select(
       "id,cart_id,store_id,product_id,variant_id,qty,currency,unit_price,selected_option_value_ids,selected_options,line_key,created_at,updated_at",
@@ -216,19 +218,19 @@ async function loadCartItemsForDisplay(args: {
           Promise.resolve({ data: [], error: null } as any),
         ])
       : await Promise.all([
-          args.sb
+          args.storeDb
             .from("products")
             .select("id,name,require_shipping,store_id,status,metadata")
             .in("id", productIds)
             .eq("store_id", args.store_id),
 
-          args.sb
+          args.storeDb
             .from("product_pricing")
             .select("product_id,currency,price,sale_price")
             .in("product_id", productIds),
 
           variantIds.length
-            ? args.sb
+            ? args.storeDb
                 .from("product_variants")
                 .select("id,product_id,sku,price,sale_price")
                 .in("id", variantIds)
@@ -288,18 +290,19 @@ async function loadCartItemsForDisplay(args: {
 }
 
 async function loadCheckoutStaticData(args: {
-  sb: any;
+  ordersDb: any;
+  storeDb: any;
   store_id: string;
   customer_id: string | null;
 }) {
   const [settingsR, paymentsR, carriersR, addressesR] = await Promise.all([
-    args.sb
+    args.storeDb
       .from("store_checkout_settings")
       .select("*")
       .eq("store_id", args.store_id)
       .maybeSingle(),
 
-    args.sb
+    args.storeDb
       .from("store_payment_methods")
       .select("id,provider_code,enabled,status,config,sort_order")
       .eq("store_id", args.store_id)
@@ -307,7 +310,7 @@ async function loadCheckoutStaticData(args: {
       .eq("status", "active")
       .order("sort_order", { ascending: true }),
 
-    args.sb
+    args.storeDb
       .from("store_shipping_carriers")
       .select("id,type,display_name,enabled,is_enabled,status,carrier_id")
       .eq("store_id", args.store_id)
@@ -315,7 +318,7 @@ async function loadCheckoutStaticData(args: {
       .order("created_at", { ascending: true }),
 
     args.customer_id
-      ? args.sb
+      ? args.ordersDb
           .from("customer_addresses")
           .select(
             "id,label,recipient_name,phone_e164,country_id,city_id,district_id,address_line1,address_line2,postal_code,notes,lat,lng,is_default,created_at,updated_at",
@@ -348,7 +351,7 @@ async function loadCheckoutStaticData(args: {
     .filter(Boolean);
 
   const ratesR = carrierIds.length
-    ? await args.sb
+    ? await args.storeDb
         .from("store_shipping_rates")
         .select(
           "id,store_shipping_carrier_id,scope,excluded_city_ids,included_city_ids,pricing_type,merchant_cost,customer_price,first_weight_kg,additional_kg_cost,eta_text,cod_enabled,cod_fee_customer,cod_fee_include_tax,currency,enabled,status",
@@ -373,11 +376,11 @@ async function loadCheckoutStaticData(args: {
 }
 
 async function loadCartCoupon(args: {
-  sb: any;
+  ordersDb: any;
   store_id: string;
   cart_id: string;
 }) {
-  const cartCouponR = await args.sb
+  const cartCouponR = await args.ordersDb
     .from("cart_coupons")
     .select("id,coupon_id,code,discount_amount")
     .eq("cart_id", args.cart_id)
@@ -392,10 +395,11 @@ async function loadCartCoupon(args: {
 
 export async function GET() {
   try {
-    const sb: any = supabaseAdmin();
-
     const store_id = await getStoreIdOrThrow();
     const session_id = await getCartSessionIdFromCookie();
+
+    const ordersDb: any = await getOrdersDb(store_id);
+    const storeDb: any = await getStoreDb(store_id);
 
     const [cart, currencyInfo] = await Promise.all([
       getExistingOpenCart({
@@ -408,7 +412,8 @@ export async function GET() {
     const customer_id = cart?.user_id ? String(cart.user_id) : null;
 
     const staticData = await loadCheckoutStaticData({
-      sb,
+      ordersDb,
+      storeDb,
       store_id,
       customer_id,
     });
@@ -441,13 +446,14 @@ export async function GET() {
 
     const [items, coupon, summary] = await Promise.all([
       loadCartItemsForDisplay({
-        sb,
+        ordersDb,
+        storeDb,
         store_id,
         cart_id: cartId,
       }),
 
       loadCartCoupon({
-        sb,
+        ordersDb,
         store_id,
         cart_id: cartId,
       }),

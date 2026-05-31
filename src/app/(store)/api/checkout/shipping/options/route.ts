@@ -3,7 +3,9 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
-import { supabaseAdmin } from "@/data/store/supabase.server";
+import { controlDb } from "@/data/db/control-db.server";
+import { getOrdersDb } from "@/data/db/orders-db.server";
+import { getStoreDb } from "@/data/db/store-db.server";
 import { verifySession } from "@/lib/auth/session";
 import {
   cartSessionCookie,
@@ -546,7 +548,6 @@ async function loadCartProducts(args: {
   }
 
   const rows: any[] = Array.isArray(itemsR.data) ? itemsR.data : [];
-
   const productIds = uniqStrings(rows.map((row) => row?.product_id));
 
   const subtotal = round2(
@@ -603,14 +604,15 @@ async function loadCategoryIdsForProducts(args: {
 }
 
 async function hasActiveFreeShippingCoupon(args: {
-  sb: any;
+  ordersDb: any;
+  storeDb: any;
   store_id: string;
   cart_id: string;
   subtotal: number;
   targetCurrency: string;
   currencyRuntime: ReturnType<typeof buildCurrencyRuntime>;
 }) {
-  const ccR: any = await args.sb
+  const ccR: any = await args.ordersDb
     .from("cart_coupons")
     .select("coupon_id")
     .eq("store_id", args.store_id)
@@ -620,7 +622,7 @@ async function hasActiveFreeShippingCoupon(args: {
 
   if (ccR.error || !ccR.data?.coupon_id) return false;
 
-  const couponR: any = await args.sb
+  const couponR: any = await args.storeDb
     .from("coupons")
     .select("id,status,start_at,end_at,free_shipping,minimum_amount")
     .eq("id", String(ccR.data.coupon_id))
@@ -1026,12 +1028,15 @@ function buildEmptyContext(args: {
 
 export async function GET() {
   try {
-    const sb: any = supabaseAdmin();
     const store_id = await getStoreIdOrThrow();
     const session_id = await getCartSessionId();
 
+    const ordersDb: any = await getOrdersDb(store_id);
+    const storeDb: any = await getStoreDb(store_id);
+    const control: any = controlDb();
+
     const customer = await getCheckoutCustomerId({
-      sb,
+      sb: ordersDb,
       store_id,
     });
 
@@ -1040,7 +1045,7 @@ export async function GET() {
     }
 
     const cartR: any = await getCheckoutCart({
-      sb,
+      sb: ordersDb,
       store_id,
       customer_id: customer.customer_id,
     });
@@ -1064,16 +1069,16 @@ export async function GET() {
     }
 
     const [storeR, currencyRowsRaw, addressR]: any[] = await Promise.all([
-      sb
+      control
         .from("stores")
         .select("default_currency")
         .eq("id", store_id)
         .limit(1)
         .maybeSingle(),
 
-      fetchStoreCurrenciesForRuntime(sb, store_id),
+      fetchStoreCurrenciesForRuntime(storeDb, store_id),
 
-      sb
+      ordersDb
         .from("customer_addresses")
         .select("id,country_id,city_id,customer_id")
         .eq("id", address_id)
@@ -1116,7 +1121,7 @@ export async function GET() {
     const customer_id = customer.customer_id;
 
     const cartProducts = await loadCartProducts({
-      sb,
+      sb: ordersDb,
       store_id,
       cart_id,
       targetCurrency: currencyInfo.code,
@@ -1128,7 +1133,7 @@ export async function GET() {
     const [cityR, categoryIds, couponFreeShipping, freeShippingContext, ratesR]:
       any[] = await Promise.all([
       !country_id && city_id
-        ? sb
+        ? control
             .from("ref_cities")
             .select("id,country_id")
             .eq("id", city_id)
@@ -1136,12 +1141,13 @@ export async function GET() {
         : Promise.resolve({ data: null, error: null }),
 
       loadCategoryIdsForProducts({
-        sb,
+        sb: storeDb,
         productIds,
       }),
 
       hasActiveFreeShippingCoupon({
-        sb,
+        ordersDb,
+        storeDb,
         store_id,
         cart_id,
         subtotal: cartProducts.subtotal,
@@ -1150,12 +1156,12 @@ export async function GET() {
       }),
 
       loadFreeShippingContext({
-        sb,
+        sb: storeDb,
         store_id,
         customer_id,
       }),
 
-      sb
+      storeDb
         .from("store_shipping_rates")
         .select(
           [
@@ -1228,7 +1234,7 @@ export async function GET() {
       );
     }
 
-    const carriersR: any = await sb
+    const carriersR: any = await storeDb
       .from("store_shipping_carriers")
       .select("id,type,display_name,enabled,is_enabled,status")
       .eq("store_id", store_id)

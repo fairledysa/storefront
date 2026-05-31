@@ -3,7 +3,9 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
-import { supabaseAdmin } from "@/data/store/supabase.server";
+import { controlDb } from "@/data/db/control-db.server";
+import { getOrdersDb } from "@/data/db/orders-db.server";
+import { getStoreDb } from "@/data/db/store-db.server";
 import { verifySession } from "@/lib/auth/session";
 import {
   cartSessionCookie,
@@ -396,13 +398,15 @@ function resolveTargetCurrencyCode(args: {
 
 export async function GET() {
   try {
-    const sb: any = supabaseAdmin();
-
     const store_id = await getStoreIdOrThrow();
     const session_id = await getCartSessionId();
 
+    const ordersDb: any = await getOrdersDb(store_id);
+    const storeDb: any = await getStoreDb(store_id);
+    const control: any = controlDb();
+
     const customer = await getCheckoutCustomerId({
-      sb,
+      sb: ordersDb,
       store_id,
     });
 
@@ -411,7 +415,7 @@ export async function GET() {
     }
 
     const cartR = await getCheckoutCart({
-      sb,
+      sb: ordersDb,
       store_id,
       customer_id: customer.customer_id,
     });
@@ -425,22 +429,22 @@ export async function GET() {
     }
 
     const [storeR, currencyRows, itemsR, optionsR] = await Promise.all([
-      sb
+      control
         .from("stores")
         .select("default_currency")
         .eq("id", store_id)
         .limit(1)
         .maybeSingle(),
 
-      fetchStoreCurrenciesForRuntime(sb, store_id),
+      fetchStoreCurrenciesForRuntime(storeDb, store_id),
 
-      sb
+      ordersDb
         .from("cart_items")
         .select("product_id")
         .eq("cart_id", cartId)
         .eq("store_id", store_id),
 
-      sb
+      storeDb
         .from("store_order_options")
         .select(
           [
@@ -538,23 +542,23 @@ export async function GET() {
       optionCategoriesR,
       choicesR,
     ] = await Promise.all([
-      sb
+      storeDb
         .from("product_categories")
         .select("product_id,category_id")
         .in("product_id", productIds),
 
-      sb
+      storeDb
         .from("category_products")
         .select("product_id,category_id")
         .in("product_id", productIds),
 
-      sb
+      storeDb
         .from("store_order_option_categories")
         .select("option_id,category_id")
         .eq("store_id", store_id)
         .in("option_id", optionIds),
 
-      sb
+      storeDb
         .from("store_order_option_choices")
         .select(
           [

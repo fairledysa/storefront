@@ -3,9 +3,10 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
+import { getOrdersDb } from "@/data/db/orders-db.server";
+import { getStoreDb } from "@/data/db/store-db.server";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
 import { verifySession } from "@/lib/auth/session";
-import { supabaseAdmin } from "@/data/store/supabase.server";
 import { createReview } from "@/data/reviews/reviews";
 
 type RouteCtx = {
@@ -55,6 +56,7 @@ function s(v: unknown) {
 function parseOrderNo(raw: string) {
   const cleaned = String(raw ?? "").replace(/[^\d]/g, "");
   const n = Number(cleaned);
+
   return Number.isFinite(n) ? n : null;
 }
 
@@ -182,6 +184,7 @@ async function resolveCustomerId(sb: any, token: string) {
   if (session?.customer_id) return String(session.customer_id);
 
   const authUserId = session?.auth_user_id || session?.user_id || null;
+
   if (!authUserId) return null;
 
   const r = await sb
@@ -293,6 +296,7 @@ async function loadReviewMedia(args: {
 
   for (const row of data || []) {
     const reviewId = row?.review_id ? String(row.review_id) : "";
+
     if (!reviewId) continue;
 
     const arr = map.get(reviewId) || [];
@@ -397,6 +401,7 @@ function splitReviews(rows: any[]) {
     }
 
     const productId = s(row?.target_id);
+
     if (!productId || productReviewByProductId.has(productId)) continue;
 
     productReviewByProductId.set(productId, row);
@@ -437,11 +442,13 @@ function getEditWindow(rows: any[], days: number) {
 function parseShippingRating(body: unknown) {
   const text = s(body);
   const match = text.match(/تقييم الشحن:\s*([1-5])\s*\/\s*5/);
+
   return match?.[1] ? Number(match[1]) : 0;
 }
 
 function parseShippingComment(body: unknown) {
   const text = s(body);
+
   if (!text) return "";
 
   return text.replace(/^تقييم الشحن:\s*[1-5]\s*\/\s*5\s*/m, "").trim();
@@ -570,22 +577,28 @@ export async function GET(_req: Request, ctx: RouteCtx) {
   try {
     const p = await ctx.params;
     const orderNo = parseOrderNo(p?.orderNo);
+
     if (!orderNo) return bad("INVALID_ORDER_NO");
 
     const storeCtx = await resolveStoreContext();
     const storeId = storeCtx?.store?.id;
+
     if (!storeId) return bad("STORE_NOT_FOUND", 404);
 
     const jar = await cookies();
     const token = pickToken(jar);
+
     if (!token) return bad("UNAUTHENTICATED", 401);
 
-    const sb = supabaseAdmin();
-    const customerId = await resolveCustomerId(sb, token);
+    const ordersDb: any = await getOrdersDb(storeId);
+    const storeDb: any = await getStoreDb(storeId);
+
+    const customerId = await resolveCustomerId(ordersDb, token);
+
     if (!customerId) return bad("UNAUTHENTICATED", 401);
 
     const order = await findOrder({
-      sb,
+      sb: ordersDb,
       storeId,
       customerId,
       orderNo,
@@ -601,16 +614,16 @@ export async function GET(_req: Request, ctx: RouteCtx) {
     }
 
     const [itemsR, ratingSettings, reviews] = await Promise.all([
-      sb
+      ordersDb
         .from("order_items")
         .select("id,product_id,name")
         .eq("store_id", storeId)
         .eq("order_id", order.id),
 
-      loadRatingSettings(sb, storeId),
+      loadRatingSettings(storeDb, storeId),
 
       loadOrderReviews({
-        sb,
+        sb: ordersDb,
         storeId,
         customerId,
         orderId: String(order.id),
@@ -634,7 +647,7 @@ export async function GET(_req: Request, ctx: RouteCtx) {
     const reviewIds = reviews.map((row: any) => s(row?.id)).filter(Boolean);
 
     const mediaByReview = await loadReviewMedia({
-      sb,
+      sb: ordersDb,
       storeId,
       reviewIds,
     });
@@ -750,22 +763,28 @@ export async function POST(req: Request, ctx: RouteCtx) {
   try {
     const p = await ctx.params;
     const orderNo = parseOrderNo(p?.orderNo);
+
     if (!orderNo) return bad("INVALID_ORDER_NO");
 
     const storeCtx = await resolveStoreContext();
     const storeId = storeCtx?.store?.id;
+
     if (!storeId) return bad("STORE_NOT_FOUND", 404);
 
     const jar = await cookies();
     const token = pickToken(jar);
+
     if (!token) return bad("UNAUTHENTICATED", 401);
 
-    const sb = supabaseAdmin();
-    const customerId = await resolveCustomerId(sb, token);
+    const ordersDb: any = await getOrdersDb(storeId);
+    const storeDb: any = await getStoreDb(storeId);
+
+    const customerId = await resolveCustomerId(ordersDb, token);
+
     if (!customerId) return bad("UNAUTHENTICATED", 401);
 
     const order = await findOrder({
-      sb,
+      sb: ordersDb,
       storeId,
       customerId,
       orderNo,
@@ -783,16 +802,16 @@ export async function POST(req: Request, ctx: RouteCtx) {
     }
 
     const [ratingSettings, existingReviews, itemsR] = await Promise.all([
-      loadRatingSettings(sb, storeId),
+      loadRatingSettings(storeDb, storeId),
 
       loadOrderReviews({
-        sb,
+        sb: ordersDb,
         storeId,
         customerId,
         orderId,
       }),
 
-      sb
+      ordersDb
         .from("order_items")
         .select("id,product_id,name")
         .eq("store_id", storeId)
@@ -874,7 +893,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
     if ((reviewRequests.store || storeReview) && storeRating >= 1) {
       if (storeReview?.id) {
         await updateReviewEntry({
-          sb,
+          sb: ordersDb,
           reviewId: String(storeReview.id),
           rating: storeRating,
           body: storeComment || null,
@@ -925,7 +944,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
           const reviewId = String(existingProductReview.id);
 
           await updateReviewEntry({
-            sb,
+            sb: ordersDb,
             reviewId,
             rating,
             body: s(p?.comment) || null,
@@ -934,7 +953,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
 
           if (ratingSettings.allowAttachImages) {
             await replaceReviewMedia({
-              sb,
+              sb: ordersDb,
               reviewId,
               storeId,
               media,
@@ -967,7 +986,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
 
       if (shippingReview?.id) {
         await updateReviewEntry({
-          sb,
+          sb: ordersDb,
           reviewId: String(shippingReview.id),
           body: shippingBody,
           status: "published",
@@ -994,7 +1013,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
 
         if (supportContactReview?.id) {
           await updateReviewEntry({
-            sb,
+            sb: ordersDb,
             reviewId: String(supportContactReview.id),
             body: supportBody,
             status: "hidden",
@@ -1015,7 +1034,7 @@ export async function POST(req: Request, ctx: RouteCtx) {
         createdAnyReview = true;
       } else if (alreadyReviewed && supportContactReview?.id) {
         await deleteReviewEntry({
-          sb,
+          sb: ordersDb,
           storeId,
           reviewId: String(supportContactReview.id),
         });
@@ -1047,22 +1066,28 @@ export async function DELETE(_req: Request, ctx: RouteCtx) {
   try {
     const p = await ctx.params;
     const orderNo = parseOrderNo(p?.orderNo);
+
     if (!orderNo) return bad("INVALID_ORDER_NO");
 
     const storeCtx = await resolveStoreContext();
     const storeId = storeCtx?.store?.id;
+
     if (!storeId) return bad("STORE_NOT_FOUND", 404);
 
     const jar = await cookies();
     const token = pickToken(jar);
+
     if (!token) return bad("UNAUTHENTICATED", 401);
 
-    const sb = supabaseAdmin();
-    const customerId = await resolveCustomerId(sb, token);
+    const ordersDb: any = await getOrdersDb(storeId);
+    const storeDb: any = await getStoreDb(storeId);
+
+    const customerId = await resolveCustomerId(ordersDb, token);
+
     if (!customerId) return bad("UNAUTHENTICATED", 401);
 
     const order = await findOrder({
-      sb,
+      sb: ordersDb,
       storeId,
       customerId,
       orderNo,
@@ -1073,10 +1098,10 @@ export async function DELETE(_req: Request, ctx: RouteCtx) {
     const orderId = String(order.id);
 
     const [ratingSettings, existingReviews] = await Promise.all([
-      loadRatingSettings(sb, storeId),
+      loadRatingSettings(storeDb, storeId),
 
       loadOrderReviews({
-        sb,
+        sb: ordersDb,
         storeId,
         customerId,
         orderId,
@@ -1107,7 +1132,7 @@ export async function DELETE(_req: Request, ctx: RouteCtx) {
       .filter(Boolean);
 
     if (reviewIds.length) {
-      const mediaDeleteR = await sb
+      const mediaDeleteR = await ordersDb
         .from("review_media")
         .delete()
         .eq("store_id", storeId)
@@ -1118,7 +1143,7 @@ export async function DELETE(_req: Request, ctx: RouteCtx) {
       }
     }
 
-    const reviewsDeleteR = await sb
+    const reviewsDeleteR = await ordersDb
       .from("review_entries")
       .delete()
       .eq("store_id", storeId)

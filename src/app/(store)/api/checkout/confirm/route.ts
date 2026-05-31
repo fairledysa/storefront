@@ -3,7 +3,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
-import { supabaseAdmin } from "@/data/store/supabase.server";
+import { getOrdersDb } from "@/data/db/orders-db.server";
 import { verifySession } from "@/lib/auth/session";
 import {
   cartSessionCookie,
@@ -537,8 +537,8 @@ async function validatePaymentMethod(args: {
 
 export async function POST(req: Request) {
   try {
-    const sb: any = supabaseAdmin();
     const store_id = await getStoreIdOrThrow();
+    const sb: any = await getOrdersDb(store_id);
     const session_id = await getCartSessionId();
 
     const customer = await getCheckoutCustomerId({

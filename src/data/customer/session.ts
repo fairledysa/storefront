@@ -1,5 +1,7 @@
+// FILE: apps/storefront/src/data/customer/session.ts
+
+import { getStoreDb } from "@/data/db/store-db.server";
 import { supabaseSSR } from "@/data/store/supabase.ssr";
-import { supabaseAdmin } from "@/data/store/supabase.server";
 
 export type CustomerSession = {
   authed: boolean;
@@ -35,12 +37,12 @@ export async function getCustomerSession(params: {
 
   const auth_user_id = auth.user.id;
 
-  // 2) admin (بـ service role) للوصول للجداول الداخلية
-  //    نكسر التايب لتجنب never (لين تولد Types بشكل رسمي)
-  const admin: any = supabaseAdmin();
+  // 2) قاعدة بيانات المتجر حسب shard-router
+  // حاليًا ترجع لنفس Supabase عبر fallback، ولاحقًا تقرأ من store_shards
+  const storeDb: any = await getStoreDb(store_id);
 
   // 3) Lookup customer by auth_user_id فقط (مستحيل المستخدم يزوّرها)
-  const existing = await admin
+  const existing = await storeDb
     .from("customers")
     .select("id,birth_date,gender,city_id")
     .eq("auth_user_id", auth_user_id)
@@ -58,21 +60,20 @@ export async function getCustomerSession(params: {
   }
 
   // 4) إذا ما عنده customer record (حالة نادرة)
-  //    لا ننشئ تلقائي هنا (الأفضل الإنشاء صار في verify)
+  // لا ننشئ تلقائي هنا (الأفضل الإنشاء صار في verify)
   const customer_id: string | null = existing.data?.id ?? null;
 
-  // 5) ربط العميل بالمتجر الحالي (مثل سلة)
-  //    حتى لو تكررت ما تضر بسبب onConflict
+  // 5) ربط العميل بالمتجر الحالي
+  // حتى لو تكررت ما تضر بسبب onConflict
   if (customer_id) {
-    const link = await admin
+    const link = await storeDb
       .from("store_customers")
       .upsert(
         { store_id, customer_id },
         { onConflict: "store_id,customer_id" },
       );
 
-    // ما نوقف الجلسة لو فشل الربط (بس نقدر نعرفه باللوج لاحقًا)
-    // لكن ما نفضح تفاصيل للعميل
+    // ما نوقف الجلسة لو فشل الربط
     if (link.error) {
       // ignore for now
     }
