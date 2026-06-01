@@ -148,6 +148,19 @@ type ShippingOption = {
   free_shipping_rule_id?: string | null;
   free_shipping_rule_name?: string | null;
   price_label?: string | null;
+
+  shipping_kind?: "rate" | "pickup_point";
+  carrier_type?: "platform" | "courier" | "pickup" | string;
+  store_shipping_carrier_id?: string | null;
+
+  pickup_point_id?: string | null;
+  pickup_point_title?: string | null;
+  pickup_point_address?: string | null;
+  pickup_point_city_id?: string | null;
+  pickup_point_city_name?: string | null;
+  pickup_point_map_url?: string | null;
+  pickup_point_phone?: string | null;
+  pickup_point_notes?: string | null;
 };
 
 type FreeShippingRule = {
@@ -1026,6 +1039,171 @@ function buildEmptyContext(args: {
   };
 }
 
+function carrierIsEnabled(carrier: any) {
+  return (
+    carrier?.enabled === true ||
+    carrier?.is_enabled === true ||
+    carrier?.enabled === 1 ||
+    carrier?.is_enabled === 1
+  );
+}
+
+ async function loadPickupOptions(args: {
+  storeDb: any;
+  control: any;
+  store_id: string;
+  city_id: string;
+  currencyInfo: {
+    code: string;
+    symbol: string;
+    decimal_digits: number;
+  };
+}) {
+  const carriersR: any = await args.storeDb
+    .from("store_shipping_carriers")
+    .select("id,type,display_name,enabled,is_enabled,status")
+    .eq("store_id", args.store_id)
+    .eq("type", "pickup");
+
+  if (carriersR?.error || !Array.isArray(carriersR?.data)) {
+    return [] as Array<ShippingOption & { _sort_price: number }>;
+  }
+
+  const carriers = (carriersR.data as any[]).filter((carrier) => {
+    return (
+      s(carrier?.id) &&
+      s(carrier?.type) === "pickup" &&
+      s(carrier?.status) === "active" &&
+      carrierIsEnabled(carrier)
+    );
+  });
+
+  if (!carriers.length) {
+    return [] as Array<ShippingOption & { _sort_price: number }>;
+  }
+
+  const carrierIds = carriers.map((carrier) => s(carrier.id));
+  const carrierMap = new Map<string, any>();
+
+  for (const carrier of carriers) {
+    carrierMap.set(s(carrier.id), carrier);
+  }
+
+  const pointsR: any = await args.storeDb
+    .from("store_pickup_points")
+    .select(
+      [
+        "id",
+        "store_id",
+        "store_shipping_carrier_id",
+        "city_id",
+        "title",
+        "address",
+        "map_url",
+        "lat",
+        "lng",
+        "phone",
+        "notes",
+        "status",
+        "created_at",
+      ].join(","),
+    )
+    .eq("store_id", args.store_id)
+    .eq("status", "active")
+    .in("store_shipping_carrier_id", carrierIds)
+    .order("created_at", { ascending: false });
+
+  if (pointsR?.error || !Array.isArray(pointsR?.data)) {
+    return [] as Array<ShippingOption & { _sort_price: number }>;
+  }
+
+  const points = pointsR.data as any[];
+
+  if (!points.length) {
+    return [] as Array<ShippingOption & { _sort_price: number }>;
+  }
+
+  const cityIds = uniqStrings(points.map((point) => point?.city_id));
+  const cityMap = new Map<string, string>();
+
+  if (cityIds.length) {
+    try {
+      const citiesR: any = await args.control
+        .from("ref_cities")
+        .select("id,name_ar,name_en")
+        .in("id", cityIds);
+
+      if (!citiesR?.error && Array.isArray(citiesR?.data)) {
+        for (const city of citiesR.data) {
+          const id = s(city?.id);
+          if (!id) continue;
+
+          cityMap.set(id, s(city?.name_ar) || s(city?.name_en));
+        }
+      }
+    } catch {}
+  }
+
+  return points
+    .map((point: any) => {
+      const pointId = s(point?.id);
+      const carrierId = s(point?.store_shipping_carrier_id);
+      const carrier = carrierMap.get(carrierId);
+
+      if (!pointId || !carrier) return null;
+
+      const carrierName = s(carrier?.display_name) || "استلام من الفرع";
+      const pointTitle = s(point?.title) || "فرع الاستلام";
+      const address = s(point?.address);
+      const pointCityId = s(point?.city_id);
+      const pointCityName = cityMap.get(pointCityId) || "";
+
+      const eta =
+        [pointCityName, address].filter(Boolean).join(" - ") ||
+        "استلام من الفرع";
+
+      return {
+        id: pointId,
+        name: `${carrierName} - ${pointTitle}`,
+        eta,
+        price: formatMoney({
+          amount: 0,
+          code: args.currencyInfo.code,
+          symbol: args.currencyInfo.symbol,
+          decimals: args.currencyInfo.decimal_digits,
+        }),
+        price_amount: 0,
+        original_price: null,
+        original_price_amount: null,
+
+        free_shipping_applied: false,
+        free_shipping_source: null,
+        free_shipping_rule_id: null,
+        free_shipping_rule_name: null,
+        price_label: "مجاني",
+
+        cod: false,
+        cod_fee: null,
+
+        shipping_kind: "pickup_point",
+        carrier_type: "pickup",
+        store_shipping_carrier_id: carrierId,
+
+        pickup_point_id: pointId,
+        pickup_point_title: pointTitle,
+        pickup_point_address: address || null,
+        pickup_point_city_id: pointCityId || null,
+        pickup_point_city_name: pointCityName || null,
+        pickup_point_map_url: s(point?.map_url) || null,
+        pickup_point_phone: s(point?.phone) || null,
+        pickup_point_notes: s(point?.notes) || null,
+
+        _sort_price: 0,
+      } satisfies ShippingOption & { _sort_price: number };
+    })
+    .filter(Boolean) as Array<ShippingOption & { _sort_price: number }>;
+}
+
 export async function GET() {
   try {
     const store_id = await getStoreIdOrThrow();
@@ -1130,7 +1308,7 @@ export async function GET() {
 
     const productIds = cartProducts.productIds;
 
-    const [cityR, categoryIds, couponFreeShipping, freeShippingContext, ratesR]:
+    const [cityR, categoryIds, couponFreeShipping, freeShippingContext, ratesR, pickupOptions]:
       any[] = await Promise.all([
       !country_id && city_id
         ? control
@@ -1182,6 +1360,14 @@ export async function GET() {
         .eq("store_id", store_id)
         .eq("enabled", true)
         .eq("status", "active"),
+
+      loadPickupOptions({
+        storeDb,
+        control,
+        store_id,
+        city_id,
+        currencyInfo,
+      }),
     ]);
 
     if (!country_id && !cityR?.error && cityR?.data?.country_id) {
@@ -1193,6 +1379,9 @@ export async function GET() {
     const rates: any[] = Array.isArray((ratesR as any)?.data)
       ? ((ratesR as any).data as any[])
       : [];
+
+    const safePickupOptions: Array<ShippingOption & { _sort_price: number }> =
+      Array.isArray(pickupOptions) ? pickupOptions : [];
 
     const contextBase = buildEmptyContext({
       cart_id,
@@ -1208,7 +1397,7 @@ export async function GET() {
       free_shipping_rule_available: Boolean(freeShippingContext?.rules?.length),
     });
 
-    if (!rates.length) {
+    if (!rates.length && !safePickupOptions.length) {
       return jsonOk(
         {
           ok: true,
@@ -1223,165 +1412,162 @@ export async function GET() {
       rates.map((rate) => rate?.store_shipping_carrier_id),
     );
 
-    if (!carrierIds.length) {
-      return jsonOk(
-        {
-          ok: true,
-          context: contextBase,
-          options: [],
-        },
-        session_id,
-      );
-    }
-
-    const carriersR: any = await storeDb
-      .from("store_shipping_carriers")
-      .select("id,type,display_name,enabled,is_enabled,status")
-      .eq("store_id", store_id)
-      .in("id", carrierIds);
-
-    if (carriersR?.error) return jsonError(carriersR.error.message, 500);
-
-    const carriersArr: any[] = Array.isArray((carriersR as any)?.data)
-      ? ((carriersR as any).data as any[])
-      : [];
-
-    const carriers = new Map<string, any>();
-
-    for (const carrier of carriersArr) {
-      const id = s(carrier?.id);
-      if (id) carriers.set(id, carrier);
-    }
-
     const out: Array<ShippingOption & { _sort_price: number }> = [];
 
-    for (const rate of rates) {
-      const carrierId = s((rate as any)?.store_shipping_carrier_id);
-      const carrier = carriers.get(carrierId);
+    if (carrierIds.length) {
+      const carriersR: any = await storeDb
+        .from("store_shipping_carriers")
+        .select("id,type,display_name,enabled,is_enabled,status")
+        .eq("store_id", store_id)
+        .in("id", carrierIds);
 
-      if (!carrier) continue;
+      if (carriersR?.error) return jsonError(carriersR.error.message, 500);
 
-      const carrierEnabled =
-        carrier.enabled === true ||
-        carrier.is_enabled === true ||
-        carrier.enabled === 1 ||
-        carrier.is_enabled === 1;
+      const carriersArr: any[] = Array.isArray((carriersR as any)?.data)
+        ? ((carriersR as any).data as any[])
+        : [];
 
-      if (!carrierEnabled || s(carrier.status) !== "active") continue;
+      const carriers = new Map<string, any>();
 
-      if (city_id && !pickByCityScope(rate, city_id)) continue;
+      for (const carrier of carriersArr) {
+        const id = s(carrier?.id);
+        if (id) carriers.set(id, carrier);
+      }
 
-      const carrierType = s(carrier.type);
-      const rateCurrency = cleanCurrencyCode(
-        rate.currency,
-        currencyRuntime.defaultCode,
-      );
+      for (const rate of rates) {
+        const carrierId = s((rate as any)?.store_shipping_carrier_id);
+        const carrier = carriers.get(carrierId);
 
-      const convertedShipping = round2(
-        convertMoney({
-          amount: Math.max(0, n(rate.customer_price)),
-          sourceCode: rateCurrency,
-          targetCode: currencyInfo.code,
-          runtime: currencyRuntime,
-        }),
-      );
+        if (!carrier) continue;
 
-      const ruleMatch = couponFreeShipping
-        ? ({
-            applied: false,
-            source: null,
-            ruleId: null,
-            ruleName: null,
-          } as FreeShippingMatch)
-        : evaluateRuleFreeShipping({
-            context: freeShippingContext,
-            subtotal: cartProducts.subtotal,
-            countryId: country_id,
-            cityId: city_id,
-            productIds,
-            categoryIds: Array.isArray(categoryIds) ? categoryIds : [],
-            carrierId,
-            minimumSubtotalToCartCurrency: (amount: number) =>
-              convertMoney({
-                amount,
-                sourceCode: currencyRuntime.defaultCode,
-                targetCode: currencyInfo.code,
-                runtime: currencyRuntime,
-              }),
-          });
+        const carrierEnabled =
+          carrier.enabled === true ||
+          carrier.is_enabled === true ||
+          carrier.enabled === 1 ||
+          carrier.is_enabled === 1;
 
-      const freeShippingApplied = Boolean(
-        convertedShipping > 0 && (couponFreeShipping || ruleMatch.applied),
-      );
+        if (!carrierEnabled || s(carrier.status) !== "active") continue;
 
-      const displayedShipping = freeShippingApplied ? 0 : convertedShipping;
+        if (city_id && !pickByCityScope(rate, city_id)) continue;
 
-      const codAllowed = Boolean(rate.cod_enabled) && carrierType !== "pickup";
-      const codFeeRaw = Math.max(0, n(rate.cod_fee_customer));
+        const carrierType = s(carrier.type);
+        const rateCurrency = cleanCurrencyCode(
+          rate.currency,
+          currencyRuntime.defaultCode,
+        );
 
-      const convertedCodFee = round2(
-        convertMoney({
-          amount: codFeeRaw,
-          sourceCode: rateCurrency,
-          targetCode: currencyInfo.code,
-          runtime: currencyRuntime,
-        }),
-      );
+        const convertedShipping = round2(
+          convertMoney({
+            amount: Math.max(0, n(rate.customer_price)),
+            sourceCode: rateCurrency,
+            targetCode: currencyInfo.code,
+            runtime: currencyRuntime,
+          }),
+        );
 
-      out.push({
-        id: String(rate.id),
-        name: s(carrier.display_name) || "شركة شحن",
-        eta: s(rate.eta_text) || "—",
+        const ruleMatch = couponFreeShipping
+          ? ({
+              applied: false,
+              source: null,
+              ruleId: null,
+              ruleName: null,
+            } as FreeShippingMatch)
+          : evaluateRuleFreeShipping({
+              context: freeShippingContext,
+              subtotal: cartProducts.subtotal,
+              countryId: country_id,
+              cityId: city_id,
+              productIds,
+              categoryIds: Array.isArray(categoryIds) ? categoryIds : [],
+              carrierId,
+              minimumSubtotalToCartCurrency: (amount: number) =>
+                convertMoney({
+                  amount,
+                  sourceCode: currencyRuntime.defaultCode,
+                  targetCode: currencyInfo.code,
+                  runtime: currencyRuntime,
+                }),
+            });
 
-        price: formatMoney({
-          amount: displayedShipping,
-          code: currencyInfo.code,
-          symbol: currencyInfo.symbol,
-          decimals: currencyInfo.decimal_digits,
-        }),
-        price_amount: displayedShipping,
+        const freeShippingApplied = Boolean(
+          convertedShipping > 0 && (couponFreeShipping || ruleMatch.applied),
+        );
 
-        original_price: freeShippingApplied
-          ? formatMoney({
-              amount: convertedShipping,
-              code: currencyInfo.code,
-              symbol: currencyInfo.symbol,
-              decimals: currencyInfo.decimal_digits,
-            })
-          : null,
-        original_price_amount: freeShippingApplied ? convertedShipping : null,
+        const displayedShipping = freeShippingApplied ? 0 : convertedShipping;
 
-        free_shipping_applied: freeShippingApplied,
-        free_shipping_source: freeShippingApplied
-          ? couponFreeShipping
-            ? "coupon"
-            : "rule"
-          : null,
-        free_shipping_rule_id: freeShippingApplied ? ruleMatch.ruleId : null,
-        free_shipping_rule_name: freeShippingApplied ? ruleMatch.ruleName : null,
-        price_label: freeShippingApplied ? "الشحن مجانًا" : null,
+        const codAllowed = Boolean(rate.cod_enabled) && carrierType !== "pickup";
+        const codFeeRaw = Math.max(0, n(rate.cod_fee_customer));
 
-        cod: codAllowed,
-        cod_fee:
-          codAllowed && convertedCodFee > 0
+        const convertedCodFee = round2(
+          convertMoney({
+            amount: codFeeRaw,
+            sourceCode: rateCurrency,
+            targetCode: currencyInfo.code,
+            runtime: currencyRuntime,
+          }),
+        );
+
+        out.push({
+          id: String(rate.id),
+          name: s(carrier.display_name) || "شركة شحن",
+          eta: s(rate.eta_text) || "—",
+
+          price: formatMoney({
+            amount: displayedShipping,
+            code: currencyInfo.code,
+            symbol: currencyInfo.symbol,
+            decimals: currencyInfo.decimal_digits,
+          }),
+          price_amount: displayedShipping,
+
+          original_price: freeShippingApplied
             ? formatMoney({
-                amount: convertedCodFee,
+                amount: convertedShipping,
                 code: currencyInfo.code,
                 symbol: currencyInfo.symbol,
                 decimals: currencyInfo.decimal_digits,
               })
             : null,
+          original_price_amount: freeShippingApplied ? convertedShipping : null,
 
-        _sort_price: convertedShipping,
-      });
+          free_shipping_applied: freeShippingApplied,
+          free_shipping_source: freeShippingApplied
+            ? couponFreeShipping
+              ? "coupon"
+              : "rule"
+            : null,
+          free_shipping_rule_id: freeShippingApplied ? ruleMatch.ruleId : null,
+          free_shipping_rule_name: freeShippingApplied ? ruleMatch.ruleName : null,
+          price_label: freeShippingApplied ? "الشحن مجانًا" : null,
+
+          cod: codAllowed,
+          cod_fee:
+            codAllowed && convertedCodFee > 0
+              ? formatMoney({
+                  amount: convertedCodFee,
+                  code: currencyInfo.code,
+                  symbol: currencyInfo.symbol,
+                  decimals: currencyInfo.decimal_digits,
+                })
+              : null,
+
+          shipping_kind: "rate",
+          carrier_type: carrierType,
+          store_shipping_carrier_id: carrierId,
+
+          _sort_price: convertedShipping,
+        });
+      }
     }
 
-    if (out.length) {
+    const allOut = [...out, ...safePickupOptions];
+
+    if (allOut.length) {
       let bestIdx = 0;
       let bestPrice = Infinity;
 
-      for (let i = 0; i < out.length; i++) {
-        const price = out[i]._sort_price;
+      for (let i = 0; i < allOut.length; i++) {
+        const price = allOut[i]._sort_price;
 
         if (Number.isFinite(price) && price < bestPrice) {
           bestPrice = price;
@@ -1389,12 +1575,12 @@ export async function GET() {
         }
       }
 
-      out.forEach((option, index) => {
+      allOut.forEach((option, index) => {
         if (index === bestIdx) option.recommended = true;
       });
     }
 
-    const options = out.map(({ _sort_price, ...option }) => option);
+    const options = allOut.map(({ _sort_price, ...option }) => option);
     const hasFreeShippingOption = options.some(
       (option) => option.free_shipping_applied,
     );
@@ -1405,6 +1591,7 @@ export async function GET() {
         context: {
           ...contextBase,
           free_shipping_applied: hasFreeShippingOption,
+          pickup_available: safePickupOptions.length > 0,
         },
         options,
       },
