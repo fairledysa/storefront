@@ -61,11 +61,43 @@ function cleanCartUrlParams(paramsToRemove: string[]) {
   window.history.replaceState({}, "", newUrl);
 }
 
+function resolveAbandonedReminderJobId() {
+  if (typeof window === "undefined") return "";
+
+  const params = new URLSearchParams(window.location.search);
+
+  return normalizeText(
+    params.get("acj") ||
+      params.get("abandoned_job") ||
+      params.get("abandoned_job_id") ||
+      params.get("abandonedCartJob") ||
+      params.get("abandoned_cart_job"),
+  );
+}
+
+async function trackAbandonedCartVisit(jobId: string) {
+  const cleanJobId = normalizeText(jobId);
+
+  if (!cleanJobId) return;
+
+  await fetch("/api/cart/abandoned-visit", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      jobId: cleanJobId,
+    }),
+    keepalive: true,
+  }).catch(() => null);
+}
+
 export default function CartScreen() {
   const pop = useNavStack((s) => s.pop);
   const push = useNavStack((s) => s.push);
 
   const autoCouponAttemptedRef = useRef(false);
+  const abandonedVisitAttemptedRef = useRef(false);
 
   const {
     loading,
@@ -103,6 +135,46 @@ export default function CartScreen() {
       window.location.hash;
 
     window.history.replaceState({}, "", newUrl);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (abandonedVisitAttemptedRef.current) return;
+
+    const jobId = resolveAbandonedReminderJobId();
+
+    if (!jobId) return;
+
+    abandonedVisitAttemptedRef.current = true;
+
+    const storageKey = `mk:abandoned-cart-visit:${jobId}`;
+
+    try {
+      if (window.localStorage.getItem(storageKey)) {
+        cleanCartUrlParams([
+          "acj",
+          "abandoned_job",
+          "abandoned_job_id",
+          "abandonedCartJob",
+          "abandoned_cart_job",
+        ]);
+        return;
+      }
+
+      window.localStorage.setItem(storageKey, new Date().toISOString());
+    } catch {
+      // تجاهل منع localStorage
+    }
+
+    cleanCartUrlParams([
+      "acj",
+      "abandoned_job",
+      "abandoned_job_id",
+      "abandonedCartJob",
+      "abandoned_cart_job",
+    ]);
+
+    void trackAbandonedCartVisit(jobId);
   }, []);
 
   useEffect(() => {
