@@ -33,6 +33,18 @@ function round2(x: number) {
   return Math.round(x * 100) / 100;
 }
 
+function isExpired(value: any) {
+  const clean = s(value);
+  if (!clean) return false;
+
+  const ms = Date.parse(clean);
+  return Number.isFinite(ms) && ms < Date.now();
+}
+
+function shouldTreatAsAbandonedCoupon(code: string) {
+  return s(code).toUpperCase().startsWith("AC-");
+}
+
 /* ------------------------------ Error mapping ----------------------------- */
 
 function couponErrorArabic(code: string) {
@@ -72,6 +84,21 @@ function couponErrorArabic(code: string) {
 
     case "CART_EMPTY":
       return "سلة المشتريات فارغة.";
+
+    case "ABANDONED_OFFER_NOT_FOUND":
+      return "عرض السلة المتروكة غير صحيح.";
+
+    case "ABANDONED_OFFER_EXPIRED":
+      return "انتهت صلاحية عرض السلة المتروكة.";
+
+    case "ABANDONED_OFFER_USED":
+      return "تم استخدام عرض السلة المتروكة مسبقًا.";
+
+    case "ABANDONED_OFFER_CART_MISMATCH":
+      return "هذا العرض مخصص للسلة المرتبطة به فقط.";
+
+    case "ABANDONED_OFFER_MAX_TOTAL":
+      return "قيمة السلة أعلى من الحد الأعلى لهذا العرض.";
 
     default:
       return "تعذر تطبيق الكوبون. حاول مرة أخرى.";
@@ -216,6 +243,124 @@ async function clearCouponFromCart(args: {
   ]);
 }
 
+async function loadAbandonedOfferCoupon(args: {
+  sb: any;
+  store_id: string;
+  coupon_id: string;
+  code: string;
+}) {
+  const selectColumns = [
+    "id",
+    "store_id",
+    "cart_id",
+    "job_id",
+    "rule_id",
+    "coupon_id",
+    "code",
+    "max_cart_total",
+    "expires_at",
+    "used_at",
+    "metadata",
+  ].join(",");
+
+  const byCouponId = await args.sb
+    .from("abandoned_cart_offer_coupons")
+    .select(selectColumns)
+    .eq("store_id", args.store_id)
+    .eq("coupon_id", args.coupon_id)
+    .limit(1)
+    .maybeSingle();
+
+  if (byCouponId.error) {
+    throw new Error(byCouponId.error.message);
+  }
+
+  if (byCouponId.data) return byCouponId.data;
+
+  const byCode = await args.sb
+    .from("abandoned_cart_offer_coupons")
+    .select(selectColumns)
+    .eq("store_id", args.store_id)
+    .eq("code", args.code)
+    .limit(1)
+    .maybeSingle();
+
+  if (byCode.error) {
+    throw new Error(byCode.error.message);
+  }
+
+  return byCode.data ?? null;
+}
+
+async function validateAbandonedOfferCouponLock(args: {
+  sb: any;
+  store_id: string;
+  cart_id: string;
+  coupon: any;
+  input_code: string;
+}) {
+  const couponId = s(args.coupon?.id);
+  const couponCode = s(args.coupon?.code || args.input_code);
+
+  if (!couponId || !couponCode) {
+    return {
+      ok: true as const,
+      abandonedOffer: null as any,
+    };
+  }
+
+  const abandonedOffer = await loadAbandonedOfferCoupon({
+    sb: args.sb,
+    store_id: args.store_id,
+    coupon_id: couponId,
+    code: couponCode,
+  });
+
+  if (shouldTreatAsAbandonedCoupon(args.input_code) && !abandonedOffer?.id) {
+    return {
+      ok: false as const,
+      code: "ABANDONED_OFFER_NOT_FOUND",
+      abandonedOffer: null as any,
+    };
+  }
+
+  if (!abandonedOffer?.id) {
+    return {
+      ok: true as const,
+      abandonedOffer: null as any,
+    };
+  }
+
+  if (isExpired(abandonedOffer.expires_at)) {
+    return {
+      ok: false as const,
+      code: "ABANDONED_OFFER_EXPIRED",
+      abandonedOffer,
+    };
+  }
+
+  if (abandonedOffer.used_at) {
+    return {
+      ok: false as const,
+      code: "ABANDONED_OFFER_USED",
+      abandonedOffer,
+    };
+  }
+
+  if (s(abandonedOffer.cart_id) !== args.cart_id) {
+    return {
+      ok: false as const,
+      code: "ABANDONED_OFFER_CART_MISMATCH",
+      abandonedOffer,
+    };
+  }
+
+  return {
+    ok: true as const,
+    abandonedOffer,
+  };
+}
+
 function needsUsageCheck(coupon: any) {
   return coupon?.usage_limit != null || coupon?.usage_limit_per_user != null;
 }
@@ -269,6 +414,18 @@ export async function POST(req: Request) {
     }
 
     const coupon = lookup.coupon;
+
+    const abandonedLock = await validateAbandonedOfferCouponLock({
+      sb,
+      store_id,
+      cart_id,
+      coupon,
+      input_code: codeRaw,
+    });
+
+    if (!abandonedLock.ok) {
+      return jsonError(abandonedLock.code, 400);
+    }
 
     const fastCart = await getCartSubtotalFast({
       sb,
@@ -357,6 +514,23 @@ export async function POST(req: Request) {
       cart_id,
     });
 
+    const abandonedOffer = abandonedLock.abandonedOffer;
+    const maxCartTotal = n(abandonedOffer?.max_cart_total);
+    const subtotal = n((summary as any)?.subtotal ?? fastCart.subtotal);
+
+    if (abandonedOffer?.id && maxCartTotal > 0 && subtotal > maxCartTotal) {
+      await clearCouponFromCart({
+        sb,
+        store_id,
+        cart_id,
+      });
+
+      return jsonError("ABANDONED_OFFER_MAX_TOTAL", 400, {
+        max_cart_total: maxCartTotal,
+        subtotal,
+      });
+    }
+
     const expectedCode = normalizeCouponCode(coupon.code);
     const appliedCode = normalizeCouponCode(summary?.coupon?.code);
 
@@ -367,7 +541,6 @@ export async function POST(req: Request) {
         cart_id,
       });
 
-      const subtotal = n(summary?.subtotal ?? fastCart.subtotal);
       const minimum = n(coupon.minimum_amount);
 
       if (minimum > 0 && subtotal < minimum) {
@@ -387,6 +560,13 @@ export async function POST(req: Request) {
       session_id,
       payload: {
         ok: true,
+        abandoned_offer: abandonedOffer
+          ? {
+              id: String(abandonedOffer.id),
+              code: String(abandonedOffer.code),
+              expires_at: abandonedOffer.expires_at ?? null,
+            }
+          : null,
         summary,
       },
     });
