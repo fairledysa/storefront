@@ -1607,8 +1607,120 @@ function emptyCartPayload(args: {
     },
   };
 }
+function readHeader(headers: Headers, key: string) {
+  return String(headers.get(key) ?? "").trim();
+}
 
-export async function GET() {
+function detectWebDeviceType(userAgent: string) {
+  const ua = String(userAgent ?? "").toLowerCase();
+
+  if (
+    /\b(ipad|tablet|kindle|silk|playbook)\b/.test(ua) ||
+    (/\bandroid\b/.test(ua) && !/\bmobile\b/.test(ua))
+  ) {
+    return "tablet";
+  }
+
+  if (
+    /\b(mobi|iphone|ipod|android.*mobile|windows phone|blackberry|opera mini)\b/.test(
+      ua,
+    )
+  ) {
+    return "mobile";
+  }
+
+  return "desktop";
+}
+
+function detectCartSourceFromRequest(request: Request) {
+  const headers = request.headers;
+  const userAgent = readHeader(headers, "user-agent");
+
+  return {
+    source_channel: "browser",
+    device_type: detectWebDeviceType(userAgent),
+  };
+}
+
+async function writeCartTracking(args: {
+  ordersDb: any;
+  store_id: string;
+  cart_id: string;
+  request: Request;
+}) {
+  const cartId = s(args.cart_id);
+  const storeId = s(args.store_id);
+
+  if (!cartId || !storeId) return;
+
+  const detected = detectCartSourceFromRequest(args.request);
+  const now = new Date().toISOString();
+
+  const existingR = await args.ordersDb
+    .from("cart_tracking")
+    .select("id")
+    .eq("store_id", storeId)
+    .eq("cart_id", cartId)
+    .limit(1)
+    .maybeSingle();
+
+  if (existingR.error && existingR.error.code !== "PGRST116") {
+    return;
+  }
+
+  const existingId = s(existingR.data?.id);
+
+  if (existingId) {
+    const updatePayload = {
+      source_channel: detected.source_channel,
+      device_type: detected.device_type,
+      updated_at: now,
+    };
+
+    const updateR = await args.ordersDb
+      .from("cart_tracking")
+      .update(updatePayload)
+      .eq("id", existingId)
+      .eq("store_id", storeId)
+      .eq("cart_id", cartId);
+
+    if (!updateR.error) return;
+
+    await args.ordersDb
+      .from("cart_tracking")
+      .update({
+        source_channel: detected.source_channel,
+        device_type: detected.device_type,
+      })
+      .eq("id", existingId)
+      .eq("store_id", storeId)
+      .eq("cart_id", cartId);
+
+    return;
+  }
+
+  const insertPayload = {
+    store_id: storeId,
+    cart_id: cartId,
+    source_channel: detected.source_channel,
+    device_type: detected.device_type,
+    created_at: now,
+    updated_at: now,
+  };
+
+  const insertR = await args.ordersDb.from("cart_tracking").insert(insertPayload);
+
+  if (!insertR.error) return;
+
+  await args.ordersDb.from("cart_tracking").insert({
+    store_id: storeId,
+    cart_id: cartId,
+    source_channel: detected.source_channel,
+    device_type: detected.device_type,
+  });
+}
+
+export async function GET(request: Request) {
   try {
     const store_id = await getStoreIdOrThrow();
     const sid = await getCartSessionIdFromCookie();
@@ -1632,6 +1744,12 @@ export async function GET() {
         }),
       });
     }
+void writeCartTracking({
+  ordersDb,
+  store_id,
+  cart_id: cart.id,
+  request,
+}).catch(() => undefined);
 
     const initialItems = await fetchCartItems(ordersDb, cart.id);
 
