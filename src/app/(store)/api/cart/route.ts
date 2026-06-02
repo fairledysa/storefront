@@ -1642,7 +1642,7 @@ function detectCartSourceFromRequest(request: Request) {
   };
 }
 
- async function writeCartTracking(args: {
+async function writeCartTracking(args: {
   ordersDb: any;
   store_id: string;
   cart_id: string;
@@ -1715,7 +1715,6 @@ function detectCartSourceFromRequest(request: Request) {
 }
 
 
-
 export async function GET(request: Request) {
   try {
     const store_id = await getStoreIdOrThrow();
@@ -1740,7 +1739,7 @@ export async function GET(request: Request) {
         }),
       });
     }
-void writeCartTracking({
+await writeCartTracking({
   ordersDb,
   store_id,
   cart_id: cart.id,
