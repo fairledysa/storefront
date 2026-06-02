@@ -1,7 +1,7 @@
 // FILE: apps/storefront/src/themes/malak/screens/cart/CartScreen.tsx
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavStack } from "../../app-navigation/stack";
 import { useCart } from "./useCart";
 import CartItemsList from "./_components/CartItemsList";
@@ -44,9 +44,28 @@ function getToastIcon(kind: ToastViewKind) {
   return "i";
 }
 
+function cleanCartUrlParams(paramsToRemove: string[]) {
+  if (typeof window === "undefined") return;
+
+  const params = new URLSearchParams(window.location.search);
+
+  for (const param of paramsToRemove) {
+    params.delete(param);
+  }
+
+  const newUrl =
+    window.location.pathname +
+    (params.toString() ? `?${params.toString()}` : "") +
+    window.location.hash;
+
+  window.history.replaceState({}, "", newUrl);
+}
+
 export default function CartScreen() {
   const pop = useNavStack((s) => s.pop);
   const push = useNavStack((s) => s.push);
+
+  const autoCouponAttemptedRef = useRef(false);
 
   const {
     loading,
@@ -80,10 +99,31 @@ export default function CartScreen() {
 
     const newUrl =
       window.location.pathname +
-      (params.toString() ? `?${params.toString()}` : "");
+      (params.toString() ? `?${params.toString()}` : "") +
+      window.location.hash;
 
     window.history.replaceState({}, "", newUrl);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (autoCouponAttemptedRef.current) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const code = normalizeText(
+      params.get("coupon") ||
+        params.get("coupon_code") ||
+        params.get("discount_code"),
+    );
+
+    if (!code) return;
+
+    autoCouponAttemptedRef.current = true;
+
+    cleanCartUrlParams(["coupon", "coupon_code", "discount_code"]);
+
+    void applyCoupon(code);
+  }, [applyCoupon]);
 
   const toastView = useMemo(() => {
     const message = normalizeText(toast?.message);
@@ -110,17 +150,17 @@ export default function CartScreen() {
     };
   }, [toast?.kind, toast?.message]);
 
- useEffect(() => {
-  if (toastView.key || !dismissedToastKey) return;
+  useEffect(() => {
+    if (toastView.key || !dismissedToastKey) return;
 
-  const timer = window.setTimeout(() => {
-    setDismissedToastKey("");
-  }, 0);
+    const timer = window.setTimeout(() => {
+      setDismissedToastKey("");
+    }, 0);
 
-  return () => {
-    window.clearTimeout(timer);
-  };
-}, [toastView.key, dismissedToastKey]);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [toastView.key, dismissedToastKey]);
 
   const showToast = Boolean(
     toastView.message && dismissedToastKey !== toastView.key,
@@ -202,9 +242,7 @@ export default function CartScreen() {
             </div>
 
             <div className="mk-dcart-popToast__content">
-              <div className="mk-dcart-popToast__title">
-                {toastView.title}
-              </div>
+              <div className="mk-dcart-popToast__title">{toastView.title}</div>
 
               <div className="mk-dcart-popToast__message">
                 {toastView.message}
@@ -230,16 +268,16 @@ export default function CartScreen() {
       <div
         className={`mk-dcart-layout ${isEmpty ? "mk-dcart-layout--empty" : ""}`}
       >
-   <CartItemsList
-  items={items}
-  summary={summary}
-  loading={loading}
-  busy={busy}
-  onInc={inc}
-  onRemove={remove}
-  onReload={handleReloadSilent}
-  flash={flash}
-/>
+        <CartItemsList
+          items={items}
+          summary={summary}
+          loading={loading}
+          busy={busy}
+          onInc={inc}
+          onRemove={remove}
+          onReload={handleReloadSilent}
+          flash={flash}
+        />
 
         {!isEmpty ? (
           <div className="mk-dcart-summarySticky">

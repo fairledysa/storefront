@@ -57,6 +57,22 @@ function withCartCookie(res: NextResponse, sid: string) {
   return res;
 }
 
+function isExpired(value: any) {
+  const clean = s(value);
+  if (!clean) return false;
+
+  const ms = Date.parse(clean);
+  return Number.isFinite(ms) && ms < Date.now();
+}
+
+function isFuture(value: any) {
+  const clean = s(value);
+  if (!clean) return false;
+
+  const ms = Date.parse(clean);
+  return Number.isFinite(ms) && ms > Date.now();
+}
+
 async function clearCartCoupon(args: {
   ordersDb: any;
   store_id: string;
@@ -132,6 +148,73 @@ async function validateUsageLimit(args: {
   };
 }
 
+async function loadAbandonedOfferCoupon(args: {
+  ordersDb: any;
+  store_id: string;
+  coupon_id: string;
+  code: string;
+}) {
+  const byCouponId = await args.ordersDb
+    .from("abandoned_cart_offer_coupons")
+    .select(
+      [
+        "id",
+        "store_id",
+        "cart_id",
+        "job_id",
+        "rule_id",
+        "coupon_id",
+        "code",
+        "max_cart_total",
+        "expires_at",
+        "used_at",
+        "metadata",
+      ].join(","),
+    )
+    .eq("store_id", args.store_id)
+    .eq("coupon_id", args.coupon_id)
+    .limit(1)
+    .maybeSingle();
+
+  if (byCouponId.error) {
+    throw new Error(byCouponId.error.message);
+  }
+
+  if (byCouponId.data) return byCouponId.data;
+
+  const byCode = await args.ordersDb
+    .from("abandoned_cart_offer_coupons")
+    .select(
+      [
+        "id",
+        "store_id",
+        "cart_id",
+        "job_id",
+        "rule_id",
+        "coupon_id",
+        "code",
+        "max_cart_total",
+        "expires_at",
+        "used_at",
+        "metadata",
+      ].join(","),
+    )
+    .eq("store_id", args.store_id)
+    .eq("code", args.code)
+    .limit(1)
+    .maybeSingle();
+
+  if (byCode.error) {
+    throw new Error(byCode.error.message);
+  }
+
+  return byCode.data ?? null;
+}
+
+function shouldTreatAsAbandonedCoupon(code: string) {
+  return s(code).toUpperCase().startsWith("AC-");
+}
+
 export async function POST(req: Request) {
   try {
     const body = (await req.json().catch(() => ({}))) as { code?: string };
@@ -179,16 +262,52 @@ export async function POST(req: Request) {
       return jsonError("COUPON_NOT_FOUND", "الكوبون غير صحيح.", 400);
     }
 
-    const nowMs = Date.now();
+    const abandonedOffer = await loadAbandonedOfferCoupon({
+      ordersDb,
+      store_id,
+      coupon_id: String(coupon.id),
+      code: String(coupon.code || code),
+    });
 
-    const startMs = coupon.start_at ? Date.parse(String(coupon.start_at)) : null;
-    const endMs = coupon.end_at ? Date.parse(String(coupon.end_at)) : null;
+    if (shouldTreatAsAbandonedCoupon(code) && !abandonedOffer?.id) {
+      return jsonError(
+        "ABANDONED_OFFER_NOT_FOUND",
+        "عرض السلة المتروكة غير صحيح.",
+        400,
+      );
+    }
 
-    if (startMs && Number.isFinite(startMs) && startMs > nowMs) {
+    if (abandonedOffer?.id) {
+      if (isExpired(abandonedOffer.expires_at)) {
+        return jsonError(
+          "ABANDONED_OFFER_EXPIRED",
+          "انتهت صلاحية عرض السلة المتروكة.",
+          400,
+        );
+      }
+
+      if (abandonedOffer.used_at) {
+        return jsonError(
+          "ABANDONED_OFFER_USED",
+          "تم استخدام عرض السلة المتروكة مسبقًا.",
+          400,
+        );
+      }
+
+      if (s(abandonedOffer.cart_id) !== cartId) {
+        return jsonError(
+          "ABANDONED_OFFER_CART_MISMATCH",
+          "هذا العرض مخصص للسلة المرتبطة به فقط.",
+          400,
+        );
+      }
+    }
+
+    if (isFuture(coupon.start_at)) {
       return jsonError("COUPON_NOT_STARTED", "هذا الكوبون لم يبدأ بعد.", 400);
     }
 
-    if (endMs && Number.isFinite(endMs) && endMs < nowMs) {
+    if (isExpired(coupon.end_at)) {
       return jsonError("COUPON_EXPIRED", "هذا الكوبون منتهي.", 400);
     }
 
@@ -248,6 +367,23 @@ export async function POST(req: Request) {
       cart_id: cartId,
     });
 
+    const maxCartTotal = n(abandonedOffer?.max_cart_total);
+    const subtotal = n((summary as any)?.subtotal);
+
+    if (abandonedOffer?.id && maxCartTotal > 0 && subtotal > maxCartTotal) {
+      await clearCartCoupon({
+        ordersDb,
+        store_id,
+        cart_id: cartId,
+      });
+
+      return jsonError(
+        "ABANDONED_OFFER_MAX_TOTAL",
+        "قيمة السلة أعلى من الحد الأعلى لهذا العرض.",
+        400,
+      );
+    }
+
     const summaryCoupon = summary?.coupon ?? null;
 
     if (!summaryCoupon?.code) {
@@ -292,6 +428,13 @@ export async function POST(req: Request) {
       {
         data: {
           cart_id: cartId,
+          abandoned_offer: abandonedOffer
+            ? {
+                id: String(abandonedOffer.id),
+                code: String(abandonedOffer.code),
+                expires_at: abandonedOffer.expires_at ?? null,
+              }
+            : null,
           coupon: {
             id: String(upR.data.id),
             coupon_id: String(upR.data.coupon_id),

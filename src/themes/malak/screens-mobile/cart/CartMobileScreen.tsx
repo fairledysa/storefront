@@ -1,7 +1,7 @@
 // FILE: apps/storefront/src/themes/malak/screens-mobile/cart/CartMobileScreen.tsx
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavStack } from "../../app-navigation/stack";
 import { useMobileCart } from "./useMobileCart";
 import MobileCartHeader from "./_components/MobileCartHeader";
@@ -45,9 +45,28 @@ function getToastIcon(kind: ToastViewKind) {
   return "i";
 }
 
+function cleanCartUrlParams(paramsToRemove: string[]) {
+  if (typeof window === "undefined") return;
+
+  const params = new URLSearchParams(window.location.search);
+
+  for (const param of paramsToRemove) {
+    params.delete(param);
+  }
+
+  const nextUrl =
+    window.location.pathname +
+    (params.toString() ? `?${params.toString()}` : "") +
+    window.location.hash;
+
+  window.history.replaceState({}, "", nextUrl);
+}
+
 export default function CartMobileScreen() {
   const pop = useNavStack((s) => s.pop);
   const push = useNavStack((s) => s.push);
+
+  const autoCouponAttemptedRef = useRef(false);
 
   const {
     loading,
@@ -81,10 +100,31 @@ export default function CartMobileScreen() {
 
     const nextUrl =
       window.location.pathname +
-      (params.toString() ? `?${params.toString()}` : "");
+      (params.toString() ? `?${params.toString()}` : "") +
+      window.location.hash;
 
     window.history.replaceState({}, "", nextUrl);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (autoCouponAttemptedRef.current) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const code = cleanText(
+      params.get("coupon") ||
+        params.get("coupon_code") ||
+        params.get("discount_code"),
+    );
+
+    if (!code) return;
+
+    autoCouponAttemptedRef.current = true;
+
+    cleanCartUrlParams(["coupon", "coupon_code", "discount_code"]);
+
+    void applyCoupon(code);
+  }, [applyCoupon]);
 
   const toastView = useMemo(() => {
     const message = cleanText(toast?.message);
