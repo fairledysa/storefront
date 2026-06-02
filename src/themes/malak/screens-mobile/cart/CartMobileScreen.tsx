@@ -342,6 +342,8 @@ export default function CartMobileScreen() {
         />
       </main>
 
+
+
       {!isEmpty ? (
         <MobileCartSummarySheet
           summary={summary}
