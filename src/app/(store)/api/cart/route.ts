@@ -1642,7 +1642,7 @@ function detectCartSourceFromRequest(request: Request) {
   };
 }
 
-async function writeCartTracking(args: {
+ async function writeCartTracking(args: {
   ordersDb: any;
   store_id: string;
   cart_id: string;
@@ -1654,6 +1654,7 @@ async function writeCartTracking(args: {
   if (!cartId || !storeId) return;
 
   const detected = detectCartSourceFromRequest(args.request);
+  const userAgent = readHeader(args.request.headers, "user-agent");
   const now = new Date().toISOString();
 
   const existingR = await args.ordersDb
@@ -1665,60 +1666,55 @@ async function writeCartTracking(args: {
     .maybeSingle();
 
   if (existingR.error && existingR.error.code !== "PGRST116") {
+    console.error("cart_tracking select failed", existingR.error);
     return;
   }
 
   const existingId = s(existingR.data?.id);
 
   if (existingId) {
-    const updatePayload = {
-      source_channel: detected.source_channel,
-      device_type: detected.device_type,
-      updated_at: now,
-    };
-
     const updateR = await args.ordersDb
-      .from("cart_tracking")
-      .update(updatePayload)
-      .eq("id", existingId)
-      .eq("store_id", storeId)
-      .eq("cart_id", cartId);
-
-    if (!updateR.error) return;
-
-    await args.ordersDb
       .from("cart_tracking")
       .update({
         source_channel: detected.source_channel,
         device_type: detected.device_type,
+        user_agent: userAgent || null,
+        last_seen_at: now,
+        last_add_to_cart_at: now,
+        updated_at: now,
       })
       .eq("id", existingId)
       .eq("store_id", storeId)
       .eq("cart_id", cartId);
 
+    if (updateR.error) {
+      console.error("cart_tracking update failed", updateR.error);
+    }
+
     return;
   }
 
-  const insertPayload = {
+  const insertR = await args.ordersDb.from("cart_tracking").insert({
+    id: crypto.randomUUID(),
     store_id: storeId,
     cart_id: cartId,
     source_channel: detected.source_channel,
     device_type: detected.device_type,
+    user_agent: userAgent || null,
+    first_seen_at: now,
+    last_seen_at: now,
+    last_add_to_cart_at: now,
+    metadata: {},
     created_at: now,
     updated_at: now,
-  };
-
-  const insertR = await args.ordersDb.from("cart_tracking").insert(insertPayload);
-
-  if (!insertR.error) return;
-
-  await args.ordersDb.from("cart_tracking").insert({
-    store_id: storeId,
-    cart_id: cartId,
-    source_channel: detected.source_channel,
-    device_type: detected.device_type,
   });
+
+  if (insertR.error) {
+    console.error("cart_tracking insert failed", insertR.error);
+  }
 }
+
+
 
 export async function GET(request: Request) {
   try {
@@ -1749,7 +1745,7 @@ void writeCartTracking({
   store_id,
   cart_id: cart.id,
   request,
-}).catch(() => undefined);
+});
 
     const initialItems = await fetchCartItems(ordersDb, cart.id);
 
