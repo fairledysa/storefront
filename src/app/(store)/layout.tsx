@@ -10,7 +10,6 @@ import { loadCustomCode } from "@/theme-engine/injectors/custom-code";
 import { THEME_KIND, type ThemeCode } from "@/theme-engine/types";
 
 const PWA_SETTING_SLUGS = ["app/pwa", "store.pwa", "pwa"];
-const GOOGLE_SITE_VERIFICATION_APP_KEY = "google_site_verification";
 
 function s(value: unknown) {
   return String(value ?? "").trim();
@@ -48,7 +47,7 @@ function cleanColor(value: unknown, fallback: string) {
   return /^#[0-9a-f]{6}$/i.test(color) ? color : fallback;
 }
 
-function extractGoogleVerificationContent(value: unknown) {
+function extractGoogleVerificationCode(value: unknown) {
   const clean = s(value);
 
   if (!clean) return "";
@@ -56,28 +55,9 @@ function extractGoogleVerificationContent(value: unknown) {
   const contentMatch = clean.match(/content=["']([^"']+)["']/i);
   if (contentMatch?.[1]) return s(contentMatch[1]);
 
-  if (/<meta/i.test(clean)) return "";
+  if (clean.includes("<meta")) return "";
 
-  return clean.replace(/^google-site-verification=/i, "").trim();
-}
-
-function readGoogleVerificationCodeFromConfig(args: {
-  publicConfig: Record<string, any>;
-  metadata: Record<string, any>;
-}) {
-  const googleMeta = safeObject(args.metadata.google_site_verification);
-
-  return (
-    extractGoogleVerificationContent(args.publicConfig.verification_code) ||
-    extractGoogleVerificationContent(args.publicConfig.verificationCode) ||
-    extractGoogleVerificationContent(args.publicConfig.verification_meta_tag) ||
-    extractGoogleVerificationContent(args.publicConfig.verificationMetaTag) ||
-    extractGoogleVerificationContent(googleMeta.verification_code) ||
-    extractGoogleVerificationContent(googleMeta.verificationCode) ||
-    extractGoogleVerificationContent(googleMeta.token) ||
-    extractGoogleVerificationContent(googleMeta.meta_tag) ||
-    extractGoogleVerificationContent(googleMeta.metaTag)
-  );
+  return clean;
 }
 
 async function loadPwaSettings(storeId: string) {
@@ -100,73 +80,59 @@ async function loadPwaSettings(storeId: string) {
 }
 
 async function loadGoogleSiteVerificationCode(storeId: string) {
-  const cleanStoreId = s(storeId);
+  const sb: any = await getStoreDb(storeId);
 
-  if (!cleanStoreId) return "";
+  const { data: installations, error: installationsError } = await sb
+    .from("store_app_installations")
+    .select("id,app_id,status,config_status,app_snapshot,updated_at,installed_at")
+    .eq("store_id", storeId)
+    .neq("status", "uninstalled")
+    .order("updated_at", { ascending: false })
+    .order("installed_at", { ascending: false })
+    .limit(30);
 
-  try {
-    const sb: any = await getStoreDb(cleanStoreId);
-
-    const { data: appData, error: appError } = await sb
-      .from("app_catalog")
-      .select("id,key,slug")
-      .eq("key", GOOGLE_SITE_VERIFICATION_APP_KEY)
-      .limit(1)
-      .maybeSingle();
-
-    if (appError || !appData?.id) {
-      return "";
-    }
-
-    const appId = s(appData.id);
-
-    const { data: installationData, error: installationError } = await sb
-      .from("store_app_installations")
-      .select("id,store_id,app_id,status,config_status")
-      .eq("store_id", cleanStoreId)
-      .eq("app_id", appId)
-      .neq("status", "uninstalled")
-      .limit(1)
-      .maybeSingle();
-
-    if (installationError || !installationData?.id) {
-      return "";
-    }
-
-    const installationId = s(installationData.id);
-
-    const { data: configData, error: configError } = await sb
-      .from("store_app_configs")
-      .select("id,enabled,public_config,metadata")
-      .eq("store_id", cleanStoreId)
-      .eq("app_id", appId)
-      .eq("installation_id", installationId)
-      .limit(1)
-      .maybeSingle();
-
-    if (configError || !configData) {
-      return "";
-    }
-
-    if (configData.enabled === false) {
-      return "";
-    }
-
-    const publicConfig = safeObject(configData.public_config);
-    const metadata = safeObject(configData.metadata);
-
-    return readGoogleVerificationCodeFromConfig({
-      publicConfig,
-      metadata,
-    });
-  } catch (error) {
-    console.error("GOOGLE_SITE_VERIFICATION_META_LOAD_FAILED", {
-      storeId: cleanStoreId,
-      error,
-    });
-
+  if (installationsError || !Array.isArray(installations)) {
     return "";
   }
+
+  const installation = installations.find((row: any) => {
+    const snapshot = safeObject(row?.app_snapshot);
+
+    return (
+      s(snapshot.key) === "google_site_verification" ||
+      s(snapshot.slug) === "google-site-verification"
+    );
+  });
+
+  if (!installation?.id) return "";
+
+  const installationId = s(installation.id);
+  const appId = s(installation.app_id);
+
+  if (!installationId || !appId) return "";
+
+  const { data: configData, error: configError } = await sb
+    .from("store_app_configs")
+    .select("id,enabled,public_config,metadata,updated_at")
+    .eq("store_id", storeId)
+    .eq("app_id", appId)
+    .eq("installation_id", installationId)
+    .eq("enabled", true)
+    .limit(1)
+    .maybeSingle();
+
+  if (configError || !configData?.id) return "";
+
+  const publicConfig = safeObject(configData.public_config);
+  const metadata = safeObject(configData.metadata);
+  const googleSiteVerification = safeObject(metadata.google_site_verification);
+
+  return (
+    extractGoogleVerificationCode(publicConfig.verification_code) ||
+    extractGoogleVerificationCode(publicConfig.verification_meta_tag) ||
+    extractGoogleVerificationCode(googleSiteVerification.verification_code) ||
+    extractGoogleVerificationCode(googleSiteVerification.verification_meta_tag)
+  );
 }
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -177,7 +143,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
   const storeId = String(store.id);
 
-  const [pwa, googleVerificationCode] = await Promise.all([
+  const [pwa, googleSiteVerificationCode] = await Promise.all([
     loadPwaSettings(storeId),
     loadGoogleSiteVerificationCode(storeId),
   ]);
@@ -199,24 +165,18 @@ export async function generateMetadata(): Promise<Metadata> {
       "/favicon.ico",
   );
 
-  const other: Record<string, string> = {
-    "theme-color": themeColor,
-    "mobile-web-app-capable": "yes",
-    "apple-mobile-web-app-capable": "yes",
-    "apple-mobile-web-app-title": shortName,
-    "apple-mobile-web-app-status-bar-style": "default",
-  };
-
-  if (googleVerificationCode) {
-    other["google-site-verification"] = googleVerificationCode;
-  }
-
   return {
     title: appName,
     description: s(store.description) || undefined,
 
     applicationName: appName,
     manifest: "/manifest.webmanifest",
+
+    verification: googleSiteVerificationCode
+      ? {
+          google: googleSiteVerificationCode,
+        }
+      : undefined,
 
     icons: {
       icon: iconUrl,
@@ -234,7 +194,13 @@ export async function generateMetadata(): Promise<Metadata> {
       telephone: false,
     },
 
-    other,
+    other: {
+      "theme-color": themeColor,
+      "mobile-web-app-capable": "yes",
+      "apple-mobile-web-app-capable": "yes",
+      "apple-mobile-web-app-title": shortName,
+      "apple-mobile-web-app-status-bar-style": "default",
+    },
   };
 }
 
