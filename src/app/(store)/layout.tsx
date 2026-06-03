@@ -10,6 +10,7 @@ import { loadCustomCode } from "@/theme-engine/injectors/custom-code";
 import { THEME_KIND, type ThemeCode } from "@/theme-engine/types";
 
 const PWA_SETTING_SLUGS = ["app/pwa", "store.pwa", "pwa"];
+const GOOGLE_SITE_VERIFICATION_APP_KEY = "google_site_verification";
 
 function s(value: unknown) {
   return String(value ?? "").trim();
@@ -47,6 +48,22 @@ function cleanColor(value: unknown, fallback: string) {
   return /^#[0-9a-f]{6}$/i.test(color) ? color : fallback;
 }
 
+function extractGoogleSiteVerificationContent(value: unknown) {
+  const clean = s(value);
+
+  if (!clean) return "";
+
+  const contentMatch = clean.match(/content=["']([^"']+)["']/i);
+  if (contentMatch?.[1]) return s(contentMatch[1]);
+
+  if (clean.includes("<meta")) return "";
+
+  return clean
+    .replace(/^google-site-verification=/i, "")
+    .replace(/^["']+|["']+$/g, "")
+    .trim();
+}
+
 async function loadPwaSettings(storeId: string) {
   const sb: any = await getStoreDb(storeId);
 
@@ -66,13 +83,77 @@ async function loadPwaSettings(storeId: string) {
   return safeObject(data[0]?.value);
 }
 
+async function loadGoogleSiteVerificationCode(storeId: string) {
+  const sb: any = await getStoreDb(storeId);
+
+  const { data: appData, error: appError } = await sb
+    .from("app_catalog")
+    .select("id,key,slug")
+    .eq("key", GOOGLE_SITE_VERIFICATION_APP_KEY)
+    .maybeSingle();
+
+  if (appError || !appData?.id) {
+    return "";
+  }
+
+  const appId = s(appData.id);
+
+  const { data: installationData, error: installationError } = await sb
+    .from("store_app_installations")
+    .select("id,store_id,app_id,status,config_status")
+    .eq("store_id", storeId)
+    .eq("app_id", appId)
+    .neq("status", "uninstalled")
+    .limit(1)
+    .maybeSingle();
+
+  if (installationError || !installationData?.id) {
+    return "";
+  }
+
+  const installationId = s(installationData.id);
+
+  const { data: configData, error: configError } = await sb
+    .from("store_app_configs")
+    .select("enabled,public_config,metadata")
+    .eq("store_id", storeId)
+    .eq("app_id", appId)
+    .eq("installation_id", installationId)
+    .maybeSingle();
+
+  if (configError || !configData) {
+    return "";
+  }
+
+  if (configData.enabled === false) {
+    return "";
+  }
+
+  const publicConfig = safeObject(configData.public_config);
+  const metadata = safeObject(configData.metadata);
+  const googleMeta = safeObject(metadata.google_site_verification);
+
+  return (
+    extractGoogleSiteVerificationContent(publicConfig.verification_code) ||
+    extractGoogleSiteVerificationContent(publicConfig.verification_meta_tag) ||
+    extractGoogleSiteVerificationContent(publicConfig.google_site_verification) ||
+    extractGoogleSiteVerificationContent(googleMeta.verification_code) ||
+    extractGoogleSiteVerificationContent(googleMeta.verification_meta_tag) ||
+    ""
+  );
+}
+
 export async function generateMetadata(): Promise<Metadata> {
   const ctx = await resolveStoreContext();
   const store = ctx.store as any;
 
   if (!store) return {};
 
-  const pwa = await loadPwaSettings(String(store.id));
+  const [pwa, googleSiteVerificationCode] = await Promise.all([
+    loadPwaSettings(String(store.id)),
+    loadGoogleSiteVerificationCode(String(store.id)),
+  ]);
+
   const icon = safeObject(pwa.icon);
 
   const appName = s(pwa.app_name) || s(store.name) || "Store";
@@ -119,6 +200,11 @@ export async function generateMetadata(): Promise<Metadata> {
       "apple-mobile-web-app-capable": "yes",
       "apple-mobile-web-app-title": shortName,
       "apple-mobile-web-app-status-bar-style": "default",
+      ...(googleSiteVerificationCode
+        ? {
+            "google-site-verification": googleSiteVerificationCode,
+          }
+        : {}),
     },
   };
 }
