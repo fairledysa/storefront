@@ -101,6 +101,10 @@ const PAGE_SELECT = [
   "updated_at",
 ].join(",");
 
+const META_DESCRIPTION_MAX = 155;
+const THEME_IMAGE_SCAN_MAX_DEPTH = 5;
+const THEME_IMAGE_SCAN_MAX_ITEMS = 80;
+
 /* -------------------------
    Request-level cached helpers
    الهدف: تقليل التكرار بين generateMetadata و Page
@@ -780,11 +784,19 @@ function stripHtml(value: unknown) {
     .trim();
 }
 
-function limitText(value: unknown, max = 160) {
+function limitText(value: unknown, max = META_DESCRIPTION_MAX) {
   const text = safeText(stripHtml(value));
   if (!text) return "";
   if (text.length <= max) return text;
-  return `${text.slice(0, max - 1).trim()}…`;
+
+  const sliced = text.slice(0, max).trim();
+  const lastSpace = sliced.lastIndexOf(" ");
+
+  if (lastSpace >= Math.floor(max * 0.68)) {
+    return sliced.slice(0, lastSpace).trim();
+  }
+
+  return sliced;
 }
 
 function toPositiveNumber(value: unknown) {
@@ -825,11 +837,163 @@ function pathFromSlug(slug: string[]) {
 }
 
 function getStoreDescription(store: any) {
-  return limitText(store?.description, 160) || s(store?.name) || "متجر إلكتروني";
+  return (
+    limitText(store?.description, META_DESCRIPTION_MAX) ||
+    s(store?.name) ||
+    "متجر إلكتروني"
+  );
 }
 
-function getStoreImage(store: any) {
-  return s(store?.logo_url) || s(store?.favicon_url) || "";
+function looksLikeImageUrl(value: unknown) {
+  const url = s(value);
+
+  if (!url) return false;
+  if (url.startsWith("data:")) return false;
+  if (url.startsWith("blob:")) return false;
+  if (url.startsWith("javascript:")) return false;
+
+  const lower = url.toLowerCase();
+
+  return (
+    lower.startsWith("http://") ||
+    lower.startsWith("https://") ||
+    lower.startsWith("/") ||
+    lower.includes(".jpg") ||
+    lower.includes(".jpeg") ||
+    lower.includes(".png") ||
+    lower.includes(".webp") ||
+    lower.includes(".avif") ||
+    lower.includes("/stores/") ||
+    lower.includes("/uploads/") ||
+    lower.includes("cdn.")
+  );
+}
+
+function collectThemeImageCandidates(
+  value: any,
+  out: string[],
+  depth = 0,
+  seen = new Set<any>(),
+) {
+  if (!value) return;
+  if (out.length >= THEME_IMAGE_SCAN_MAX_ITEMS) return;
+  if (depth > THEME_IMAGE_SCAN_MAX_DEPTH) return;
+
+  if (typeof value === "string") {
+    if (looksLikeImageUrl(value)) out.push(value);
+    return;
+  }
+
+  if (typeof value !== "object") return;
+  if (seen.has(value)) return;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    for (const item of value.slice(0, 24)) {
+      collectThemeImageCandidates(item, out, depth + 1, seen);
+      if (out.length >= THEME_IMAGE_SCAN_MAX_ITEMS) break;
+    }
+
+    return;
+  }
+
+  const priorityKeys = [
+    "og_image_url",
+    "ogImageUrl",
+    "og_image",
+    "ogImage",
+    "social_image_url",
+    "socialImageUrl",
+    "social_image",
+    "socialImage",
+    "share_image_url",
+    "shareImageUrl",
+    "share_image",
+    "shareImage",
+    "seo_image",
+    "seoImage",
+    "cover_url",
+    "coverUrl",
+    "cover",
+    "banner_url",
+    "bannerUrl",
+    "banner",
+    "desktop_image_url",
+    "desktopImageUrl",
+    "desktop_image",
+    "desktopImage",
+    "mobile_image_url",
+    "mobileImageUrl",
+    "mobile_image",
+    "mobileImage",
+    "image_url",
+    "imageUrl",
+    "image",
+    "src",
+    "url",
+    "logo_url",
+    "logoUrl",
+    "logo",
+  ];
+
+  for (const key of priorityKeys) {
+    if (!(key in value)) continue;
+
+    collectThemeImageCandidates(value[key], out, depth + 1, seen);
+
+    if (out.length >= THEME_IMAGE_SCAN_MAX_ITEMS) return;
+  }
+
+  for (const [key, child] of Object.entries(value)) {
+    if (priorityKeys.includes(key)) continue;
+
+    const lowerKey = key.toLowerCase();
+    const isLikelyImageKey =
+      lowerKey.includes("image") ||
+      lowerKey.includes("img") ||
+      lowerKey.includes("photo") ||
+      lowerKey.includes("media") ||
+      lowerKey.includes("banner") ||
+      lowerKey.includes("cover") ||
+      lowerKey.includes("logo") ||
+      lowerKey.includes("og") ||
+      lowerKey.includes("share") ||
+      lowerKey.includes("social") ||
+      lowerKey.includes("slider");
+
+    if (!isLikelyImageKey && depth > 1) continue;
+
+    collectThemeImageCandidates(child, out, depth + 1, seen);
+
+    if (out.length >= THEME_IMAGE_SCAN_MAX_ITEMS) return;
+  }
+}
+
+function getThemeSeoImage(themeOptions: any) {
+  const candidates: string[] = [];
+
+  collectThemeImageCandidates(themeOptions, candidates);
+
+  return candidates.find((url) => s(url)) || "";
+}
+
+function getStoreImage(store: any, themeOptions?: any) {
+  return (
+    s(store?.og_image_url) ||
+    s(store?.ogImageUrl) ||
+    s(store?.social_image_url) ||
+    s(store?.socialImageUrl) ||
+    s(store?.share_image_url) ||
+    s(store?.shareImageUrl) ||
+    s(store?.cover_url) ||
+    s(store?.coverUrl) ||
+    s(store?.banner_url) ||
+    s(store?.bannerUrl) ||
+    getThemeSeoImage(themeOptions) ||
+    s(store?.logo_url) ||
+    s(store?.favicon_url) ||
+    ""
+  );
 }
 
 function titleWithStore(title: string, storeName: string) {
@@ -852,11 +1016,13 @@ function makeMetadata(args: {
   storeName: string;
   image?: string | null;
   keywords?: string;
-  type?: "website" | "article";
+  type?: "website" | "article" | "product";
   index?: boolean;
 }): Metadata {
   const title = safeText(args.title) || args.storeName || "المتجر";
-  const description = limitText(args.description, 160) || args.storeName;
+  const description =
+    limitText(args.description, META_DESCRIPTION_MAX) || args.storeName;
+
   const canonical = absoluteUrl(args.origin, args.canonicalPath);
   const imageUrl = s(args.image) ? absoluteUrl(args.origin, s(args.image)) : "";
   const index = args.index !== false;
@@ -884,7 +1050,7 @@ function makeMetadata(args: {
       description,
       url: canonical,
       siteName: args.storeName,
-      type: args.type || "website",
+      type: (args.type || "website") as any,
       locale: "ar_SA",
       images: imageUrl
         ? [
@@ -1068,27 +1234,27 @@ function getProductImage(product: any) {
 
 function getProductDescription(product: any, storeDescription: string) {
   return (
-    limitText(product?.seo?.seo_description, 160) ||
-    limitText(product?.metadata?.seo_description, 160) ||
-    limitText(product?.description, 160) ||
-    limitText(product?.metadata?.descriptionHtml, 160) ||
-    limitText(product?.metadata?.subtitle, 160) ||
+    limitText(product?.seo?.seo_description, META_DESCRIPTION_MAX) ||
+    limitText(product?.metadata?.seo_description, META_DESCRIPTION_MAX) ||
+    limitText(product?.description, META_DESCRIPTION_MAX) ||
+    limitText(product?.metadata?.descriptionHtml, META_DESCRIPTION_MAX) ||
+    limitText(product?.metadata?.subtitle, META_DESCRIPTION_MAX) ||
     storeDescription
   );
 }
 
 function getCategoryDescription(category: any, storeDescription: string) {
   return (
-    limitText(category?.seo_description, 160) ||
-    limitText(category?.description, 160) ||
+    limitText(category?.seo_description, META_DESCRIPTION_MAX) ||
+    limitText(category?.description, META_DESCRIPTION_MAX) ||
     storeDescription
   );
 }
 
 function getInfoPageDescription(page: StorePageRow, storeDescription: string) {
   return (
-    limitText(page.seo_description, 160) ||
-    limitText(page.content, 160) ||
+    limitText(page.seo_description, META_DESCRIPTION_MAX) ||
+    limitText(page.content, META_DESCRIPTION_MAX) ||
     storeDescription
   );
 }
@@ -1697,7 +1863,7 @@ export async function generateMetadata(props: PageProps): Promise<Metadata> {
   const seoMode = await getSeoUrlModeCached(ctx.store.id);
   const storeName = s(ctx.store.name) || "المتجر";
   const storeDescription = getStoreDescription(ctx.store);
-  const storeImage = getStoreImage(ctx.store);
+  const storeImage = getStoreImage(ctx.store, ctx?.theme?.options);
   const currentPath = pathFromSlug(slug);
   const maintenance = await getStoreMaintenanceSettings(ctx.store.id);
 
@@ -1788,7 +1954,8 @@ export async function generateMetadata(props: PageProps): Promise<Metadata> {
       titleFromSlug(tagPageSlug);
 
     const description =
-      limitText(data?.tag?.description, 160) || storeDescription;
+      limitText(data?.tag?.description, META_DESCRIPTION_MAX) ||
+      storeDescription;
 
     return makeMetadata({
       origin,
@@ -1876,6 +2043,7 @@ export async function generateMetadata(props: PageProps): Promise<Metadata> {
       canonicalPath,
       storeName,
       image,
+      type: "product",
       keywords: buildKeywords([
         title,
         description,
@@ -1937,6 +2105,7 @@ export async function generateMetadata(props: PageProps): Promise<Metadata> {
         canonicalPath,
         storeName,
         image,
+        type: "product",
         keywords: buildKeywords([
           title,
           description,
@@ -2000,7 +2169,7 @@ export default async function Page(props: PageProps) {
   const origin = await getRequestOriginSafeCached();
   const storeName = s(ctx.store.name) || "المتجر";
   const storeDescription = getStoreDescription(ctx.store);
-  const storeImage = getStoreImage(ctx.store);
+  const storeImage = getStoreImage(ctx.store, ctx?.theme?.options);
 
   const maintenance = await getStoreMaintenanceSettings(ctx.store.id);
 
@@ -2081,7 +2250,8 @@ export default async function Page(props: PageProps) {
       s(data?.title) ||
       titleFromSlug(tagPageSlug);
     const tagDescription =
-      limitText(data?.tag?.description, 160) || storeDescription;
+      limitText(data?.tag?.description, META_DESCRIPTION_MAX) ||
+      storeDescription;
     const tagCanonicalPath = `/tag/${encodeURIComponent(tagPageSlug)}`;
 
     const jsonLdEntries = buildCategoryJsonLdEntries({
