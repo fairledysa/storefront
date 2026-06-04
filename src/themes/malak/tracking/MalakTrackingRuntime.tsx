@@ -67,6 +67,7 @@ declare global {
 
 const DEFAULT_CURRENCY = "SAR";
 const DEFAULT_DEVICE = "desktop";
+const MAX_VIEW_CATEGORY_ITEMS = 24;
 
 function s(value: unknown) {
   return String(value ?? "").trim();
@@ -108,6 +109,10 @@ function firstText(...values: any[]) {
 function safeObject(value: any): Record<string, any> {
   if (value && typeof value === "object" && !Array.isArray(value)) return value;
   return {};
+}
+
+function safeArray(value: any): any[] {
+  return Array.isArray(value) ? value : [];
 }
 
 function getCurrentPath() {
@@ -160,6 +165,22 @@ function getRoute(data: any) {
   return firstText(data?.route, data?.pageType, data?.page_type);
 }
 
+function getRouteForTracking(data: any) {
+  const direct = getRoute(data);
+  if (direct) return direct;
+
+  if (data?.product?.id || data?.product) return "product";
+  if (data?.category?.id || data?.category) return "category";
+
+  const path = getCurrentPath();
+
+  if (path === "/" || path === "") return "home";
+  if (/\/c\d+/i.test(path) || path.includes("/category")) return "category";
+  if (path.includes("/categories")) return "categories";
+
+  return "";
+}
+
 function getSelectedOptionsText(value: any) {
   if (!Array.isArray(value)) return "";
 
@@ -184,6 +205,29 @@ function normalizeCategoriesFromVm(productVm: ProductDetailVM) {
     .map((category) => s(category?.name))
     .filter(Boolean)
     .slice(0, 5);
+}
+
+function normalizeCategoriesFromRawProduct(product: any) {
+  const sources = [
+    product?.categories,
+    product?.seo?.categories,
+    product?.metadata?.categories,
+    product?.raw?.categories,
+    product?.raw?.seo?.categories,
+  ];
+
+  const out: string[] = [];
+
+  for (const source of sources) {
+    if (!Array.isArray(source)) continue;
+
+    for (const category of source) {
+      const name = firstText(category?.name, category?.title, category);
+      if (name) out.push(name);
+    }
+  }
+
+  return Array.from(new Set(out)).slice(0, 5);
 }
 
 function buildCategoryFields(categories: string[]) {
@@ -267,6 +311,70 @@ function buildProductVm(args: {
   } catch {
     return null;
   }
+}
+
+function buildProductVmFromRawProduct(args: {
+  product: any;
+  data: any;
+  bootstrap?: MalakBootstrap;
+}): ProductDetailVM | null {
+  if (!args.product) return null;
+
+  try {
+    return toProductDetailVM({
+      storeSlug: "",
+      product: args.product,
+      currencies: getBootstrapCurrencies(args.data, args.bootstrap),
+      tax: getBootstrapTax(args.data, args.bootstrap),
+    } as any);
+  } catch {
+    return null;
+  }
+}
+
+function buildTrackingItemFromRawProduct(args: {
+  product: any;
+  data: any;
+  bootstrap?: MalakBootstrap;
+  fallbackCategories?: string[];
+  quantity?: number;
+}): TrackingItem | null {
+  const productVm = buildProductVmFromRawProduct({
+    product: args.product,
+    data: args.data,
+    bootstrap: args.bootstrap,
+  });
+
+  if (!productVm) return null;
+
+  const item = buildTrackingItemFromProductVm({
+    productVm,
+    quantity: args.quantity ?? 1,
+  });
+
+  if (!item) return null;
+
+  const hasCategory = Boolean(
+    item.item_category ||
+      item.item_category2 ||
+      item.item_category3 ||
+      item.item_category4 ||
+      item.item_category5,
+  );
+
+  if (!hasCategory) {
+    const categories = [
+      ...(args.fallbackCategories || []),
+      ...normalizeCategoriesFromRawProduct(args.product),
+    ]
+      .map(s)
+      .filter(Boolean)
+      .slice(0, 5);
+
+    Object.assign(item, buildCategoryFields(categories));
+  }
+
+  return item;
 }
 
 function readAddToCartProductId(detail: any) {
@@ -497,6 +605,284 @@ function buildTrackingItemFromAddToCartDetail(detail: any): {
   };
 }
 
+function looksLikeProduct(value: any) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+
+  const id = firstText(value.id, value.product_id, value.productId);
+  const name = firstText(value.name, value.title, value.product?.name);
+
+  if (!id || !name) return false;
+
+  return Boolean(
+    value.price !== undefined ||
+      value.sale_price !== undefined ||
+      value.salePrice !== undefined ||
+      value.regular_price !== undefined ||
+      value.regularPrice !== undefined ||
+      value.compareAtPrice !== undefined ||
+      value.compare_at_price !== undefined ||
+      value.pricing ||
+      value.product_pricing ||
+      value.stock ||
+      value.variants ||
+      value.options ||
+      value.metadata?.base_price_fallback !== undefined ||
+      value.metadata?.basePriceFallback !== undefined ||
+      value.metadata?.variants_price_min !== undefined ||
+      value.metadata?.variantsPriceMin !== undefined ||
+      value.product_type ||
+      value.productType,
+  );
+}
+
+function pushProductRows(target: any[], value: any) {
+  if (!value) return;
+
+  if (Array.isArray(value)) {
+    for (const row of value) {
+      if (looksLikeProduct(row)) target.push(row);
+    }
+
+    return;
+  }
+
+  if (looksLikeProduct(value)) {
+    target.push(value);
+  }
+}
+
+function collectProductsFromSection(target: any[], section: any) {
+  if (!section || typeof section !== "object") return;
+
+  pushProductRows(target, section.products);
+  pushProductRows(target, section.product_items);
+  pushProductRows(target, section.productItems);
+  pushProductRows(target, section.linkedProducts);
+  pushProductRows(target, section.linked_products);
+
+  pushProductRows(target, section.items);
+
+  pushProductRows(target, section.data?.products);
+  pushProductRows(target, section.data?.items);
+
+  pushProductRows(target, section.value?.products);
+  pushProductRows(target, section.value?.items);
+
+  pushProductRows(target, section.values?.products);
+  pushProductRows(target, section.values?.items);
+
+  pushProductRows(target, section.settings?.products);
+  pushProductRows(target, section.options?.products);
+}
+
+function collectProductsForViewCategory(data: any) {
+  const out: any[] = [];
+
+  pushProductRows(out, data?.products);
+  pushProductRows(out, data?.items);
+  pushProductRows(out, data?.productItems);
+  pushProductRows(out, data?.product_items);
+  pushProductRows(out, data?.results);
+  pushProductRows(out, data?.results?.items);
+  pushProductRows(out, data?.results?.products);
+
+  pushProductRows(out, data?.category?.products);
+  pushProductRows(out, data?.category?.items);
+  pushProductRows(out, data?.categoryProducts);
+  pushProductRows(out, data?.category_products);
+
+  pushProductRows(out, data?.home?.products);
+  pushProductRows(out, data?.home?.items);
+
+  pushProductRows(out, data?.featuredProducts);
+  pushProductRows(out, data?.featured_products);
+  pushProductRows(out, data?.latestProducts);
+  pushProductRows(out, data?.latest_products);
+  pushProductRows(out, data?.bestSellingProducts);
+  pushProductRows(out, data?.best_selling_products);
+
+  for (const section of safeArray(data?.sections)) {
+    collectProductsFromSection(out, section);
+  }
+
+  for (const section of safeArray(data?.blocks)) {
+    collectProductsFromSection(out, section);
+  }
+
+  for (const section of safeArray(data?.home?.sections)) {
+    collectProductsFromSection(out, section);
+  }
+
+  for (const section of safeArray(data?.page?.sections)) {
+    collectProductsFromSection(out, section);
+  }
+
+  for (const section of safeArray(data?.content?.sections)) {
+    collectProductsFromSection(out, section);
+  }
+
+  const seen = new Set<string>();
+  const unique: any[] = [];
+
+  for (const product of out) {
+    const key =
+      firstText(
+        product?.id,
+        product?.product_id,
+        product?.productId,
+        product?.public_no,
+        product?.publicNo,
+        product?.href,
+        product?.url,
+      ) || JSON.stringify(product).slice(0, 120);
+
+    if (!key || seen.has(key)) continue;
+
+    seen.add(key);
+    unique.push(product);
+
+    if (unique.length >= MAX_VIEW_CATEGORY_ITEMS) break;
+  }
+
+  return unique;
+}
+
+function readCategoryObject(data: any) {
+  return safeObject(
+    data?.category ||
+      data?.currentCategory ||
+      data?.current_category ||
+      data?.collection ||
+      data?.taxonomy ||
+      data?.group,
+  );
+}
+
+function readViewCategoryName(args: { data: any; route: string }) {
+  const category = readCategoryObject(args.data);
+
+  if (args.route === "home") {
+    return firstText(
+      args.data?.home?.title,
+      args.data?.page?.title,
+      args.data?.store?.name,
+      "الرئيسية",
+    );
+  }
+
+  if (args.route === "categories") {
+    return firstText(
+      args.data?.title,
+      args.data?.page?.title,
+      args.data?.heading,
+      "الأقسام",
+    );
+  }
+
+  return firstText(
+    category?.name,
+    category?.title,
+    args.data?.categoryName,
+    args.data?.category_name,
+    args.data?.title,
+    args.data?.heading,
+    args.data?.seo?.title,
+    "القسم",
+  );
+}
+
+function readViewCategoryId(args: { data: any; route: string }) {
+  const category = readCategoryObject(args.data);
+
+  if (args.route === "home") return "home";
+  if (args.route === "categories") return "categories";
+
+  return (
+    firstText(
+      category?.id,
+      category?.public_no,
+      category?.publicNo,
+      args.data?.category_id,
+      args.data?.categoryId,
+    ) || args.route
+  );
+}
+
+function isViewCategoryRoute(route: string, data: any) {
+  if (route === "home") return true;
+  if (route === "category") return true;
+  if (route === "categories") return true;
+
+  if (route === "product") return false;
+  if (data?.product?.id || data?.product) return false;
+
+  if (data?.category?.id || data?.category) return true;
+
+  return false;
+}
+
+function buildViewCategoryEvent(args: {
+  data: any;
+  bootstrap?: MalakBootstrap;
+  device: string;
+}): TrackingEvent | null {
+  const route = getRouteForTracking(args.data);
+
+  if (!isViewCategoryRoute(route, args.data)) return null;
+
+  const categoryName = readViewCategoryName({
+    data: args.data,
+    route,
+  });
+
+  const categoryId = readViewCategoryId({
+    data: args.data,
+    route,
+  });
+
+  const fallbackCategories =
+    route === "category" && categoryName ? [categoryName] : [];
+
+  const rawProducts = collectProductsForViewCategory(args.data);
+
+  const items = rawProducts
+    .map((product) =>
+      buildTrackingItemFromRawProduct({
+        product,
+        data: args.data,
+        bootstrap: args.bootstrap,
+        fallbackCategories,
+        quantity: 1,
+      }),
+    )
+    .filter((item): item is TrackingItem => item !== null);
+
+  const currency = getFallbackCurrency(args.data, args.bootstrap);
+  const value = roundMoney(
+    items.reduce((sum, item) => {
+      return sum + Number(item.price || 0) * Number(item.quantity || 1);
+    }, 0),
+  );
+
+  return {
+    name: "view_category",
+    currency,
+    value,
+    items,
+    source: "malak_storefront",
+    device: args.device || DEFAULT_DEVICE,
+    route: route || "unknown",
+    path: getCurrentPath(),
+    payload: {
+      category_id: categoryId || null,
+      category_name: categoryName || null,
+      item_list_id: categoryId || route || null,
+      item_list_name: categoryName || route || null,
+      products_count: items.length,
+    },
+  };
+}
+
 function sendToGoogleAnalytics(event: TrackingEvent) {
   if (typeof window === "undefined") return;
 
@@ -504,17 +890,35 @@ function sendToGoogleAnalytics(event: TrackingEvent) {
     currency: event.currency,
     value: event.value,
     items: event.items,
+    ...(event.payload?.item_list_id
+      ? { item_list_id: event.payload.item_list_id }
+      : {}),
+    ...(event.payload?.item_list_name
+      ? { item_list_name: event.payload.item_list_name }
+      : {}),
+    ...(event.payload?.category_id
+      ? { category_id: event.payload.category_id }
+      : {}),
+    ...(event.payload?.category_name
+      ? { category_name: event.payload.category_name }
+      : {}),
   };
 
   if (typeof window.gtag === "function") {
     window.gtag("event", event.name, ecommercePayload);
+    return;
   }
+
+  window.dataLayer = window.dataLayer || [];
+  window.dataLayer.push(["event", event.name, ecommercePayload]);
 }
 
 function pushToDataLayer(event: TrackingEvent) {
   if (typeof window === "undefined") return;
 
   window.dataLayer = window.dataLayer || [];
+
+  window.dataLayer.push({ ecommerce: null });
 
   window.dataLayer.push({
     event: "mk_tracking_event",
@@ -527,6 +931,12 @@ function pushToDataLayer(event: TrackingEvent) {
       currency: event.currency,
       value: event.value,
       items: event.items,
+      ...(event.payload?.item_list_id
+        ? { item_list_id: event.payload.item_list_id }
+        : {}),
+      ...(event.payload?.item_list_name
+        ? { item_list_name: event.payload.item_list_name }
+        : {}),
     },
     payload: event.payload || {},
   });
@@ -602,7 +1012,9 @@ function buildAddToCartEvent(args: {
   const built = buildTrackingItemFromAddToCartDetail(args.detail);
   if (!built.item) return null;
 
-  const rawItem = safeObject(args.detail?.item || args.detail?.product || args.detail);
+  const rawItem = safeObject(
+    args.detail?.item || args.detail?.product || args.detail,
+  );
 
   const currency = readAddToCartCurrency({
     item: rawItem,
@@ -633,6 +1045,7 @@ export default function MalakTrackingRuntime({
   device = DEFAULT_DEVICE,
 }: Props) {
   const sentViewItemsRef = useRef<Set<string>>(new Set());
+  const sentViewCategoriesRef = useRef<Set<string>>(new Set());
 
   const productVm = useMemo(() => {
     return buildProductVm({
@@ -641,8 +1054,31 @@ export default function MalakTrackingRuntime({
     });
   }, [data, bootstrap]);
 
-  const route = getRoute(data);
+  const route = getRouteForTracking(data);
   const productId = s(productVm?.id);
+
+  useEffect(() => {
+    const event = buildViewCategoryEvent({
+      data,
+      bootstrap,
+      device,
+    });
+
+    if (!event) return;
+
+    const key = [
+      event.name,
+      event.route,
+      event.path,
+      event.payload?.item_list_id || "",
+      event.payload?.item_list_name || "",
+    ].join("|");
+
+    if (sentViewCategoriesRef.current.has(key)) return;
+
+    sentViewCategoriesRef.current.add(key);
+    sendTrackingEvent(event);
+  }, [data, bootstrap, device, route]);
 
   useEffect(() => {
     if (!productVm) return;
