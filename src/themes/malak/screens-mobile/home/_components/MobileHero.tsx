@@ -33,20 +33,12 @@ const SWIPE_MIN_DISTANCE = 34;
 const SWIPE_LOCK_DISTANCE = 8;
 const AUTOPLAY_DELAY = 4200;
 const RESUME_AFTER_INTERACTION = 5200;
-const SNAP_AFTER_MS = 460;
 
 const SLIDE_TRANSITION =
   "transform 420ms cubic-bezier(0.22, 0.85, 0.22, 1)";
 
 function s(value: any) {
   return String(value ?? "").trim();
-}
-
-function cssUrl(value: any) {
-  const url = s(value);
-  if (!url) return "none";
-
-  return `url(${JSON.stringify(url)})`;
 }
 
 function isModifiedClick(event: MouseEvent) {
@@ -89,47 +81,13 @@ export default function MobileHero({ slides }: Props) {
   const total = cleanSlides.length;
   const hasMany = total > 1;
 
-  const renderSlides = useMemo(() => {
-    if (!cleanSlides.length) return [];
-
-    if (!hasMany) {
-      return cleanSlides.map((slide, index) => ({
-        key: slide.id || `slide-${index}`,
-        slide,
-        originalIndex: index,
-      }));
-    }
-
-    const first = cleanSlides[0];
-    const last = cleanSlides[cleanSlides.length - 1];
-
-    return [
-      {
-        key: `clone-last-${last.id || "last"}`,
-        slide: last,
-        originalIndex: total - 1,
-      },
-      ...cleanSlides.map((slide, index) => ({
-        key: slide.id || `slide-${index}`,
-        slide,
-        originalIndex: index,
-      })),
-      {
-        key: `clone-first-${first.id || "first"}`,
-        slide: first,
-        originalIndex: 0,
-      },
-    ];
-  }, [cleanSlides, hasMany, total]);
-
-  const [visualIndex, setVisualIndex] = useState(hasMany ? 1 : 0);
+  const [visualIndex, setVisualIndex] = useState(0);
   const [dragX, setDragX] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [paused, setPaused] = useState(false);
   const [transitionEnabled, setTransitionEnabled] = useState(true);
 
   const resumeTimerRef = useRef<number | null>(null);
-  const snapTimerRef = useRef<number | null>(null);
 
   const gestureRef = useRef({
     active: false,
@@ -143,11 +101,11 @@ export default function MobileHero({ slides }: Props) {
 
   const clickBlockedRef = useRef(false);
 
-  const actualIndex = hasMany ? normalizeIndex(visualIndex - 1, total) : 0;
+  const actualIndex = hasMany ? normalizeIndex(visualIndex, total) : 0;
 
   useEffect(() => {
     setTransitionEnabled(false);
-    setVisualIndex(hasMany ? 1 : 0);
+    setVisualIndex(0);
     setDragX(0);
     setDragging(false);
 
@@ -156,21 +114,7 @@ export default function MobileHero({ slides }: Props) {
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [hasMany, total]);
-
-  useEffect(() => {
-    cleanSlides.slice(0, 3).forEach((slide) => {
-      const href = resolveInternalHref(slide.href);
-
-      if (!href) return;
-
-      try {
-        router.prefetch(href);
-      } catch {
-        // ignore
-      }
-    });
-  }, [cleanSlides, router]);
+  }, [total]);
 
   useEffect(() => {
     if (!hasMany || paused || dragging) return;
@@ -178,59 +122,21 @@ export default function MobileHero({ slides }: Props) {
     const timer = window.setInterval(() => {
       setTransitionEnabled(true);
       setDragX(0);
-
-      setVisualIndex((index) => {
-        if (index >= total + 1) return 1;
-        return index + 1;
-      });
+      setVisualIndex((index) => normalizeIndex(index + 1, total));
     }, AUTOPLAY_DELAY);
 
     return () => window.clearInterval(timer);
   }, [dragging, hasMany, paused, total]);
 
   useEffect(() => {
-    if (!hasMany) return;
-    if (visualIndex !== 0 && visualIndex !== total + 1) return;
-
-    if (snapTimerRef.current) {
-      window.clearTimeout(snapTimerRef.current);
-    }
-
-    snapTimerRef.current = window.setTimeout(() => {
-      setTransitionEnabled(false);
-      setDragX(0);
-      setVisualIndex(visualIndex === 0 ? total : 1);
-
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => {
-          setTransitionEnabled(true);
-        });
-      });
-
-      snapTimerRef.current = null;
-    }, SNAP_AFTER_MS);
-
-    return () => {
-      if (snapTimerRef.current) {
-        window.clearTimeout(snapTimerRef.current);
-        snapTimerRef.current = null;
-      }
-    };
-  }, [hasMany, total, visualIndex]);
-
-  useEffect(() => {
     return () => {
       if (resumeTimerRef.current) {
         window.clearTimeout(resumeTimerRef.current);
       }
-
-      if (snapTimerRef.current) {
-        window.clearTimeout(snapTimerRef.current);
-      }
     };
   }, []);
 
-  if (!cleanSlides.length || !renderSlides.length) return null;
+  if (!cleanSlides.length) return null;
 
   function pauseThenResume() {
     setPaused(true);
@@ -260,7 +166,7 @@ export default function MobileHero({ slides }: Props) {
     setDragging(false);
     setTransitionEnabled(true);
     setDragX(0);
-    setVisualIndex(index + 1);
+    setVisualIndex(normalizeIndex(index, total));
   }
 
   function goPrev() {
@@ -270,11 +176,7 @@ export default function MobileHero({ slides }: Props) {
     setDragging(false);
     setTransitionEnabled(true);
     setDragX(0);
-
-    setVisualIndex((index) => {
-      if (index <= 0) return total;
-      return index - 1;
-    });
+    setVisualIndex((index) => normalizeIndex(index - 1, total));
   }
 
   function goNext() {
@@ -284,11 +186,7 @@ export default function MobileHero({ slides }: Props) {
     setDragging(false);
     setTransitionEnabled(true);
     setDragX(0);
-
-    setVisualIndex((index) => {
-      if (index >= total + 1) return 1;
-      return index + 1;
-    });
+    setVisualIndex((index) => normalizeIndex(index + 1, total));
   }
 
   function resetGesture() {
@@ -525,44 +423,6 @@ export default function MobileHero({ slides }: Props) {
     cancelGesture();
   }
 
-  function handleTrackTransitionEnd(event?: any) {
-    if (!hasMany) return;
-
-    if (
-      event?.target &&
-      event?.currentTarget &&
-      event.target !== event.currentTarget
-    ) {
-      return;
-    }
-
-    if (visualIndex === 0) {
-      setTransitionEnabled(false);
-      setDragX(0);
-      setVisualIndex(total);
-
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => {
-          setTransitionEnabled(true);
-        });
-      });
-
-      return;
-    }
-
-    if (visualIndex === total + 1) {
-      setTransitionEnabled(false);
-      setDragX(0);
-      setVisualIndex(1);
-
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => {
-          setTransitionEnabled(true);
-        });
-      });
-    }
-  }
-
   function handleLinkClick(event: MouseEvent<HTMLAnchorElement>, href: string) {
     if (event.defaultPrevented) return;
 
@@ -579,12 +439,6 @@ export default function MobileHero({ slides }: Props) {
 
     event.preventDefault();
 
-    try {
-      router.prefetch(internalHref);
-    } catch {
-      // ignore
-    }
-
     startMobileNavigation({
       href: internalHref,
       source: "programmatic",
@@ -593,11 +447,21 @@ export default function MobileHero({ slides }: Props) {
     router.push(internalHref);
   }
 
-  const count = renderSlides.length;
+  function shouldRenderSlideImage(index: number) {
+    if (!hasMany) return true;
+    if (total <= 3) return true;
+
+    const prevIndex = normalizeIndex(actualIndex - 1, total);
+    const nextIndex = normalizeIndex(actualIndex + 1, total);
+
+    return index === actualIndex || index === prevIndex || index === nextIndex;
+  }
+
+  const count = cleanSlides.length;
   const slideSize = 100 / Math.max(1, count);
 
   const trackTransform = `translate3d(calc(-${
-    visualIndex * slideSize
+    actualIndex * slideSize
   }% + ${dragX}px), 0, 0)`;
 
   return (
@@ -624,7 +488,6 @@ export default function MobileHero({ slides }: Props) {
           <div className="mk-mhero__viewport" dir="ltr">
             <div
               className="mk-mhero__track"
-              onTransitionEnd={handleTrackTransitionEnd}
               style={
                 {
                   width: `${count * 100}%`,
@@ -636,66 +499,73 @@ export default function MobileHero({ slides }: Props) {
                 } as CSSProperties
               }
             >
-              {renderSlides.map(({ key, slide, originalIndex }) => (
-                <div
-                  key={key}
-                  className="mk-mhero__slide"
-                  dir="rtl"
-                  style={
-                    {
-                      width: `${slideSize}%`,
-                      flex: `0 0 ${slideSize}%`,
-                    } as CSSProperties
-                  }
-                >
-                  <div className="mk-mhero__slideInner">
-                    <Link
-                      href={slide.href || "#"}
-                      className="mk-mhero__link"
-                      aria-label={slide.title || `slide-${originalIndex + 1}`}
-                      draggable={false}
-                      onClick={(event) => handleLinkClick(event, slide.href)}
-                      onDragStart={(event) => event.preventDefault()}
-                      style={
-                        {
-                          "--mk-mhero-bg": cssUrl(slide.image),
-                        } as CSSProperties
-                      }
-                    >
-                      <img
-                        className="mk-mhero__img"
-                        src={slide.image}
-                        alt={slide.title || `slide-${originalIndex + 1}`}
-                        loading={originalIndex === 0 ? "eager" : "lazy"}
-                        fetchPriority={originalIndex === 0 ? "high" : "low"}
-                        decoding="async"
-                        width={1242}
-                        height={1427}
-                        sizes="100vw"
+              {cleanSlides.map((slide, originalIndex) => {
+                const isActive = originalIndex === actualIndex;
+                const shouldRenderImage = shouldRenderSlideImage(originalIndex);
+
+                return (
+                  <div
+                    key={slide.id || `slide-${originalIndex}`}
+                    className="mk-mhero__slide"
+                    dir="rtl"
+                    style={
+                      {
+                        width: `${slideSize}%`,
+                        flex: `0 0 ${slideSize}%`,
+                      } as CSSProperties
+                    }
+                  >
+                    <div className="mk-mhero__slideInner">
+                      <Link
+                        href={slide.href || "#"}
+                        prefetch={false}
+                        className="mk-mhero__link"
+                        aria-label={
+                          slide.title || `slide-${originalIndex + 1}`
+                        }
                         draggable={false}
-                      />
-
-                      <div className="mk-mhero__content" aria-hidden="true">
-                        {slide.title ? (
-                          <h2 className="mk-mhero__title">{slide.title}</h2>
+                        onClick={(event) =>
+                          handleLinkClick(event, slide.href)
+                        }
+                        onDragStart={(event) => event.preventDefault()}
+                      >
+                        {shouldRenderImage ? (
+                          <img
+                            className="mk-mhero__img"
+                            src={slide.image}
+                            alt={slide.title || `slide-${originalIndex + 1}`}
+                            loading={isActive ? "eager" : "lazy"}
+                            fetchPriority={isActive ? "high" : "low"}
+                            decoding={isActive ? "sync" : "async"}
+                            width={1080}
+                            height={1350}
+                            sizes="100vw"
+                            draggable={false}
+                          />
                         ) : null}
 
-                        {slide.description ? (
-                          <p className="mk-mhero__desc">
-                            {slide.description}
-                          </p>
-                        ) : null}
+                        <div className="mk-mhero__content" aria-hidden="true">
+                          {slide.title ? (
+                            <h2 className="mk-mhero__title">{slide.title}</h2>
+                          ) : null}
 
-                        {slide.buttonText ? (
-                          <span className="mk-mhero__button">
-                            {slide.buttonText}
-                          </span>
-                        ) : null}
-                      </div>
-                    </Link>
+                          {slide.description ? (
+                            <p className="mk-mhero__desc">
+                              {slide.description}
+                            </p>
+                          ) : null}
+
+                          {slide.buttonText ? (
+                            <span className="mk-mhero__button">
+                              {slide.buttonText}
+                            </span>
+                          ) : null}
+                        </div>
+                      </Link>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
