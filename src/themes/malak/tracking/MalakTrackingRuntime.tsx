@@ -5,7 +5,9 @@
 import { useEffect, useMemo, useRef } from "react";
 
 import {
+  toProductCardVM,
   toProductDetailVM,
+  type ProductCardVM,
   type ProductDetailVM,
 } from "@/data/viewmodels/product.vm";
 import type { MalakBootstrap } from "../bootstrap/types";
@@ -19,6 +21,7 @@ type Props = {
 type TrackingEventName =
   | "view_item"
   | "add_to_cart"
+  | "select_item"
   | "begin_checkout"
   | "purchase"
   | "search"
@@ -36,6 +39,10 @@ type TrackingItem = {
   item_category5?: string;
 
   item_variant?: string;
+  item_list_id?: string;
+  item_list_name?: string;
+
+  index?: number;
   price?: number;
   discount?: number;
   quantity?: number;
@@ -58,6 +65,17 @@ type TrackingEvent = {
   payload?: Record<string, any>;
 };
 
+type TrackingListState = {
+  itemListId: string;
+  itemListName: string;
+  currency: string;
+  value: number;
+  route: string;
+  path: string;
+  items: TrackingItem[];
+  itemsById: Map<string, TrackingItem>;
+};
+
 declare global {
   interface Window {
     dataLayer?: any[];
@@ -67,7 +85,7 @@ declare global {
 
 const DEFAULT_CURRENCY = "SAR";
 const DEFAULT_DEVICE = "desktop";
-const MAX_VIEW_CATEGORY_ITEMS = 24;
+const SOURCE = "malak_storefront" as const;
 
 function s(value: unknown) {
   return String(value ?? "").trim();
@@ -108,11 +126,20 @@ function firstText(...values: any[]) {
 
 function safeObject(value: any): Record<string, any> {
   if (value && typeof value === "object" && !Array.isArray(value)) return value;
-  return {};
-}
 
-function safeArray(value: any): any[] {
-  return Array.isArray(value) ? value : [];
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed;
+      }
+    } catch {
+      //
+    }
+  }
+
+  return {};
 }
 
 function getCurrentPath() {
@@ -165,22 +192,6 @@ function getRoute(data: any) {
   return firstText(data?.route, data?.pageType, data?.page_type);
 }
 
-function getRouteForTracking(data: any) {
-  const direct = getRoute(data);
-  if (direct) return direct;
-
-  if (data?.product?.id || data?.product) return "product";
-  if (data?.category?.id || data?.category) return "category";
-
-  const path = getCurrentPath();
-
-  if (path === "/" || path === "") return "home";
-  if (/\/c\d+/i.test(path) || path.includes("/category")) return "category";
-  if (path.includes("/categories")) return "categories";
-
-  return "";
-}
-
 function getSelectedOptionsText(value: any) {
   if (!Array.isArray(value)) return "";
 
@@ -207,23 +218,33 @@ function normalizeCategoriesFromVm(productVm: ProductDetailVM) {
     .slice(0, 5);
 }
 
-function normalizeCategoriesFromRawProduct(product: any) {
+function normalizeCategoriesFromRaw(row: any) {
   const sources = [
-    product?.categories,
-    product?.seo?.categories,
-    product?.metadata?.categories,
-    product?.raw?.categories,
-    product?.raw?.seo?.categories,
+    row?.categories,
+    row?.seo?.categories,
+    row?.raw?.categories,
+    row?.metadata?.categories,
+    row?.category_path,
+    row?.categoryPath,
   ];
 
   const out: string[] = [];
 
   for (const source of sources) {
-    if (!Array.isArray(source)) continue;
-
-    for (const category of source) {
-      const name = firstText(category?.name, category?.title, category);
-      if (name) out.push(name);
+    if (Array.isArray(source)) {
+      for (const item of source) {
+        const name = firstText(item?.name, item?.title, item?.label, item);
+        if (name) out.push(name);
+      }
+    } else {
+      const text = firstText(source);
+      if (text) {
+        text
+          .split("/")
+          .map((item) => item.trim())
+          .filter(Boolean)
+          .forEach((item) => out.push(item));
+      }
     }
   }
 
@@ -245,6 +266,9 @@ function buildTrackingItemFromProductVm(args: {
   quantity?: number;
   selectedOptions?: Array<{ name: string; value: string }>;
   variantId?: string | null;
+  index?: number;
+  itemListId?: string;
+  itemListName?: string;
 }): TrackingItem | null {
   const productVm = args.productVm;
   const productId = s(productVm.id);
@@ -283,12 +307,68 @@ function buildTrackingItemFromProductVm(args: {
         }
       : {}),
 
+    ...(args.itemListId ? { item_list_id: args.itemListId } : {}),
+    ...(args.itemListName ? { item_list_name: args.itemListName } : {}),
+    ...(typeof args.index === "number" ? { index: args.index } : {}),
+
     price,
     ...(discount > 0 ? { discount } : {}),
     quantity: Math.max(1, Number(args.quantity || 1)),
 
     product_id: productId,
     variant_id: args.variantId || null,
+    product_public_no: productVm.publicNo ?? null,
+    image_url: productVm.imageUrl || productVm.image_url || null,
+  };
+}
+
+function buildTrackingItemFromProductCardVm(args: {
+  productVm: ProductCardVM;
+  rawProduct?: any;
+  quantity?: number;
+  index?: number;
+  itemListId?: string;
+  itemListName?: string;
+}): TrackingItem | null {
+  const productVm = args.productVm;
+  const rawProduct = args.rawProduct ?? productVm.raw ?? {};
+  const productId = s(productVm.id);
+  const itemName = firstText(productVm.title, rawProduct?.name, rawProduct?.title);
+
+  if (!productId || !itemName) return null;
+
+  const price = roundMoney(productVm.price);
+  const compareAtPrice = safeNum(productVm.compareAtPrice);
+
+  const discount =
+    compareAtPrice !== null && compareAtPrice > price
+      ? roundMoney(compareAtPrice - price)
+      : 0;
+
+  const categories = normalizeCategoriesFromRaw(rawProduct);
+
+  return {
+    item_id: productId,
+    item_name: itemName,
+
+    ...(productVm.brandName || productVm.brand
+      ? {
+          item_brand: s(productVm.brandName || productVm.brand),
+        }
+      : {}),
+
+    ...buildCategoryFields(categories),
+
+    ...(args.itemListId ? { item_list_id: args.itemListId } : {}),
+    ...(args.itemListName ? { item_list_name: args.itemListName } : {}),
+    ...(typeof args.index === "number" ? { index: args.index } : {}),
+
+    price,
+    ...(discount > 0 ? { discount } : {}),
+    quantity: Math.max(1, Number(args.quantity || 1)),
+
+    product_id: productId,
+    variant_id: null,
     product_public_no: productVm.publicNo ?? null,
     image_url: productVm.imageUrl || productVm.image_url || null,
   };
@@ -313,68 +393,33 @@ function buildProductVm(args: {
   }
 }
 
-function buildProductVmFromRawProduct(args: {
-  product: any;
+function buildProductCardVm(args: {
+  rawProduct: any;
   data: any;
   bootstrap?: MalakBootstrap;
-}): ProductDetailVM | null {
-  if (!args.product) return null;
+}): ProductCardVM | null {
+  const rawProduct = args.rawProduct;
+  if (!rawProduct) return null;
+
+  if (
+    rawProduct?.id &&
+    rawProduct?.title &&
+    rawProduct?.href &&
+    rawProduct?.price !== undefined
+  ) {
+    return rawProduct as ProductCardVM;
+  }
 
   try {
-    return toProductDetailVM({
+    return toProductCardVM({
       storeSlug: "",
-      product: args.product,
+      product: rawProduct,
       currencies: getBootstrapCurrencies(args.data, args.bootstrap),
       tax: getBootstrapTax(args.data, args.bootstrap),
     } as any);
   } catch {
     return null;
   }
-}
-
-function buildTrackingItemFromRawProduct(args: {
-  product: any;
-  data: any;
-  bootstrap?: MalakBootstrap;
-  fallbackCategories?: string[];
-  quantity?: number;
-}): TrackingItem | null {
-  const productVm = buildProductVmFromRawProduct({
-    product: args.product,
-    data: args.data,
-    bootstrap: args.bootstrap,
-  });
-
-  if (!productVm) return null;
-
-  const item = buildTrackingItemFromProductVm({
-    productVm,
-    quantity: args.quantity ?? 1,
-  });
-
-  if (!item) return null;
-
-  const hasCategory = Boolean(
-    item.item_category ||
-      item.item_category2 ||
-      item.item_category3 ||
-      item.item_category4 ||
-      item.item_category5,
-  );
-
-  if (!hasCategory) {
-    const categories = [
-      ...(args.fallbackCategories || []),
-      ...normalizeCategoriesFromRawProduct(args.product),
-    ]
-      .map(s)
-      .filter(Boolean)
-      .slice(0, 5);
-
-    Object.assign(item, buildCategoryFields(categories));
-  }
-
-  return item;
 }
 
 function readAddToCartProductId(detail: any) {
@@ -552,18 +597,7 @@ function buildTrackingItemFromAddToCartDetail(detail: any): {
   const variantId = readAddToCartVariantId(detail);
   const selectedOptionsText = getSelectedOptionsText(selectedOptions);
 
-  const categoriesSource = Array.isArray(rawItem?.categories)
-    ? rawItem.categories
-    : Array.isArray(rawItem?.seo?.categories)
-      ? rawItem.seo.categories
-      : Array.isArray(rawItem?.raw?.categories)
-        ? rawItem.raw.categories
-        : [];
-
-  const categories = categoriesSource
-    .map((category: any) => firstText(category?.name, category?.title, category))
-    .filter(Boolean)
-    .slice(0, 5);
+  const categories = normalizeCategoriesFromRaw(rawItem);
 
   const item: TrackingItem = {
     item_id: productId,
@@ -605,280 +639,275 @@ function buildTrackingItemFromAddToCartDetail(detail: any): {
   };
 }
 
-function looksLikeProduct(value: any) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+function unwrapArray(value: any): any[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
 
-  const id = firstText(value.id, value.product_id, value.productId);
-  const name = firstText(value.name, value.title, value.product?.name);
+  if (Array.isArray(value?.items)) return value.items;
+  if (Array.isArray(value?.products)) return value.products;
+  if (Array.isArray(value?.data)) return value.data;
+  if (Array.isArray(value?.rows)) return value.rows;
+  if (Array.isArray(value?.results)) return value.results;
 
-  if (!id || !name) return false;
-
-  return Boolean(
-    value.price !== undefined ||
-      value.sale_price !== undefined ||
-      value.salePrice !== undefined ||
-      value.regular_price !== undefined ||
-      value.regularPrice !== undefined ||
-      value.compareAtPrice !== undefined ||
-      value.compare_at_price !== undefined ||
-      value.pricing ||
-      value.product_pricing ||
-      value.stock ||
-      value.variants ||
-      value.options ||
-      value.metadata?.base_price_fallback !== undefined ||
-      value.metadata?.basePriceFallback !== undefined ||
-      value.metadata?.variants_price_min !== undefined ||
-      value.metadata?.variantsPriceMin !== undefined ||
-      value.product_type ||
-      value.productType,
-  );
+  return [];
 }
 
-function pushProductRows(target: any[], value: any) {
-  if (!value) return;
-
-  if (Array.isArray(value)) {
-    for (const row of value) {
-      if (looksLikeProduct(row)) target.push(row);
-    }
-
-    return;
-  }
-
-  if (looksLikeProduct(value)) {
-    target.push(value);
-  }
-}
-
-function collectProductsFromSection(target: any[], section: any) {
-  if (!section || typeof section !== "object") return;
-
-  pushProductRows(target, section.products);
-  pushProductRows(target, section.product_items);
-  pushProductRows(target, section.productItems);
-  pushProductRows(target, section.linkedProducts);
-  pushProductRows(target, section.linked_products);
-
-  pushProductRows(target, section.items);
-
-  pushProductRows(target, section.data?.products);
-  pushProductRows(target, section.data?.items);
-
-  pushProductRows(target, section.value?.products);
-  pushProductRows(target, section.value?.items);
-
-  pushProductRows(target, section.values?.products);
-  pushProductRows(target, section.values?.items);
-
-  pushProductRows(target, section.settings?.products);
-  pushProductRows(target, section.options?.products);
-}
-
-function collectProductsForViewCategory(data: any) {
+function collectSectionProducts(value: any): any[] {
+  const sections = Array.isArray(value) ? value : [];
   const out: any[] = [];
 
-  pushProductRows(out, data?.products);
-  pushProductRows(out, data?.items);
-  pushProductRows(out, data?.productItems);
-  pushProductRows(out, data?.product_items);
-  pushProductRows(out, data?.results);
-  pushProductRows(out, data?.results?.items);
-  pushProductRows(out, data?.results?.products);
+  for (const section of sections) {
+    const possible = [
+      section?.items,
+      section?.products,
+      section?.data?.items,
+      section?.data?.products,
+      section?.props?.items,
+      section?.props?.products,
+    ];
 
-  pushProductRows(out, data?.category?.products);
-  pushProductRows(out, data?.category?.items);
-  pushProductRows(out, data?.categoryProducts);
-  pushProductRows(out, data?.category_products);
-
-  pushProductRows(out, data?.home?.products);
-  pushProductRows(out, data?.home?.items);
-
-  pushProductRows(out, data?.featuredProducts);
-  pushProductRows(out, data?.featured_products);
-  pushProductRows(out, data?.latestProducts);
-  pushProductRows(out, data?.latest_products);
-  pushProductRows(out, data?.bestSellingProducts);
-  pushProductRows(out, data?.best_selling_products);
-
-  for (const section of safeArray(data?.sections)) {
-    collectProductsFromSection(out, section);
+    for (const source of possible) {
+      const rows = unwrapArray(source);
+      if (rows.length) out.push(...rows);
+    }
   }
 
-  for (const section of safeArray(data?.blocks)) {
-    collectProductsFromSection(out, section);
+  return out;
+}
+
+function collectProductRowsForList(data: any) {
+  const route = getRoute(data);
+
+  const directSources = [
+    data?.items,
+    data?.products,
+    data?.results,
+    data?.productItems,
+    data?.product_items,
+    data?.category?.items,
+    data?.category?.products,
+    data?.categoryProducts,
+    data?.category_products,
+    data?.search?.items,
+    data?.search?.products,
+    data?.search?.results,
+    data?.collection?.items,
+    data?.collection?.products,
+    data?.page?.items,
+    data?.page?.products,
+  ];
+
+  const rows: any[] = [];
+
+  for (const source of directSources) {
+    const found = unwrapArray(source);
+    if (found.length) rows.push(...found);
   }
 
-  for (const section of safeArray(data?.home?.sections)) {
-    collectProductsFromSection(out, section);
-  }
+  if (route === "home" || !route) {
+    rows.push(...collectSectionProducts(data?.sections));
+    rows.push(...collectSectionProducts(data?.home?.sections));
+    rows.push(...collectSectionProducts(data?.homepage?.sections));
+    rows.push(...collectSectionProducts(data?.page?.sections));
+    rows.push(...collectSectionProducts(data?.layout?.sections));
 
-  for (const section of safeArray(data?.page?.sections)) {
-    collectProductsFromSection(out, section);
-  }
+    const homeSources = [
+      data?.featuredProducts,
+      data?.featured_products,
+      data?.latestProducts,
+      data?.latest_products,
+      data?.bestSellers,
+      data?.best_sellers,
+      data?.offers,
+    ];
 
-  for (const section of safeArray(data?.content?.sections)) {
-    collectProductsFromSection(out, section);
+    for (const source of homeSources) {
+      const found = unwrapArray(source);
+      if (found.length) rows.push(...found);
+    }
   }
 
   const seen = new Set<string>();
-  const unique: any[] = [];
 
-  for (const product of out) {
-    const key =
-      firstText(
-        product?.id,
-        product?.product_id,
-        product?.productId,
-        product?.public_no,
-        product?.publicNo,
-        product?.href,
-        product?.url,
-      ) || JSON.stringify(product).slice(0, 120);
+  return rows.filter((row) => {
+    if (!row) return false;
 
-    if (!key || seen.has(key)) continue;
+    const id = firstText(
+      row?.id,
+      row?.product_id,
+      row?.productId,
+      row?.raw?.id,
+      row?.product?.id,
+    );
 
-    seen.add(key);
-    unique.push(product);
+    const title = firstText(
+      row?.title,
+      row?.name,
+      row?.raw?.title,
+      row?.raw?.name,
+      row?.product?.title,
+      row?.product?.name,
+    );
 
-    if (unique.length >= MAX_VIEW_CATEGORY_ITEMS) break;
-  }
+    if (!id || !title) return false;
 
-  return unique;
+    if (seen.has(id)) return false;
+    seen.add(id);
+
+    return true;
+  });
 }
 
-function readCategoryObject(data: any) {
-  return safeObject(
-    data?.category ||
-      data?.currentCategory ||
-      data?.current_category ||
-      data?.collection ||
-      data?.taxonomy ||
-      data?.group,
-  );
-}
-
-function readViewCategoryName(args: { data: any; route: string }) {
-  const category = readCategoryObject(args.data);
-
-  if (args.route === "home") {
-    return firstText(
-      args.data?.home?.title,
-      args.data?.page?.title,
-      args.data?.store?.name,
-      "الرئيسية",
-    );
-  }
-
-  if (args.route === "categories") {
-    return firstText(
-      args.data?.title,
-      args.data?.page?.title,
-      args.data?.heading,
-      "الأقسام",
-    );
-  }
-
+function getCategoryName(data: any) {
   return firstText(
-    category?.name,
-    category?.title,
-    args.data?.categoryName,
-    args.data?.category_name,
-    args.data?.title,
-    args.data?.heading,
-    args.data?.seo?.title,
-    "القسم",
+    data?.category?.name,
+    data?.category?.title,
+    data?.currentCategory?.name,
+    data?.current_category?.name,
+    data?.collection?.name,
+    data?.collection?.title,
+    data?.title,
   );
 }
 
-function readViewCategoryId(args: { data: any; route: string }) {
-  const category = readCategoryObject(args.data);
+function getCategoryPublicNo(data: any) {
+  return (
+    safeNum(
+      firstDefined(
+        data?.category?.public_no,
+        data?.category?.publicNo,
+        data?.currentCategory?.public_no,
+        data?.currentCategory?.publicNo,
+        data?.current_category?.public_no,
+        data?.current_category?.publicNo,
+      ),
+    ) ?? null
+  );
+}
 
-  if (args.route === "home") return "home";
-  if (args.route === "categories") return "categories";
+function getTrackingListName(data: any) {
+  const route = getRoute(data);
+
+  if (route === "home") return "الرئيسية";
+  if (route === "category") return getCategoryName(data) || "القسم";
+  if (route === "search") return "نتائج البحث";
+  if (route === "tag") return firstText(data?.tag?.name, data?.tag?.title) || "وسم";
+  if (route === "page") return firstText(data?.page?.title, data?.title) || "صفحة";
+
+  return getCategoryName(data) || "قائمة المنتجات";
+}
+
+function getTrackingListId(data: any) {
+  const route = getRoute(data);
+  const publicNo = getCategoryPublicNo(data);
+
+  if (route === "home") return "home";
+  if (route === "category") {
+    return publicNo ? `category_${publicNo}` : `category_${s(getCategoryName(data)) || "unknown"}`;
+  }
+
+  if (route === "search") return "search_results";
+
+  const name = getTrackingListName(data);
+  return `${route || "list"}_${name || "products"}`;
+}
+
+function shouldSendViewCategory(data: any) {
+  const route = getRoute(data);
 
   return (
-    firstText(
-      category?.id,
-      category?.public_no,
-      category?.publicNo,
-      args.data?.category_id,
-      args.data?.categoryId,
-    ) || args.route
+    route === "home" ||
+    route === "category" ||
+    route === "tag" ||
+    route === "search"
   );
 }
 
-function isViewCategoryRoute(route: string, data: any) {
-  if (route === "home") return true;
-  if (route === "category") return true;
-  if (route === "categories") return true;
-
-  if (route === "product") return false;
-  if (data?.product?.id || data?.product) return false;
-
-  if (data?.category?.id || data?.category) return true;
-
-  return false;
-}
-
-function buildViewCategoryEvent(args: {
+function buildListTrackingState(args: {
   data: any;
   bootstrap?: MalakBootstrap;
   device: string;
-}): TrackingEvent | null {
-  const route = getRouteForTracking(args.data);
+}): TrackingListState | null {
+  if (!shouldSendViewCategory(args.data)) return null;
 
-  if (!isViewCategoryRoute(route, args.data)) return null;
+  const rows = collectProductRowsForList(args.data);
+  if (!rows.length) return null;
 
-  const categoryName = readViewCategoryName({
-    data: args.data,
-    route,
-  });
+  const itemListName = getTrackingListName(args.data);
+  const itemListId = getTrackingListId(args.data);
+  const currency = getFallbackCurrency(args.data, args.bootstrap);
 
-  const categoryId = readViewCategoryId({
-    data: args.data,
-    route,
-  });
-
-  const fallbackCategories =
-    route === "category" && categoryName ? [categoryName] : [];
-
-  const rawProducts = collectProductsForViewCategory(args.data);
-
-  const items = rawProducts
-    .map((product) =>
-      buildTrackingItemFromRawProduct({
-        product,
+  const items = rows
+    .map((row, index) => {
+      const productVm = buildProductCardVm({
+        rawProduct: row,
         data: args.data,
         bootstrap: args.bootstrap,
-        fallbackCategories,
-        quantity: 1,
-      }),
-    )
-    .filter((item): item is TrackingItem => item !== null);
+      });
 
-  const currency = getFallbackCurrency(args.data, args.bootstrap);
+      if (!productVm) return null;
+
+      return buildTrackingItemFromProductCardVm({
+        productVm,
+        rawProduct: row,
+        quantity: 1,
+        index: index + 1,
+        itemListId,
+        itemListName,
+      });
+    })
+    .filter(Boolean) as TrackingItem[];
+
+  if (!items.length) return null;
+
+  const itemsById = new Map<string, TrackingItem>();
+
+  for (const item of items) {
+    const ids = [item.item_id, item.product_id].map(s).filter(Boolean);
+
+    for (const id of ids) {
+      if (!itemsById.has(id)) itemsById.set(id, item);
+    }
+  }
+
   const value = roundMoney(
     items.reduce((sum, item) => {
-      return sum + Number(item.price || 0) * Number(item.quantity || 1);
+      return sum + Number(item.price || 0) * Math.max(1, Number(item.quantity || 1));
     }, 0),
   );
 
   return {
-    name: "view_category",
+    itemListId,
+    itemListName,
     currency,
     value,
-    items,
-    source: "malak_storefront",
-    device: args.device || DEFAULT_DEVICE,
-    route: route || "unknown",
+    route: getRoute(args.data) || "unknown",
     path: getCurrentPath(),
+    items,
+    itemsById,
+  };
+}
+
+function buildViewCategoryEvent(args: {
+  state: TrackingListState;
+  data: any;
+  device: string;
+}): TrackingEvent {
+  return {
+    name: "view_category",
+    currency: args.state.currency,
+    value: args.state.value,
+    items: args.state.items,
+    source: SOURCE,
+    device: args.device || DEFAULT_DEVICE,
+    route: args.state.route,
+    path: args.state.path,
     payload: {
-      category_id: categoryId || null,
-      category_name: categoryName || null,
-      item_list_id: categoryId || route || null,
-      item_list_name: categoryName || route || null,
-      products_count: items.length,
+      item_list_id: args.state.itemListId,
+      item_list_name: args.state.itemListName,
+      category_name: args.state.itemListName,
+      category_public_no: getCategoryPublicNo(args.data),
+      item_count: args.state.items.length,
     },
   };
 }
@@ -896,21 +925,17 @@ function sendToGoogleAnalytics(event: TrackingEvent) {
     ...(event.payload?.item_list_name
       ? { item_list_name: event.payload.item_list_name }
       : {}),
-    ...(event.payload?.category_id
-      ? { category_id: event.payload.category_id }
+    ...(event.payload?.search_term
+      ? { search_term: event.payload.search_term }
       : {}),
-    ...(event.payload?.category_name
-      ? { category_name: event.payload.category_name }
+    ...(event.payload?.transaction_id
+      ? { transaction_id: event.payload.transaction_id }
       : {}),
   };
 
   if (typeof window.gtag === "function") {
     window.gtag("event", event.name, ecommercePayload);
-    return;
   }
-
-  window.dataLayer = window.dataLayer || [];
-  window.dataLayer.push(["event", event.name, ecommercePayload]);
 }
 
 function pushToDataLayer(event: TrackingEvent) {
@@ -918,7 +943,9 @@ function pushToDataLayer(event: TrackingEvent) {
 
   window.dataLayer = window.dataLayer || [];
 
-  window.dataLayer.push({ ecommerce: null });
+  window.dataLayer.push({
+    ecommerce: null,
+  });
 
   window.dataLayer.push({
     event: "mk_tracking_event",
@@ -992,7 +1019,7 @@ function buildViewItemEvent(args: {
     currency,
     value,
     items: [item],
-    source: "malak_storefront",
+    source: SOURCE,
     device: args.device || DEFAULT_DEVICE,
     route: getRoute(args.data) || "product",
     path: getCurrentPath(),
@@ -1012,9 +1039,7 @@ function buildAddToCartEvent(args: {
   const built = buildTrackingItemFromAddToCartDetail(args.detail);
   if (!built.item) return null;
 
-  const rawItem = safeObject(
-    args.detail?.item || args.detail?.product || args.detail,
-  );
+  const rawItem = safeObject(args.detail?.item || args.detail?.product || args.detail);
 
   const currency = readAddToCartCurrency({
     item: rawItem,
@@ -1027,7 +1052,7 @@ function buildAddToCartEvent(args: {
     currency,
     value: built.value,
     items: [built.item],
-    source: "malak_storefront",
+    source: SOURCE,
     device: args.device || DEFAULT_DEVICE,
     route: getRoute(args.data) || "unknown",
     path: getCurrentPath(),
@@ -1039,6 +1064,142 @@ function buildAddToCartEvent(args: {
   };
 }
 
+function isBlockedSelectClick(target: EventTarget | null) {
+  if (!(target instanceof Element)) return true;
+
+  return Boolean(
+    target.closest(
+      [
+        "button",
+        "input",
+        "select",
+        "textarea",
+        "[role='button']",
+        "[data-mk-favorite-button]",
+        ".mkpc-action",
+        ".mkpc-cart-inline",
+        ".mk-pcart-submit",
+        ".mk-mcart-submit",
+        ".mk-qv",
+      ].join(","),
+    ),
+  );
+}
+
+function findProductCardFromClick(target: EventTarget | null) {
+  if (!(target instanceof Element)) return null;
+
+  const anchor = target.closest("a[href]") as HTMLAnchorElement | null;
+  if (!anchor) return null;
+
+  const card = target.closest("[data-mk-product-card-id]") as HTMLElement | null;
+  if (!card) return null;
+
+  if (!anchor.contains(card) && anchor !== card) return null;
+
+  return {
+    anchor,
+    card,
+    productId: s(card.getAttribute("data-mk-product-card-id")),
+  };
+}
+
+function parseDomPrice(value: string) {
+  const clean = String(value || "")
+    .replace(/[^\d.,]/g, "")
+    .replace(/,/g, "");
+
+  const n = Number(clean);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function buildDomTrackingItem(args: {
+  card: HTMLElement;
+  productId: string;
+  state: TrackingListState | null;
+}): TrackingItem | null {
+  const title = firstText(
+    args.card.querySelector(".mkpc-title")?.textContent,
+    args.card.getAttribute("title"),
+    "المنتج",
+  );
+
+  const image =
+    (args.card.querySelector("img") as HTMLImageElement | null)?.currentSrc ||
+    (args.card.querySelector("img") as HTMLImageElement | null)?.src ||
+    null;
+
+  if (!args.productId || !title) return null;
+
+  const priceText =
+    args.card.querySelector(".mkpc-now")?.textContent ||
+    args.card.querySelector("[data-price]")?.textContent ||
+    "";
+
+  const price = roundMoney(parseDomPrice(priceText));
+
+  return {
+    item_id: args.productId,
+    item_name: title,
+    ...(args.state?.itemListId ? { item_list_id: args.state.itemListId } : {}),
+    ...(args.state?.itemListName
+      ? { item_list_name: args.state.itemListName }
+      : {}),
+    price,
+    quantity: 1,
+    product_id: args.productId,
+    variant_id: null,
+    product_public_no: null,
+    image_url: image,
+  };
+}
+
+function buildSelectItemEvent(args: {
+  item: TrackingItem;
+  state: TrackingListState | null;
+  data: any;
+  bootstrap?: MalakBootstrap;
+  device: string;
+}): TrackingEvent {
+  const itemListId =
+    args.item.item_list_id || args.state?.itemListId || getTrackingListId(args.data);
+
+  const itemListName =
+    args.item.item_list_name ||
+    args.state?.itemListName ||
+    getTrackingListName(args.data);
+
+  const item = {
+    ...args.item,
+    item_list_id: itemListId,
+    item_list_name: itemListName,
+    quantity: Math.max(1, Number(args.item.quantity || 1)),
+  };
+
+  const currency =
+    args.state?.currency || getFallbackCurrency(args.data, args.bootstrap);
+
+  const value = roundMoney(Number(item.price || 0) * Number(item.quantity || 1));
+
+  return {
+    name: "select_item",
+    currency,
+    value,
+    items: [item],
+    source: SOURCE,
+    device: args.device || DEFAULT_DEVICE,
+    route: getRoute(args.data) || "unknown",
+    path: getCurrentPath(),
+    payload: {
+      item_list_id: itemListId,
+      item_list_name: itemListName,
+      product_id: item.product_id || item.item_id,
+      product_public_no: item.product_public_no ?? null,
+      index: item.index ?? null,
+    },
+  };
+}
+
 export default function MalakTrackingRuntime({
   data,
   bootstrap,
@@ -1046,6 +1207,7 @@ export default function MalakTrackingRuntime({
 }: Props) {
   const sentViewItemsRef = useRef<Set<string>>(new Set());
   const sentViewCategoriesRef = useRef<Set<string>>(new Set());
+  const listStateRef = useRef<TrackingListState | null>(null);
 
   const productVm = useMemo(() => {
     return buildProductVm({
@@ -1054,31 +1216,20 @@ export default function MalakTrackingRuntime({
     });
   }, [data, bootstrap]);
 
-  const route = getRouteForTracking(data);
-  const productId = s(productVm?.id);
-
-  useEffect(() => {
-    const event = buildViewCategoryEvent({
+  const listState = useMemo(() => {
+    return buildListTrackingState({
       data,
       bootstrap,
       device,
     });
+  }, [data, bootstrap, device]);
 
-    if (!event) return;
+  const route = getRoute(data);
+  const productId = s(productVm?.id);
 
-    const key = [
-      event.name,
-      event.route,
-      event.path,
-      event.payload?.item_list_id || "",
-      event.payload?.item_list_name || "",
-    ].join("|");
-
-    if (sentViewCategoriesRef.current.has(key)) return;
-
-    sentViewCategoriesRef.current.add(key);
-    sendTrackingEvent(event);
-  }, [data, bootstrap, device, route]);
+  useEffect(() => {
+    listStateRef.current = listState;
+  }, [listState]);
 
   useEffect(() => {
     if (!productVm) return;
@@ -1109,6 +1260,30 @@ export default function MalakTrackingRuntime({
   }, [productVm, productId, route, data, bootstrap, device]);
 
   useEffect(() => {
+    if (!listState) return;
+
+    const key = [
+      listState.route,
+      listState.path,
+      listState.itemListId,
+      listState.items.length,
+      listState.value,
+    ].join("|");
+
+    if (sentViewCategoriesRef.current.has(key)) return;
+
+    sentViewCategoriesRef.current.add(key);
+
+    const event = buildViewCategoryEvent({
+      state: listState,
+      data,
+      device,
+    });
+
+    sendTrackingEvent(event);
+  }, [listState, data, device]);
+
+  useEffect(() => {
     function handleAddToCartDone(event: Event) {
       const detail = (event as CustomEvent<any>).detail;
       if (!detail) return;
@@ -1135,6 +1310,44 @@ export default function MalakTrackingRuntime({
         "product:add-to-cart:done",
         handleAddToCartDone as EventListener,
       );
+    };
+  }, [data, bootstrap, device]);
+
+  useEffect(() => {
+    function handleSelectItemClick(event: MouseEvent) {
+      if (event.defaultPrevented) return;
+      if (isBlockedSelectClick(event.target)) return;
+
+      const found = findProductCardFromClick(event.target);
+      if (!found?.productId) return;
+
+      const state = listStateRef.current;
+
+      const item =
+        state?.itemsById.get(found.productId) ||
+        buildDomTrackingItem({
+          card: found.card,
+          productId: found.productId,
+          state,
+        });
+
+      if (!item) return;
+
+      const trackingEvent = buildSelectItemEvent({
+        item,
+        state,
+        data,
+        bootstrap,
+        device,
+      });
+
+      sendTrackingEvent(trackingEvent);
+    }
+
+    document.addEventListener("click", handleSelectItemClick, true);
+
+    return () => {
+      document.removeEventListener("click", handleSelectItemClick, true);
     };
   }, [data, bootstrap, device]);
 
