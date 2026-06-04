@@ -4,11 +4,6 @@ import type { Metadata } from "next";
 import { cache, type ReactNode } from "react";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import {
-  toProductDetailVM,
-  type ProductDetailVM,
-} from "@/data/viewmodels/product.vm";
-
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
 import { getOrdersDb } from "@/data/db/orders-db.server";
 import { getStoreDb } from "@/data/db/store-db.server";
@@ -100,6 +95,10 @@ const PAGE_SELECT = [
   "created_at",
   "updated_at",
 ].join(",");
+
+const META_DESCRIPTION_MAX = 155;
+const THEME_IMAGE_SCAN_MAX_DEPTH = 5;
+const THEME_IMAGE_SCAN_MAX_ITEMS = 80;
 
 /* -------------------------
    Request-level cached helpers
@@ -780,11 +779,19 @@ function stripHtml(value: unknown) {
     .trim();
 }
 
-function limitText(value: unknown, max = 160) {
+function limitText(value: unknown, max = META_DESCRIPTION_MAX) {
   const text = safeText(stripHtml(value));
   if (!text) return "";
   if (text.length <= max) return text;
-  return `${text.slice(0, max - 1).trim()}…`;
+
+  const sliced = text.slice(0, max).trim();
+  const lastSpace = sliced.lastIndexOf(" ");
+
+  if (lastSpace >= Math.floor(max * 0.68)) {
+    return sliced.slice(0, lastSpace).trim();
+  }
+
+  return sliced;
 }
 
 function toPositiveNumber(value: unknown) {
@@ -825,11 +832,163 @@ function pathFromSlug(slug: string[]) {
 }
 
 function getStoreDescription(store: any) {
-  return limitText(store?.description, 160) || s(store?.name) || "متجر إلكتروني";
+  return (
+    limitText(store?.description, META_DESCRIPTION_MAX) ||
+    s(store?.name) ||
+    "متجر إلكتروني"
+  );
 }
 
-function getStoreImage(store: any) {
-  return s(store?.logo_url) || s(store?.favicon_url) || "";
+function looksLikeImageUrl(value: unknown) {
+  const url = s(value);
+
+  if (!url) return false;
+  if (url.startsWith("data:")) return false;
+  if (url.startsWith("blob:")) return false;
+  if (url.startsWith("javascript:")) return false;
+
+  const lower = url.toLowerCase();
+
+  return (
+    lower.startsWith("http://") ||
+    lower.startsWith("https://") ||
+    lower.startsWith("/") ||
+    lower.includes(".jpg") ||
+    lower.includes(".jpeg") ||
+    lower.includes(".png") ||
+    lower.includes(".webp") ||
+    lower.includes(".avif") ||
+    lower.includes("/stores/") ||
+    lower.includes("/uploads/") ||
+    lower.includes("cdn.")
+  );
+}
+
+function collectThemeImageCandidates(
+  value: any,
+  out: string[],
+  depth = 0,
+  seen = new Set<any>(),
+) {
+  if (!value) return;
+  if (out.length >= THEME_IMAGE_SCAN_MAX_ITEMS) return;
+  if (depth > THEME_IMAGE_SCAN_MAX_DEPTH) return;
+
+  if (typeof value === "string") {
+    if (looksLikeImageUrl(value)) out.push(value);
+    return;
+  }
+
+  if (typeof value !== "object") return;
+  if (seen.has(value)) return;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    for (const item of value.slice(0, 24)) {
+      collectThemeImageCandidates(item, out, depth + 1, seen);
+      if (out.length >= THEME_IMAGE_SCAN_MAX_ITEMS) break;
+    }
+
+    return;
+  }
+
+  const priorityKeys = [
+    "og_image_url",
+    "ogImageUrl",
+    "og_image",
+    "ogImage",
+    "social_image_url",
+    "socialImageUrl",
+    "social_image",
+    "socialImage",
+    "share_image_url",
+    "shareImageUrl",
+    "share_image",
+    "shareImage",
+    "seo_image",
+    "seoImage",
+    "cover_url",
+    "coverUrl",
+    "cover",
+    "banner_url",
+    "bannerUrl",
+    "banner",
+    "desktop_image_url",
+    "desktopImageUrl",
+    "desktop_image",
+    "desktopImage",
+    "mobile_image_url",
+    "mobileImageUrl",
+    "mobile_image",
+    "mobileImage",
+    "image_url",
+    "imageUrl",
+    "image",
+    "src",
+    "url",
+    "logo_url",
+    "logoUrl",
+    "logo",
+  ];
+
+  for (const key of priorityKeys) {
+    if (!(key in value)) continue;
+
+    collectThemeImageCandidates(value[key], out, depth + 1, seen);
+
+    if (out.length >= THEME_IMAGE_SCAN_MAX_ITEMS) return;
+  }
+
+  for (const [key, child] of Object.entries(value)) {
+    if (priorityKeys.includes(key)) continue;
+
+    const lowerKey = key.toLowerCase();
+    const isLikelyImageKey =
+      lowerKey.includes("image") ||
+      lowerKey.includes("img") ||
+      lowerKey.includes("photo") ||
+      lowerKey.includes("media") ||
+      lowerKey.includes("banner") ||
+      lowerKey.includes("cover") ||
+      lowerKey.includes("logo") ||
+      lowerKey.includes("og") ||
+      lowerKey.includes("share") ||
+      lowerKey.includes("social") ||
+      lowerKey.includes("slider");
+
+    if (!isLikelyImageKey && depth > 1) continue;
+
+    collectThemeImageCandidates(child, out, depth + 1, seen);
+
+    if (out.length >= THEME_IMAGE_SCAN_MAX_ITEMS) return;
+  }
+}
+
+function getThemeSeoImage(themeOptions: any) {
+  const candidates: string[] = [];
+
+  collectThemeImageCandidates(themeOptions, candidates);
+
+  return candidates.find((url) => s(url)) || "";
+}
+
+function getStoreImage(store: any, themeOptions?: any) {
+  return (
+    s(store?.og_image_url) ||
+    s(store?.ogImageUrl) ||
+    s(store?.social_image_url) ||
+    s(store?.socialImageUrl) ||
+    s(store?.share_image_url) ||
+    s(store?.shareImageUrl) ||
+    s(store?.cover_url) ||
+    s(store?.coverUrl) ||
+    s(store?.banner_url) ||
+    s(store?.bannerUrl) ||
+    getThemeSeoImage(themeOptions) ||
+    s(store?.logo_url) ||
+    s(store?.favicon_url) ||
+    ""
+  );
 }
 
 function titleWithStore(title: string, storeName: string) {
@@ -856,7 +1015,7 @@ function makeMetadata(args: {
   index?: boolean;
 }): Metadata {
   const title = safeText(args.title) || args.storeName || "المتجر";
-  const description = limitText(args.description, 160) || args.storeName;
+  const description = limitText(args.description, META_DESCRIPTION_MAX) || args.storeName;
   const canonical = absoluteUrl(args.origin, args.canonicalPath);
   const imageUrl = s(args.image) ? absoluteUrl(args.origin, s(args.image)) : "";
   const index = args.index !== false;
@@ -1068,27 +1227,27 @@ function getProductImage(product: any) {
 
 function getProductDescription(product: any, storeDescription: string) {
   return (
-    limitText(product?.seo?.seo_description, 160) ||
-    limitText(product?.metadata?.seo_description, 160) ||
-    limitText(product?.description, 160) ||
-    limitText(product?.metadata?.descriptionHtml, 160) ||
-    limitText(product?.metadata?.subtitle, 160) ||
+    limitText(product?.seo?.seo_description, META_DESCRIPTION_MAX) ||
+    limitText(product?.metadata?.seo_description, META_DESCRIPTION_MAX) ||
+    limitText(product?.description, META_DESCRIPTION_MAX) ||
+    limitText(product?.metadata?.descriptionHtml, META_DESCRIPTION_MAX) ||
+    limitText(product?.metadata?.subtitle, META_DESCRIPTION_MAX) ||
     storeDescription
   );
 }
 
 function getCategoryDescription(category: any, storeDescription: string) {
   return (
-    limitText(category?.seo_description, 160) ||
-    limitText(category?.description, 160) ||
+    limitText(category?.seo_description, META_DESCRIPTION_MAX) ||
+    limitText(category?.description, META_DESCRIPTION_MAX) ||
     storeDescription
   );
 }
 
 function getInfoPageDescription(page: StorePageRow, storeDescription: string) {
   return (
-    limitText(page.seo_description, 160) ||
-    limitText(page.content, 160) ||
+    limitText(page.seo_description, META_DESCRIPTION_MAX) ||
+    limitText(page.content, META_DESCRIPTION_MAX) ||
     storeDescription
   );
 }
@@ -1255,60 +1414,12 @@ function productCurrency(product: any) {
   return s(product?.pricing?.currency) || s(product?.seo?.currency) || "SAR";
 }
 
-function roundJsonLdMoney(value: any, decimals: any) {
-  const n = Number(value);
-  if (!Number.isFinite(n) || n <= 0) return null;
-
-  const digitsRaw = Number(decimals ?? 2);
-  const digits = Number.isFinite(digitsRaw)
-    ? Math.max(0, Math.min(4, Math.floor(digitsRaw)))
-    : 2;
-
-  return Number(n.toFixed(digits));
-}
-
-function buildProductJsonLdVm(args: {
-  product: any;
-  bootstrap?: any;
-}): ProductDetailVM | null {
-  try {
-    if (!args.product) return null;
-
-    return toProductDetailVM({
-      storeSlug: "",
-      product: args.product,
-      currencies: args.bootstrap?.currencies ?? null,
-      tax: args.bootstrap?.tax ?? null,
-    } as any);
-  } catch (error) {
-    console.error("PRODUCT_JSONLD_VM_FAILED", error);
-    return null;
-  }
-}
-
-function productSeoPrice(product: any, productVm?: ProductDetailVM | null) {
-  const vmPrice = roundJsonLdMoney(
-    productVm?.pricing?.price ?? productVm?.price,
-    productVm?.pricing?.currencyDecimals ??
-      productVm?.currencyDecimals ??
-      productVm?.pricing?.decimalDigits ??
-      productVm?.decimalDigits ??
-      2,
-  );
-
-  if (vmPrice !== null) return vmPrice;
-
+function productSeoPrice(product: any) {
   return productPrice(product);
 }
 
-function productSeoCurrency(product: any, productVm?: ProductDetailVM | null) {
-  return (
-    s(productVm?.pricing?.currencyCode) ||
-    s(productVm?.pricing?.currency_code) ||
-    s(productVm?.currencyCode) ||
-    s(productVm?.currency_code) ||
-    productCurrency(product)
-  );
+function productSeoCurrency(product: any) {
+  return productCurrency(product);
 }
 
 function productSku(product: any) {
@@ -1415,14 +1526,13 @@ function buildProductJsonLd(args: {
   origin: string;
   canonicalPath: string;
   product: any;
-  productVm?: ProductDetailVM | null;
   title: string;
   description: string;
   image?: string | null;
   storeName: string;
 }) {
   const url = absoluteUrl(args.origin, args.canonicalPath);
-  const price = productSeoPrice(args.product, args.productVm);
+  const price = productSeoPrice(args.product);
   const brandName = productBrandName(args.product);
   const images = productImages(args.product, args.origin, args.image);
 
@@ -1446,7 +1556,7 @@ function buildProductJsonLd(args: {
       ? {
           "@type": "Offer",
           url,
-          priceCurrency: productSeoCurrency(args.product, args.productVm),
+          priceCurrency: productSeoCurrency(args.product),
           price,
           availability: productAvailability(args.product),
           itemCondition: "https://schema.org/NewCondition",
@@ -1639,7 +1749,6 @@ function buildProductJsonLdEntries(args: {
   origin: string;
   canonicalPath: string;
   product: any;
-  productVm?: ProductDetailVM | null;
   title: string;
   description: string;
   image?: string | null;
@@ -1697,7 +1806,7 @@ export async function generateMetadata(props: PageProps): Promise<Metadata> {
   const seoMode = await getSeoUrlModeCached(ctx.store.id);
   const storeName = s(ctx.store.name) || "المتجر";
   const storeDescription = getStoreDescription(ctx.store);
-  const storeImage = getStoreImage(ctx.store);
+  const storeImage = getStoreImage(ctx.store, ctx?.theme?.options);
   const currentPath = pathFromSlug(slug);
   const maintenance = await getStoreMaintenanceSettings(ctx.store.id);
 
@@ -1788,7 +1897,7 @@ export async function generateMetadata(props: PageProps): Promise<Metadata> {
       titleFromSlug(tagPageSlug);
 
     const description =
-      limitText(data?.tag?.description, 160) || storeDescription;
+      limitText(data?.tag?.description, META_DESCRIPTION_MAX) || storeDescription;
 
     return makeMetadata({
       origin,
@@ -2000,7 +2109,7 @@ export default async function Page(props: PageProps) {
   const origin = await getRequestOriginSafeCached();
   const storeName = s(ctx.store.name) || "المتجر";
   const storeDescription = getStoreDescription(ctx.store);
-  const storeImage = getStoreImage(ctx.store);
+  const storeImage = getStoreImage(ctx.store, ctx?.theme?.options);
 
   const maintenance = await getStoreMaintenanceSettings(ctx.store.id);
 
@@ -2081,7 +2190,7 @@ export default async function Page(props: PageProps) {
       s(data?.title) ||
       titleFromSlug(tagPageSlug);
     const tagDescription =
-      limitText(data?.tag?.description, 160) || storeDescription;
+      limitText(data?.tag?.description, META_DESCRIPTION_MAX) || storeDescription;
     const tagCanonicalPath = `/tag/${encodeURIComponent(tagPageSlug)}`;
 
     const jsonLdEntries = buildCategoryJsonLdEntries({
@@ -2952,25 +3061,10 @@ export default async function Page(props: PageProps) {
     const canonicalPath = getProductCanonicalPath(data, seoMode);
     const image = getProductImage(product) || storeImage;
 
-    const malakShellData = isMalakTheme(ctx)
-      ? await buildMalakShellData({
-          ctx,
-          seoMode,
-        })
-      : null;
-
-    const productVmForJsonLd = malakShellData
-      ? buildProductJsonLdVm({
-          product,
-          bootstrap: malakShellData.bootstrap,
-        })
-      : null;
-
     const jsonLdEntries = buildProductJsonLdEntries({
       origin,
       canonicalPath,
       product,
-      productVm: productVmForJsonLd,
       title,
       description,
       image,
@@ -2978,13 +3072,12 @@ export default async function Page(props: PageProps) {
       seoMode,
     });
 
-    if (malakShellData) {
+    if (isMalakTheme(ctx)) {
       const content = await renderMalakProductPage({
         ctx,
         data,
         preview,
         seoMode,
-        shellData: malakShellData,
       });
 
       return withJsonLd(content, jsonLdEntries);
@@ -3063,25 +3156,10 @@ export default async function Page(props: PageProps) {
       const canonicalPath = getProductCanonicalPath(product, seoMode);
       const image = getProductImage(row);
 
-      const malakShellData = isMalakTheme(ctx)
-        ? await buildMalakShellData({
-            ctx,
-            seoMode,
-          })
-        : null;
-
-      const productVmForJsonLd = malakShellData
-        ? buildProductJsonLdVm({
-            product: row,
-            bootstrap: malakShellData.bootstrap,
-          })
-        : null;
-
       const jsonLdEntries = buildProductJsonLdEntries({
         origin,
         canonicalPath,
         product: row,
-        productVm: productVmForJsonLd,
         title,
         description,
         image,
@@ -3089,13 +3167,12 @@ export default async function Page(props: PageProps) {
         seoMode,
       });
 
-      if (malakShellData) {
+      if (isMalakTheme(ctx)) {
         const content = await renderMalakProductPage({
           ctx,
           data: product,
           preview,
           seoMode,
-          shellData: malakShellData,
         });
 
         return withJsonLd(content, jsonLdEntries);
