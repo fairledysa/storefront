@@ -174,6 +174,102 @@ function getProductHref(product: any) {
   );
 }
 
+function firstNonEmptyImage(values: unknown[]) {
+  for (const value of values) {
+    const image = s(value);
+    if (image) return image;
+  }
+
+  return "";
+}
+
+function getMediaThumbnail(product: any) {
+  const media = Array.isArray(product?.media) ? product.media : [];
+
+  const sorted = media
+    .slice()
+    .filter((item: any) => {
+      return (
+        s(item?.thumbnail_url) ||
+        s(item?.thumbnailUrl) ||
+        s(item?.card_image_url) ||
+        s(item?.cardImageUrl) ||
+        s(item?.medium_url) ||
+        s(item?.mediumUrl) ||
+        s(item?.url) ||
+        s(item?.original_url) ||
+        s(item?.originalUrl)
+      );
+    })
+    .sort((a: any, b: any) => {
+      const aDefault = a?.is_default ? 0 : 1;
+      const bDefault = b?.is_default ? 0 : 1;
+
+      if (aDefault !== bDefault) return aDefault - bDefault;
+
+      return Number(a?.sort_order ?? 0) - Number(b?.sort_order ?? 0);
+    });
+
+  const first = sorted[0];
+
+  return firstNonEmptyImage([
+    first?.thumbnail_url,
+    first?.thumbnailUrl,
+    first?.card_image_url,
+    first?.cardImageUrl,
+    first?.medium_url,
+    first?.mediumUrl,
+    first?.url,
+    first?.original_url,
+    first?.originalUrl,
+  ]);
+}
+
+function getPreferredRawProductImage(product: any) {
+  return firstNonEmptyImage([
+    product?.cardImageUrl,
+    product?.card_image_url,
+    product?.thumbnailUrl,
+    product?.thumbnail_url,
+    product?.imageOptimizedUrl,
+    product?.image_optimized_url,
+    product?.optimizedImageUrl,
+    product?.optimized_image_url,
+    product?.mediumImageUrl,
+    product?.medium_image_url,
+    product?.medium_url,
+    product?.mediumUrl,
+    getMediaThumbnail(product),
+    product?.imageUrl,
+    product?.image_url,
+    product?.image,
+    product?.original_url,
+    product?.originalUrl,
+  ]);
+}
+
+function getPreferredVmProductImage(product: any) {
+  return firstNonEmptyImage([
+    product?.cardImageUrl,
+    product?.card_image_url,
+    product?.thumbnailUrl,
+    product?.thumbnail_url,
+    product?.imageOptimizedUrl,
+    product?.image_optimized_url,
+    product?.optimizedImageUrl,
+    product?.optimized_image_url,
+    product?.mediumImageUrl,
+    product?.medium_image_url,
+    product?.medium_url,
+    product?.mediumUrl,
+    product?.imageUrl,
+    product?.image_url,
+    product?.image,
+    product?.original_url,
+    product?.originalUrl,
+  ]);
+}
+
 function normalizeProductCard(args: {
   product: any;
   currencies?: any;
@@ -183,6 +279,7 @@ function normalizeProductCard(args: {
   if (!product) return null;
 
   const href = getProductHref(product);
+  const preferredRawImage = getPreferredRawProductImage(product);
 
   const vm = toProductCardVM({
     storeSlug: "",
@@ -197,7 +294,22 @@ function normalizeProductCard(args: {
 
   if (!s((vm as any)?.id) && !s((vm as any)?.title)) return null;
 
-  return vm;
+  const currentVmImage = getPreferredVmProductImage(vm as any);
+  const finalImage = currentVmImage || preferredRawImage;
+
+  return {
+    ...(vm as any),
+    cardImageUrl: s((vm as any)?.cardImageUrl) || preferredRawImage || finalImage,
+    card_image_url:
+      s((vm as any)?.card_image_url) || preferredRawImage || finalImage,
+    thumbnailUrl: s((vm as any)?.thumbnailUrl) || preferredRawImage || finalImage,
+    thumbnail_url:
+      s((vm as any)?.thumbnail_url) || preferredRawImage || finalImage,
+    imageOptimizedUrl:
+      s((vm as any)?.imageOptimizedUrl) || preferredRawImage || finalImage,
+    image_optimized_url:
+      s((vm as any)?.image_optimized_url) || preferredRawImage || finalImage,
+  } as ProductCardVM;
 }
 
 function normalizeProductCards(args: {
@@ -414,7 +526,7 @@ function MobileCircleLinksSection({
               <img
                 src={item.src}
                 alt={item.title || `رابط ${index + 1}`}
-                loading={index < 8 ? "eager" : "lazy"}
+                loading={index < 4 ? "eager" : "lazy"}
                 decoding="async"
               />
             </span>
@@ -918,7 +1030,7 @@ function MobileLinksSection({
                 <img
                   src={item.src}
                   alt={itemTitle || "link"}
-                  loading={index < 6 ? "eager" : "lazy"}
+                  loading={index < 4 ? "eager" : "lazy"}
                   decoding="async"
                 />
               </span>
@@ -1277,12 +1389,18 @@ function MobileCountdownOfferSection({
    Products
    ========================================================= */
 
-function MobileProductCard({ product }: { product: ProductCardVM }) {
+function MobileProductCard({
+  product,
+  index = 0,
+}: {
+  product: ProductCardVM;
+  index?: number;
+}) {
   const item: any = product || {};
 
   const title = s(item.title);
   const href = s(item.href) || "#";
-  const imageUrl = s(item.imageUrl || item.image_url || item.thumbnail_url);
+  const imageUrl = getPreferredVmProductImage(item);
   const brand = s(item.brand || item.brandName || item.brand_name);
 
   const priceText = formatVmMoney(product, "price");
@@ -1297,6 +1415,9 @@ function MobileProductCard({ product }: { product: ProductCardVM }) {
             alt={title || "product"}
             loading="lazy"
             decoding="async"
+            width={336}
+            height={350}
+            sizes="(max-width: 767px) 50vw, 168px"
             className="mk-mobile-product-card__image"
           />
         ) : null}
@@ -1331,7 +1452,7 @@ function MobileProductCard({ product }: { product: ProductCardVM }) {
   );
 }
 
- function MobileProductsTabsSection({
+function MobileProductsTabsSection({
   section,
   data,
   seoMode,
@@ -1440,6 +1561,7 @@ function MobileProductCard({ product }: { product: ProductCardVM }) {
             <MobileProductCard
               key={`${s((product as any).id) || "product"}-${index}`}
               product={product}
+              index={index}
             />
           ))}
         </div>
@@ -1578,6 +1700,7 @@ function MobileAdvancedProductsCollectionSection({
               <MobileProductCard
                 key={`${s((product as any).id) || "product"}-${index}`}
                 product={product}
+                index={index}
               />
             ))}
           </div>

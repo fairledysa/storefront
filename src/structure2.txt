@@ -1,5 +1,5 @@
 Folder PATH listing for volume Data
-Volume serial number is 00000070 60BC:862A
+Volume serial number is 0000004E 60BC:862A
 D:.
 |   structure2.txt
 |   
@@ -48,6 +48,9 @@ D:.
 |   |   |   +---cart
 |   |   |   |   |   route.ts
 |   |   |   |   |   
+|   |   |   |   +---abandoned-visit
+|   |   |   |   |       route.ts
+|   |   |   |   |       
 |   |   |   |   +---claim
 |   |   |   |   |       route.ts
 |   |   |   |   |       
@@ -203,12 +206,27 @@ D:.
 |   |           checkout.summary.css
 |   |           checkout.tokens.css
 |   |           
-|   \---platform
-|       |   page.tsx
-|       |   
-|       \---pricing
-|               page.tsx
-|               
+|   +---platform
+|   |   |   page.tsx
+|   |   |   
+|   |   \---pricing
+|   |           page.tsx
+|   |           
+|   +---robots.txt
+|   |       route.ts
+|   |       
+|   +---sitemap-1.xml
+|   |       route.ts
+|   |       
+|   +---sitemap-2.xml
+|   |       route.ts
+|   |       
+|   +---sitemap.xml
+|   |       route.ts
+|   |       
+|   \---_seo
+|           storefront-seo-files.ts
+|           
 +---components
 |   |   .DS_Store
 |   |   
@@ -219,12 +237,6 @@ D:.
 |   |   |       1StBracket.tsx
 |   |   |       1StBracketCircle.tsx
 |   |   |       1StBracketSquare.tsx
-|   |   |       2NdBracket.tsx
-|   |   |       ZoomCircle.tsx
-|   |   |       ZoomInArea.tsx
-|   |   |       ZoomOutArea.tsx
-|   |   |       ZoomSquare.tsx
-|   |   |       Zsh.tsx
 |   |   |       Zzz.tsx
 |   |   |       
 |   |   \---svg-icons
@@ -698,6 +710,9 @@ D:.
 |   |   |           search-overlay.css
 |   |   |           topbar.css
 |   |   |           
+|   |   +---tracking
+|   |   |       MalakTrackingRuntime.tsx
+|   |   |       
 |   |   \---ui
 |   |           Badge.tsx
 |   |           Button.tsx

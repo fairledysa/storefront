@@ -78,11 +78,13 @@ export default function MobileHero({ slides }: Props) {
 
   const total = cleanSlides.length;
   const hasMany = total > 1;
+  const firstSlideImage = s(cleanSlides[0]?.image);
 
   const [visualIndex, setVisualIndex] = useState(0);
   const [dragX, setDragX] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [transitionEnabled, setTransitionEnabled] = useState(true);
+  const [readyForNeighborImages, setReadyForNeighborImages] = useState(false);
 
   const gestureRef = useRef({
     active: false,
@@ -103,9 +105,14 @@ export default function MobileHero({ slides }: Props) {
     setVisualIndex(0);
     setDragX(0);
     setDragging(false);
+    setReadyForNeighborImages(false);
 
     const frame = window.requestAnimationFrame(() => {
       setTransitionEnabled(true);
+
+      window.setTimeout(() => {
+        setReadyForNeighborImages(true);
+      }, 900);
     });
 
     return () => window.cancelAnimationFrame(frame);
@@ -124,6 +131,7 @@ export default function MobileHero({ slides }: Props) {
   function goTo(index: number) {
     if (!hasMany) return;
 
+    setReadyForNeighborImages(true);
     setDragging(false);
     setTransitionEnabled(true);
     setDragX(0);
@@ -133,6 +141,7 @@ export default function MobileHero({ slides }: Props) {
   function goPrev() {
     if (!hasMany) return;
 
+    setReadyForNeighborImages(true);
     setDragging(false);
     setTransitionEnabled(true);
     setDragX(0);
@@ -142,6 +151,7 @@ export default function MobileHero({ slides }: Props) {
   function goNext() {
     if (!hasMany) return;
 
+    setReadyForNeighborImages(true);
     setDragging(false);
     setTransitionEnabled(true);
     setDragX(0);
@@ -167,6 +177,8 @@ export default function MobileHero({ slides }: Props) {
     pointerId?: number;
   }) {
     if (!hasMany) return;
+
+    setReadyForNeighborImages(true);
 
     gestureRef.current = {
       active: true,
@@ -407,13 +419,13 @@ export default function MobileHero({ slides }: Props) {
 
   function shouldRenderSlideImage(index: number) {
     if (!hasMany) return true;
-    if (total <= 3) return true;
 
-    return (
-      index === actualIndex ||
-      index === actualIndex - 1 ||
-      index === actualIndex + 1
-    );
+    if (index === 0) return true;
+    if (index === actualIndex) return true;
+
+    if (!readyForNeighborImages) return false;
+
+    return index === actualIndex - 1 || index === actualIndex + 1;
   }
 
   const count = cleanSlides.length;
@@ -424,132 +436,142 @@ export default function MobileHero({ slides }: Props) {
   }% + ${dragX}px), 0, 0)`;
 
   return (
-    <section dir="rtl" className="mk-mhero">
-      <div
-        className={["mk-mhero__wrap", dragging ? "is-dragging" : ""]
-          .filter(Boolean)
-          .join(" ")}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerCancel}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onTouchCancel={handleTouchCancel}
-        style={
-          {
-            touchAction: "pan-y pinch-zoom",
-          } as CSSProperties
-        }
-      >
-        <div className="mk-mhero__swiper">
-          <div className="mk-mhero__viewport" dir="ltr">
-            <div
-              className="mk-mhero__track"
-              style={
-                {
-                  width: `${count * 100}%`,
-                  transform: trackTransform,
-                  transition:
-                    transitionEnabled && !dragging
-                      ? SLIDE_TRANSITION
-                      : "none",
-                } as CSSProperties
-              }
-            >
-              {cleanSlides.map((slide, originalIndex) => {
-                const isActive = originalIndex === actualIndex;
-                const shouldRenderImage = shouldRenderSlideImage(originalIndex);
+    <>
+      {firstSlideImage ? (
+        <link rel="preload" as="image" href={firstSlideImage} />
+      ) : null}
 
-                return (
-                  <div
-                    key={slide.id || `slide-${originalIndex}`}
-                    className="mk-mhero__slide"
-                    dir="rtl"
-                    style={
-                      {
-                        width: `${slideSize}%`,
-                        flex: `0 0 ${slideSize}%`,
-                      } as CSSProperties
-                    }
-                  >
-                    <div className="mk-mhero__slideInner">
-                      <Link
-                        href={slide.href || "#"}
-                        prefetch={false}
-                        className="mk-mhero__link"
-                        aria-label={
-                          slide.title || `slide-${originalIndex + 1}`
-                        }
-                        draggable={false}
-                        onClick={(event) => handleLinkClick(event, slide.href)}
-                        onDragStart={(event) => event.preventDefault()}
-                      >
-                        {shouldRenderImage ? (
-                          <img
-                            className="mk-mhero__img"
-                            src={slide.image}
-                            alt={slide.title || `slide-${originalIndex + 1}`}
-                            loading={isActive ? "eager" : "lazy"}
-                            fetchPriority={isActive ? "high" : "low"}
-                            decoding={isActive ? "sync" : "async"}
-                            width={1080}
-                            height={1350}
-                            sizes="100vw"
-                            draggable={false}
-                          />
-                        ) : null}
+      <section dir="rtl" className="mk-mhero">
+        <div
+          className={["mk-mhero__wrap", dragging ? "is-dragging" : ""]
+            .filter(Boolean)
+            .join(" ")}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={handleTouchCancel}
+          style={
+            {
+              touchAction: "pan-y pinch-zoom",
+            } as CSSProperties
+          }
+        >
+          <div className="mk-mhero__swiper">
+            <div className="mk-mhero__viewport" dir="ltr">
+              <div
+                className="mk-mhero__track"
+                style={
+                  {
+                    width: `${count * 100}%`,
+                    transform: trackTransform,
+                    transition:
+                      transitionEnabled && !dragging
+                        ? SLIDE_TRANSITION
+                        : "none",
+                  } as CSSProperties
+                }
+              >
+                {cleanSlides.map((slide, originalIndex) => {
+                  const isFirst = originalIndex === 0;
+                  const isActive = originalIndex === actualIndex;
+                  const shouldRenderImage =
+                    shouldRenderSlideImage(originalIndex);
 
-                        <div className="mk-mhero__content" aria-hidden="true">
-                          {slide.title ? (
-                            <h2 className="mk-mhero__title">{slide.title}</h2>
+                  return (
+                    <div
+                      key={slide.id || `slide-${originalIndex}`}
+                      className="mk-mhero__slide"
+                      dir="rtl"
+                      style={
+                        {
+                          width: `${slideSize}%`,
+                          flex: `0 0 ${slideSize}%`,
+                        } as CSSProperties
+                      }
+                    >
+                      <div className="mk-mhero__slideInner">
+                        <Link
+                          href={slide.href || "#"}
+                          prefetch={false}
+                          className="mk-mhero__link"
+                          aria-label={
+                            slide.title || `slide-${originalIndex + 1}`
+                          }
+                          draggable={false}
+                          onClick={(event) =>
+                            handleLinkClick(event, slide.href)
+                          }
+                          onDragStart={(event) => event.preventDefault()}
+                        >
+                          {shouldRenderImage ? (
+                            <img
+                              className="mk-mhero__img"
+                              src={slide.image}
+                              alt={slide.title || `slide-${originalIndex + 1}`}
+                              loading={isFirst ? "eager" : "lazy"}
+                              fetchPriority={isFirst ? "high" : "low"}
+                              decoding="async"
+                              width={1080}
+                              height={1350}
+                              sizes="100vw"
+                              draggable={false}
+                            />
                           ) : null}
 
-                          {slide.description ? (
-                            <p className="mk-mhero__desc">
-                              {slide.description}
-                            </p>
-                          ) : null}
+                          <div className="mk-mhero__content" aria-hidden="true">
+                            {slide.title ? (
+                              <h2 className="mk-mhero__title">{slide.title}</h2>
+                            ) : null}
 
-                          {slide.buttonText ? (
-                            <span className="mk-mhero__button">
-                              {slide.buttonText}
-                            </span>
-                          ) : null}
-                        </div>
-                      </Link>
+                            {slide.description ? (
+                              <p className="mk-mhero__desc">
+                                {slide.description}
+                              </p>
+                            ) : null}
+
+                            {slide.buttonText ? (
+                              <span className="mk-mhero__button">
+                                {slide.buttonText}
+                              </span>
+                            ) : null}
+                          </div>
+                        </Link>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
 
-          {hasMany ? (
-            <div className="swiper-pagination" aria-label="شرائح العرض">
-              {cleanSlides.map((slide, index) => (
-                <button
-                  key={slide.id || `hero-dot-${index}`}
-                  type="button"
-                  className={[
-                    "swiper-pagination-bullet",
-                    index === actualIndex
-                      ? "swiper-pagination-bullet-active"
-                      : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                  aria-label={`عرض الشريحة ${index + 1}`}
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onTouchStart={(event) => event.stopPropagation()}
-                  onClick={() => goTo(index)}
-                />
-              ))}
-            </div>
-          ) : null}
+            {hasMany ? (
+              <div className="swiper-pagination" aria-label="شرائح العرض">
+                {cleanSlides.map((slide, index) => (
+                  <button
+                    key={slide.id || `hero-dot-${index}`}
+                    type="button"
+                    className={[
+                      "swiper-pagination-bullet",
+                      index === actualIndex
+                        ? "swiper-pagination-bullet-active"
+                        : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    aria-label={`عرض الشريحة ${index + 1}`}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onTouchStart={(event) => event.stopPropagation()}
+                    onClick={() => goTo(index)}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </>
   );
 }
