@@ -333,7 +333,11 @@ function buildTrackingItemFromProductCardVm(args: {
   const productVm = args.productVm;
   const rawProduct = args.rawProduct ?? productVm.raw ?? {};
   const productId = s(productVm.id);
-  const itemName = firstText(productVm.title, rawProduct?.name, rawProduct?.title);
+  const itemName = firstText(
+    productVm.title,
+    rawProduct?.name,
+    rawProduct?.title,
+  );
 
   if (!productId || !itemName) return null;
 
@@ -562,7 +566,6 @@ function readAddToCartImageUrl(item: any) {
 }
 
 function buildTrackingItemFromAddToCartDetail(detail: any): {
-  currency: string;
   item: TrackingItem | null;
   value: number;
 } {
@@ -572,7 +575,6 @@ function buildTrackingItemFromAddToCartDetail(detail: any): {
 
   if (!productId || !itemName) {
     return {
-      currency: DEFAULT_CURRENCY,
       item: null,
       value: 0,
     };
@@ -596,7 +598,6 @@ function buildTrackingItemFromAddToCartDetail(detail: any): {
 
   const variantId = readAddToCartVariantId(detail);
   const selectedOptionsText = getSelectedOptionsText(selectedOptions);
-
   const categories = normalizeCategoriesFromRaw(rawItem);
 
   const item: TrackingItem = {
@@ -633,7 +634,6 @@ function buildTrackingItemFromAddToCartDetail(detail: any): {
   };
 
   return {
-    currency: DEFAULT_CURRENCY,
     item,
     value: roundMoney(price * qty),
   };
@@ -802,8 +802,11 @@ function getTrackingListId(data: any) {
   const publicNo = getCategoryPublicNo(data);
 
   if (route === "home") return "home";
+
   if (route === "category") {
-    return publicNo ? `category_${publicNo}` : `category_${s(getCategoryName(data)) || "unknown"}`;
+    return publicNo
+      ? `category_${publicNo}`
+      : `category_${s(getCategoryName(data)) || "unknown"}`;
   }
 
   if (route === "search") return "search_results";
@@ -872,7 +875,9 @@ function buildListTrackingState(args: {
 
   const value = roundMoney(
     items.reduce((sum, item) => {
-      return sum + Number(item.price || 0) * Math.max(1, Number(item.quantity || 1));
+      return (
+        sum + Number(item.price || 0) * Math.max(1, Number(item.quantity || 1))
+      );
     }, 0),
   );
 
@@ -912,6 +917,11 @@ function buildViewCategoryEvent(args: {
   };
 }
 
+function googleEventName(eventName: TrackingEventName) {
+  if (eventName === "view_category") return "view_item_list";
+  return eventName;
+}
+
 function sendToGoogleAnalytics(event: TrackingEvent) {
   if (typeof window === "undefined") return;
 
@@ -934,7 +944,7 @@ function sendToGoogleAnalytics(event: TrackingEvent) {
   };
 
   if (typeof window.gtag === "function") {
-    window.gtag("event", event.name, ecommercePayload);
+    window.gtag("event", googleEventName(event.name), ecommercePayload);
   }
 }
 
@@ -950,6 +960,7 @@ function pushToDataLayer(event: TrackingEvent) {
   window.dataLayer.push({
     event: "mk_tracking_event",
     mk_event_name: event.name,
+    mk_google_event_name: googleEventName(event.name),
     mk_source: event.source,
     mk_device: event.device,
     mk_route: event.route,
@@ -1039,7 +1050,9 @@ function buildAddToCartEvent(args: {
   const built = buildTrackingItemFromAddToCartDetail(args.detail);
   if (!built.item) return null;
 
-  const rawItem = safeObject(args.detail?.item || args.detail?.product || args.detail);
+  const rawItem = safeObject(
+    args.detail?.item || args.detail?.product || args.detail,
+  );
 
   const currency = readAddToCartCurrency({
     item: rawItem,
@@ -1162,7 +1175,9 @@ function buildSelectItemEvent(args: {
   device: string;
 }): TrackingEvent {
   const itemListId =
-    args.item.item_list_id || args.state?.itemListId || getTrackingListId(args.data);
+    args.item.item_list_id ||
+    args.state?.itemListId ||
+    getTrackingListId(args.data);
 
   const itemListName =
     args.item.item_list_name ||
@@ -1207,6 +1222,7 @@ export default function MalakTrackingRuntime({
 }: Props) {
   const sentViewItemsRef = useRef<Set<string>>(new Set());
   const sentViewCategoriesRef = useRef<Set<string>>(new Set());
+  const sentSelectItemsRef = useRef<Set<string>>(new Set());
   const listStateRef = useRef<TrackingListState | null>(null);
 
   const productVm = useMemo(() => {
@@ -1314,20 +1330,17 @@ export default function MalakTrackingRuntime({
   }, [data, bootstrap, device]);
 
   useEffect(() => {
-    function handleSelectItemClick(event: MouseEvent) {
-      if (event.defaultPrevented) return;
-      if (isBlockedSelectClick(event.target)) return;
-
-      const found = findProductCardFromClick(event.target);
-      if (!found?.productId) return;
-
+    function sendSelectFromCard(args: {
+      card: HTMLElement;
+      productId: string;
+    }) {
       const state = listStateRef.current;
 
       const item =
-        state?.itemsById.get(found.productId) ||
+        state?.itemsById.get(args.productId) ||
         buildDomTrackingItem({
-          card: found.card,
-          productId: found.productId,
+          card: args.card,
+          productId: args.productId,
           state,
         });
 
@@ -1341,7 +1354,35 @@ export default function MalakTrackingRuntime({
         device,
       });
 
+      const dedupeKey = [
+        trackingEvent.name,
+        trackingEvent.path,
+        trackingEvent.payload?.item_list_id || "",
+        trackingEvent.payload?.product_id || item.item_id,
+      ].join("|");
+
+      if (sentSelectItemsRef.current.has(dedupeKey)) return;
+
+      sentSelectItemsRef.current.add(dedupeKey);
+
+      window.setTimeout(() => {
+        sentSelectItemsRef.current.delete(dedupeKey);
+      }, 1200);
+
       sendTrackingEvent(trackingEvent);
+    }
+
+    function handleSelectItemClick(event: MouseEvent) {
+      if (event.defaultPrevented) return;
+      if (isBlockedSelectClick(event.target)) return;
+
+      const found = findProductCardFromClick(event.target);
+      if (!found?.productId) return;
+
+      sendSelectFromCard({
+        card: found.card,
+        productId: found.productId,
+      });
     }
 
     document.addEventListener("click", handleSelectItemClick, true);
