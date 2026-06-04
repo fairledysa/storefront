@@ -11,6 +11,7 @@ import { THEME_KIND, type ThemeCode } from "@/theme-engine/types";
 
 const PWA_SETTING_SLUGS = ["app/pwa", "store.pwa", "pwa"];
 const GOOGLE_SITE_VERIFICATION_APP_KEY = "google_site_verification";
+const GOOGLE_ANALYTICS_APP_KEY = "google_analytics";
 
 function s(value: unknown) {
   return String(value ?? "").trim();
@@ -57,6 +58,15 @@ function extractGoogleVerificationCode(value: unknown) {
   if (contentMatch?.[1]) return s(contentMatch[1]);
 
   if (clean.includes("<meta")) return "";
+
+  return clean;
+}
+
+function cleanGoogleAnalyticsMeasurementId(value: unknown) {
+  const clean = s(value).toUpperCase();
+
+  if (!clean) return "";
+  if (!/^G-[A-Z0-9]+$/.test(clean)) return "";
 
   return clean;
 }
@@ -126,6 +136,58 @@ async function loadGoogleSiteVerificationCode(storeId: string) {
   return (
     extractGoogleVerificationCode(publicConfig.verification_code) ||
     extractGoogleVerificationCode(publicConfig.verification_meta_tag)
+  );
+}
+
+async function loadGoogleAnalyticsMeasurementId(storeId: string) {
+  const sb: any = await getStoreDb(storeId);
+
+  const { data: appData, error: appError } = await sb
+    .from("app_catalog")
+    .select("id,key,slug")
+    .eq("key", GOOGLE_ANALYTICS_APP_KEY)
+    .maybeSingle();
+
+  if (appError || !appData?.id) return "";
+
+  const appId = s(appData.id);
+  if (!appId) return "";
+
+  const { data: installationData, error: installationError } = await sb
+    .from("store_app_installations")
+    .select("id,store_id,app_id,status,config_status,updated_at,installed_at")
+    .eq("store_id", storeId)
+    .eq("app_id", appId)
+    .eq("status", "active")
+    .eq("config_status", "configured")
+    .order("updated_at", { ascending: false })
+    .order("installed_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (installationError || !installationData?.id) return "";
+
+  const installationId = s(installationData.id);
+  if (!installationId) return "";
+
+  const { data: configData, error: configError } = await sb
+    .from("store_app_configs")
+    .select("id,enabled,public_config,metadata,updated_at")
+    .eq("store_id", storeId)
+    .eq("app_id", appId)
+    .eq("installation_id", installationId)
+    .maybeSingle();
+
+  if (configError || !configData) return "";
+  if (configData.enabled === false) return "";
+
+  const publicConfig = safeObject(configData.public_config);
+
+  return cleanGoogleAnalyticsMeasurementId(
+    publicConfig.measurement_id ||
+      publicConfig.measurementId ||
+      publicConfig.google_measurement_id ||
+      publicConfig.googleMeasurementId,
   );
 }
 
@@ -224,11 +286,26 @@ export default async function StoreLayout({
   const activeCode = resolveThemeCode(ctx.theme);
   const kind = THEME_KIND[activeCode] || "legacy";
   const isAppShell = kind === "app-shell";
+  const storeId = s((ctx.store as any).id);
 
-  const custom = await loadCustomCode({
-    store_id: ctx.store.id,
-    preview: false,
-  });
+  const [custom, googleAnalyticsMeasurementId] = await Promise.all([
+    loadCustomCode({
+      store_id: ctx.store.id,
+      preview: false,
+    }),
+    storeId ? loadGoogleAnalyticsMeasurementId(storeId) : Promise.resolve(""),
+  ]);
+
+  const googleAnalyticsInlineScript = googleAnalyticsMeasurementId
+    ? `
+window.dataLayer = window.dataLayer || [];
+function gtag(){window.dataLayer.push(arguments);}
+gtag("js", new Date());
+gtag("config", ${JSON.stringify(googleAnalyticsMeasurementId)}, {
+  send_page_view: true
+});
+`
+    : "";
 
   const CustomHead = (
     <>
@@ -237,6 +314,26 @@ export default async function StoreLayout({
           id="store-custom-css"
           dangerouslySetInnerHTML={{ __html: custom.css }}
         />
+      ) : null}
+
+      {googleAnalyticsMeasurementId ? (
+        <>
+          <Script
+            id="store-google-analytics-loader"
+            src={`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(
+              googleAnalyticsMeasurementId,
+            )}`}
+            strategy="afterInteractive"
+          />
+
+          <Script
+            id="store-google-analytics-config"
+            strategy="afterInteractive"
+            dangerouslySetInnerHTML={{
+              __html: googleAnalyticsInlineScript,
+            }}
+          />
+        </>
       ) : null}
 
       {custom.scripts.map((script) => (
