@@ -63,12 +63,12 @@ function extractGoogleVerificationCode(value: unknown) {
 }
 
 function cleanGoogleAnalyticsMeasurementId(value: unknown) {
-  const clean = s(value).toUpperCase();
+  const id = s(value).toUpperCase();
 
-  if (!clean) return "";
-  if (!/^G-[A-Z0-9]+$/.test(clean)) return "";
+  if (!id) return "";
+  if (!/^G-[A-Z0-9]+$/.test(id)) return "";
 
-  return clean;
+  return id;
 }
 
 async function loadPwaSettings(storeId: string) {
@@ -90,24 +90,27 @@ async function loadPwaSettings(storeId: string) {
   return safeObject(data[0]?.value);
 }
 
-async function loadGoogleSiteVerificationCode(storeId: string) {
-  const sb: any = await getStoreDb(storeId);
+async function loadInstalledAppConfig(args: {
+  storeId: string;
+  appKey: string;
+}) {
+  const sb: any = await getStoreDb(args.storeId);
 
   const { data: appData, error: appError } = await sb
     .from("app_catalog")
     .select("id,key,slug")
-    .eq("key", GOOGLE_SITE_VERIFICATION_APP_KEY)
+    .eq("key", args.appKey)
     .maybeSingle();
 
-  if (appError || !appData?.id) return "";
+  if (appError || !appData?.id) return null;
 
   const appId = s(appData.id);
-  if (!appId) return "";
+  if (!appId) return null;
 
   const { data: installationData, error: installationError } = await sb
     .from("store_app_installations")
     .select("id,store_id,app_id,status,config_status,updated_at,installed_at")
-    .eq("store_id", storeId)
+    .eq("store_id", args.storeId)
     .eq("app_id", appId)
     .neq("status", "uninstalled")
     .order("updated_at", { ascending: false })
@@ -115,79 +118,60 @@ async function loadGoogleSiteVerificationCode(storeId: string) {
     .limit(1)
     .maybeSingle();
 
-  if (installationError || !installationData?.id) return "";
+  if (installationError || !installationData?.id) return null;
 
   const installationId = s(installationData.id);
-  if (!installationId) return "";
+  if (!installationId) return null;
 
   const { data: configData, error: configError } = await sb
     .from("store_app_configs")
-    .select("id,enabled,public_config,metadata,updated_at")
-    .eq("store_id", storeId)
+    .select("id,enabled,public_config,private_config,metadata,updated_at")
+    .eq("store_id", args.storeId)
     .eq("app_id", appId)
     .eq("installation_id", installationId)
     .maybeSingle();
 
-  if (configError || !configData) return "";
-  if (configData.enabled === false) return "";
+  if (configError || !configData) return null;
+  if (configData.enabled === false) return null;
 
-  const publicConfig = safeObject(configData.public_config);
+  return {
+    appId,
+    installationId,
+    installation: installationData,
+    config: configData,
+    publicConfig: safeObject(configData.public_config),
+    privateConfig: safeObject(configData.private_config),
+    metadata: safeObject(configData.metadata),
+  };
+}
+
+async function loadGoogleSiteVerificationCode(storeId: string) {
+  const installed = await loadInstalledAppConfig({
+    storeId,
+    appKey: GOOGLE_SITE_VERIFICATION_APP_KEY,
+  });
+
+  if (!installed) return "";
 
   return (
-    extractGoogleVerificationCode(publicConfig.verification_code) ||
-    extractGoogleVerificationCode(publicConfig.verification_meta_tag)
+    extractGoogleVerificationCode(installed.publicConfig.verification_code) ||
+    extractGoogleVerificationCode(installed.publicConfig.verification_meta_tag)
   );
 }
 
 async function loadGoogleAnalyticsMeasurementId(storeId: string) {
-  const sb: any = await getStoreDb(storeId);
+  const installed = await loadInstalledAppConfig({
+    storeId,
+    appKey: GOOGLE_ANALYTICS_APP_KEY,
+  });
 
-  const { data: appData, error: appError } = await sb
-    .from("app_catalog")
-    .select("id,key,slug")
-    .eq("key", GOOGLE_ANALYTICS_APP_KEY)
-    .maybeSingle();
-
-  if (appError || !appData?.id) return "";
-
-  const appId = s(appData.id);
-  if (!appId) return "";
-
-  const { data: installationData, error: installationError } = await sb
-    .from("store_app_installations")
-    .select("id,store_id,app_id,status,config_status,updated_at,installed_at")
-    .eq("store_id", storeId)
-    .eq("app_id", appId)
-    .eq("status", "active")
-    .eq("config_status", "configured")
-    .order("updated_at", { ascending: false })
-    .order("installed_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (installationError || !installationData?.id) return "";
-
-  const installationId = s(installationData.id);
-  if (!installationId) return "";
-
-  const { data: configData, error: configError } = await sb
-    .from("store_app_configs")
-    .select("id,enabled,public_config,metadata,updated_at")
-    .eq("store_id", storeId)
-    .eq("app_id", appId)
-    .eq("installation_id", installationId)
-    .maybeSingle();
-
-  if (configError || !configData) return "";
-  if (configData.enabled === false) return "";
-
-  const publicConfig = safeObject(configData.public_config);
+  if (!installed) return "";
 
   return cleanGoogleAnalyticsMeasurementId(
-    publicConfig.measurement_id ||
-      publicConfig.measurementId ||
-      publicConfig.google_measurement_id ||
-      publicConfig.googleMeasurementId,
+    installed.publicConfig.measurement_id ||
+      installed.publicConfig.measurementId ||
+      installed.publicConfig.ga4_measurement_id ||
+      installed.publicConfig.ga4MeasurementId,
   );
 }
 
@@ -283,57 +267,53 @@ export default async function StoreLayout({
 
   if (!ctx.store) return notFound();
 
+  const storeId = String(ctx.store.id);
+
   const activeCode = resolveThemeCode(ctx.theme);
   const kind = THEME_KIND[activeCode] || "legacy";
   const isAppShell = kind === "app-shell";
-  const storeId = s((ctx.store as any).id);
 
   const [custom, googleAnalyticsMeasurementId] = await Promise.all([
     loadCustomCode({
       store_id: ctx.store.id,
       preview: false,
     }),
-    storeId ? loadGoogleAnalyticsMeasurementId(storeId) : Promise.resolve(""),
+    loadGoogleAnalyticsMeasurementId(storeId),
   ]);
-
-  const googleAnalyticsInlineScript = googleAnalyticsMeasurementId
-    ? `
-window.dataLayer = window.dataLayer || [];
-function gtag(){window.dataLayer.push(arguments);}
-gtag("js", new Date());
-gtag("config", ${JSON.stringify(googleAnalyticsMeasurementId)}, {
-  send_page_view: true
-});
-`
-    : "";
 
   const CustomHead = (
     <>
+      {googleAnalyticsMeasurementId ? (
+        <>
+          <Script
+            id="mk-google-analytics-src"
+            src={`https://www.googletagmanager.com/gtag/js?id=${googleAnalyticsMeasurementId}`}
+            strategy="afterInteractive"
+          />
+
+          <Script
+            id="mk-google-analytics-init"
+            strategy="afterInteractive"
+            dangerouslySetInnerHTML={{
+              __html: `
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                window.gtag = window.gtag || gtag;
+                gtag('js', new Date());
+                gtag('config', '${googleAnalyticsMeasurementId}', {
+                  send_page_view: true
+                });
+              `,
+            }}
+          />
+        </>
+      ) : null}
+
       {custom.css ? (
         <style
           id="store-custom-css"
           dangerouslySetInnerHTML={{ __html: custom.css }}
         />
-      ) : null}
-
-      {googleAnalyticsMeasurementId ? (
-        <>
-          <Script
-            id="store-google-analytics-loader"
-            src={`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(
-              googleAnalyticsMeasurementId,
-            )}`}
-            strategy="afterInteractive"
-          />
-
-          <Script
-            id="store-google-analytics-config"
-            strategy="afterInteractive"
-            dangerouslySetInnerHTML={{
-              __html: googleAnalyticsInlineScript,
-            }}
-          />
-        </>
       ) : null}
 
       {custom.scripts.map((script) => (

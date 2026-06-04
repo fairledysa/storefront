@@ -25,7 +25,7 @@ import type { ThemeAdapterOutput } from "../types";
 import type { SeoUrlMode } from "@/data/store/settings";
 import type { MalakBootstrap } from "../bootstrap/types";
 import { useNavStack } from "../app-navigation/stack";
-
+import MalakTrackingRuntime from "@/themes/malak/tracking/MalakTrackingRuntime";
 const ProductQuickView = dynamic(
   () => import("@/themes/malak/components/product-quick-view/ProductQuickView"),
   {
@@ -1773,7 +1773,15 @@ export default function AppShell({
         </DesktopShell>
       )}
 
-      <ProductCartRuntime currencies={bootstrap?.currencies ?? null} />
+      
+      <MalakTrackingRuntime
+  data={data}
+  bootstrap={bootstrap}
+  device={theme.device}
+/>
+
+<ProductCartRuntime currencies={bootstrap?.currencies ?? null} />
+
       <ProductFavoritesRuntime />
       <ProductQuickView />
       <ToastProvider />
