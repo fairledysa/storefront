@@ -86,6 +86,7 @@ declare global {
 const DEFAULT_CURRENCY = "SAR";
 const DEFAULT_DEVICE = "desktop";
 const SOURCE = "malak_storefront" as const;
+const PURCHASE_SENT_PREFIX = "mk_tracking_purchase_sent:";
 
 function s(value: unknown) {
   return String(value ?? "").trim();
@@ -917,31 +918,397 @@ function buildViewCategoryEvent(args: {
   };
 }
 
+function readOrderNo(data: any) {
+  return firstText(
+    data?.orderNo,
+    data?.order_no,
+    data?.orderNumber,
+    data?.order_number,
+    data?.invoiceNo,
+    data?.invoice_no,
+    data?.publicNo,
+    data?.public_no,
+    data?.order?.orderNo,
+    data?.order?.order_no,
+    data?.order?.orderNumber,
+    data?.order?.order_number,
+    data?.order?.invoiceNo,
+    data?.order?.invoice_no,
+    data?.order?.publicNo,
+    data?.order?.public_no,
+    data?.order?.id,
+    data?.id,
+  );
+}
+
+function readPurchaseCurrency(data: any, bootstrap?: MalakBootstrap) {
+  return cleanCurrencyCode(
+    firstDefined(
+      data?.currency_code,
+      data?.currencyCode,
+      data?.currency,
+      data?.order?.currency_code,
+      data?.order?.currencyCode,
+      data?.order?.currency,
+    ),
+    getFallbackCurrency(data, bootstrap),
+  );
+}
+
+function readMoneyValue(...values: any[]) {
+  for (const value of values) {
+    if (value === undefined || value === null || value === "") continue;
+
+    const num = safeNum(value);
+    if (num !== null) return roundMoney(num);
+  }
+
+  return 0;
+}
+
+function readCouponCode(data: any) {
+  return firstText(
+    data?.coupon?.code,
+    data?.couponCode,
+    data?.coupon_code,
+    data?.discountCode,
+    data?.discount_code,
+    data?.order?.coupon?.code,
+    data?.order?.couponCode,
+    data?.order?.coupon_code,
+  );
+}
+
+function readOrderOptionsFee(data: any) {
+  return readMoneyValue(
+    data?.orderOptionsFee,
+    data?.order_options_fee,
+    data?.order?.orderOptionsFee,
+    data?.order?.order_options_fee,
+  );
+}
+
+function readPurchaseSubtotal(data: any) {
+  return readMoneyValue(
+    data?.subtotal,
+    data?.subtotalAmount,
+    data?.order?.subtotal,
+    data?.order?.subtotalAmount,
+  );
+}
+
+function readPurchaseShipping(data: any) {
+  return readMoneyValue(
+    data?.shippingAmount,
+    data?.shipping,
+    data?.shippingTotalAmount,
+    data?.shipping_total,
+    data?.shippingTotal,
+    data?.order?.shippingAmount,
+    data?.order?.shipping,
+    data?.order?.shipping_total,
+  );
+}
+
+function readPurchaseTax(data: any) {
+  return readMoneyValue(
+    data?.taxAmount,
+    data?.vatAmount,
+    typeof data?.tax === "object" ? data?.tax?.amount : data?.tax,
+    data?.order?.taxAmount,
+    data?.order?.vatAmount,
+    typeof data?.order?.tax === "object" ? data?.order?.tax?.amount : data?.order?.tax,
+  );
+}
+
+function readPurchaseDiscount(data: any) {
+  return readMoneyValue(
+    data?.discountAmount,
+    data?.discount,
+    data?.order?.discountAmount,
+    data?.order?.discount,
+  );
+}
+
+function readPurchasePaymentFee(data: any) {
+  return readMoneyValue(
+    data?.paymentFeeAmount,
+    data?.payment_fee_amount,
+    data?.paymentFee,
+    data?.payment_fee,
+    data?.codFee,
+    data?.cod_fee,
+    data?.paymentFeeTotalAmount,
+    data?.payment_fee_total,
+    data?.paymentFeeTotal,
+    data?.order?.paymentFeeAmount,
+    data?.order?.payment_fee_amount,
+    data?.order?.paymentFee,
+    data?.order?.payment_fee,
+    data?.order?.codFee,
+    data?.order?.cod_fee,
+  );
+}
+
+function readPurchaseTotal(data: any) {
+  const explicitTotal = readMoneyValue(
+    data?.totalAmount,
+    data?.total,
+    data?.grandTotal,
+    data?.order?.totalAmount,
+    data?.order?.total,
+    data?.order?.grandTotal,
+  );
+
+  if (explicitTotal > 0) return explicitTotal;
+
+  const subtotal = readPurchaseSubtotal(data);
+  const shipping = readPurchaseShipping(data);
+  const tax = readPurchaseTax(data);
+  const discount = readPurchaseDiscount(data);
+  const paymentFee = readPurchasePaymentFee(data);
+  const orderOptionsFee = readOrderOptionsFee(data);
+
+  return roundMoney(
+    Math.max(0, subtotal + shipping + tax + paymentFee + orderOptionsFee - discount),
+  );
+}
+
+function readPurchaseItemId(row: any, index: number) {
+  return firstText(
+    row?.product_id,
+    row?.productId,
+    row?.product?.id,
+    row?.variant?.product_id,
+    row?.id,
+    `item_${index + 1}`,
+  );
+}
+
+function readPurchaseItemName(row: any) {
+  return firstText(
+    row?.item_name,
+    row?.itemName,
+    row?.title,
+    row?.name,
+    row?.product?.name,
+    row?.product?.title,
+    "المنتج",
+  );
+}
+
+function readPurchaseItemPrice(row: any) {
+  return readMoneyValue(
+    row?.unit_price,
+    row?.unitPrice,
+    row?.price,
+    row?.total_price && row?.qty ? Number(row.total_price) / Math.max(1, Number(row.qty)) : null,
+    row?.totalPrice && row?.qty ? Number(row.totalPrice) / Math.max(1, Number(row.qty)) : null,
+  );
+}
+
+function readPurchaseItemQty(row: any) {
+  const qty = safeNum(
+    firstDefined(row?.qty, row?.quantity, row?.count, row?.item_quantity),
+  );
+
+  return Math.max(1, Math.floor(qty || 1));
+}
+
+function readPurchaseItemVariant(row: any) {
+  const selectedOptions = getSelectedOptionsText(
+    row?.selected_options || row?.selectedOptions || row?.options || [],
+  );
+
+  return (
+    selectedOptions ||
+    firstText(row?.variant_name, row?.variantName, row?.variant_id, row?.variantId) ||
+    ""
+  );
+}
+
+function readPurchaseItemImage(row: any) {
+  return (
+    firstText(
+      row?.imageUrl,
+      row?.image_url,
+      row?.thumbnailUrl,
+      row?.thumbnail_url,
+      row?.product?.imageUrl,
+      row?.product?.image_url,
+      row?.product?.thumbnailUrl,
+      row?.product?.thumbnail_url,
+    ) || null
+  );
+}
+
+function buildPurchaseItems(data: any): TrackingItem[] {
+  const rows = Array.isArray(data?.items)
+    ? data.items
+    : Array.isArray(data?.order?.items)
+      ? data.order.items
+      : Array.isArray(data?.order_items)
+        ? data.order_items
+        : [];
+
+  return rows
+    .map((row: any, index: number) => {
+      const itemId = readPurchaseItemId(row, index);
+      const itemName = readPurchaseItemName(row);
+
+      if (!itemId || !itemName) return null;
+
+      const price = readPurchaseItemPrice(row);
+      const quantity = readPurchaseItemQty(row);
+      const categories = normalizeCategoriesFromRaw(row);
+      const itemVariant = readPurchaseItemVariant(row);
+
+      const item: TrackingItem = {
+        item_id: itemId,
+        item_name: itemName,
+
+        ...(firstText(row?.brandName, row?.brand, row?.brand?.name, row?.product?.brand?.name)
+          ? {
+              item_brand: firstText(
+                row?.brandName,
+                row?.brand,
+                row?.brand?.name,
+                row?.product?.brand?.name,
+              ),
+            }
+          : {}),
+
+        ...buildCategoryFields(categories),
+
+        ...(itemVariant ? { item_variant: itemVariant } : {}),
+
+        price,
+        quantity,
+
+        product_id: itemId,
+        variant_id: firstText(row?.variant_id, row?.variantId) || null,
+        product_public_no:
+          safeNum(row?.product_public_no ?? row?.productPublicNo ?? row?.publicNo ?? row?.public_no) ??
+          null,
+        image_url: readPurchaseItemImage(row),
+      };
+
+      return item;
+    })
+    .filter(Boolean) as TrackingItem[];
+}
+
+function isThankYouRoute(data: any) {
+  const route = getRoute(data);
+  const path = getCurrentPath();
+
+  return (
+    route === "thankyou" ||
+    route === "thank_you" ||
+    route === "order_success" ||
+    route === "order-success" ||
+    route === "purchase" ||
+    path.startsWith("/thankyou/")
+  );
+}
+
+function buildPurchaseEvent(args: {
+  data: any;
+  bootstrap?: MalakBootstrap;
+  device: string;
+}): TrackingEvent | null {
+  if (!isThankYouRoute(args.data)) return null;
+
+  const transactionId = readOrderNo(args.data);
+  if (!transactionId) return null;
+
+  const currency = readPurchaseCurrency(args.data, args.bootstrap);
+  const value = readPurchaseTotal(args.data);
+  const items = buildPurchaseItems(args.data);
+
+  if (!items.length) return null;
+
+  const shipping = readPurchaseShipping(args.data);
+  const tax = readPurchaseTax(args.data);
+  const discount = readPurchaseDiscount(args.data);
+  const paymentFee = readPurchasePaymentFee(args.data);
+  const orderOptionsFee = readOrderOptionsFee(args.data);
+  const coupon = readCouponCode(args.data);
+
+  return {
+    name: "purchase",
+    currency,
+    value,
+    items,
+    source: SOURCE,
+    device: args.device || DEFAULT_DEVICE,
+    route: getRoute(args.data) || "thankyou",
+    path: getCurrentPath(),
+    payload: {
+      transaction_id: transactionId,
+      order_no: transactionId,
+      affiliation: firstText(
+        args.data?.store?.name,
+        args.data?.bootstrap?.store?.name,
+        args.bootstrap?.store?.name,
+        "malak_storefront",
+      ),
+      shipping,
+      tax,
+      discount,
+      payment_fee: paymentFee,
+      order_options_fee: orderOptionsFee,
+      coupon: coupon || undefined,
+      item_count: items.length,
+    },
+  };
+}
+
 function googleEventName(eventName: TrackingEventName) {
   if (eventName === "view_category") return "view_item_list";
   return eventName;
 }
 
-function sendToGoogleAnalytics(event: TrackingEvent) {
-  if (typeof window === "undefined") return;
-
-  const ecommercePayload = {
+function buildGoogleEcommercePayload(event: TrackingEvent) {
+  return {
     currency: event.currency,
     value: event.value,
-    items: event.items,
-    ...(event.payload?.item_list_id
-      ? { item_list_id: event.payload.item_list_id }
-      : {}),
-    ...(event.payload?.item_list_name
-      ? { item_list_name: event.payload.item_list_name }
-      : {}),
-    ...(event.payload?.search_term
-      ? { search_term: event.payload.search_term }
-      : {}),
+
     ...(event.payload?.transaction_id
       ? { transaction_id: event.payload.transaction_id }
       : {}),
+
+    ...(event.payload?.affiliation
+      ? { affiliation: event.payload.affiliation }
+      : {}),
+
+    ...(event.payload?.tax !== undefined ? { tax: event.payload.tax } : {}),
+    ...(event.payload?.shipping !== undefined
+      ? { shipping: event.payload.shipping }
+      : {}),
+
+    ...(event.payload?.coupon ? { coupon: event.payload.coupon } : {}),
+
+    ...(event.payload?.item_list_id
+      ? { item_list_id: event.payload.item_list_id }
+      : {}),
+
+    ...(event.payload?.item_list_name
+      ? { item_list_name: event.payload.item_list_name }
+      : {}),
+
+    ...(event.payload?.search_term
+      ? { search_term: event.payload.search_term }
+      : {}),
+
+    items: event.items,
   };
+}
+
+function sendToGoogleAnalytics(event: TrackingEvent) {
+  if (typeof window === "undefined") return;
+
+  const ecommercePayload = buildGoogleEcommercePayload(event);
 
   if (typeof window.gtag === "function") {
     window.gtag("event", googleEventName(event.name), ecommercePayload);
@@ -965,17 +1332,7 @@ function pushToDataLayer(event: TrackingEvent) {
     mk_device: event.device,
     mk_route: event.route,
     mk_path: event.path,
-    ecommerce: {
-      currency: event.currency,
-      value: event.value,
-      items: event.items,
-      ...(event.payload?.item_list_id
-        ? { item_list_id: event.payload.item_list_id }
-        : {}),
-      ...(event.payload?.item_list_name
-        ? { item_list_name: event.payload.item_list_name }
-        : {}),
-    },
+    ecommerce: buildGoogleEcommercePayload(event),
     payload: event.payload || {},
   });
 }
@@ -1000,6 +1357,39 @@ function sendTrackingEvent(event: TrackingEvent) {
   dispatchUnifiedTrackingEvent(event);
   pushToDataLayer(event);
   sendToGoogleAnalytics(event);
+}
+
+function getPurchaseStorageKey(event: TrackingEvent) {
+  const transactionId = firstText(event.payload?.transaction_id);
+  if (!transactionId) return "";
+
+  return `${PURCHASE_SENT_PREFIX}${transactionId}`;
+}
+
+function wasPurchaseAlreadySent(event: TrackingEvent) {
+  if (typeof window === "undefined") return false;
+
+  const key = getPurchaseStorageKey(event);
+  if (!key) return false;
+
+  try {
+    return window.localStorage.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markPurchaseAsSent(event: TrackingEvent) {
+  if (typeof window === "undefined") return;
+
+  const key = getPurchaseStorageKey(event);
+  if (!key) return;
+
+  try {
+    window.localStorage.setItem(key, "1");
+  } catch {
+    //
+  }
 }
 
 function buildViewItemEvent(args: {
@@ -1223,6 +1613,7 @@ export default function MalakTrackingRuntime({
   const sentViewItemsRef = useRef<Set<string>>(new Set());
   const sentViewCategoriesRef = useRef<Set<string>>(new Set());
   const sentSelectItemsRef = useRef<Set<string>>(new Set());
+  const sentPurchasesRef = useRef<Set<string>>(new Set());
   const listStateRef = useRef<TrackingListState | null>(null);
 
   const productVm = useMemo(() => {
@@ -1234,6 +1625,14 @@ export default function MalakTrackingRuntime({
 
   const listState = useMemo(() => {
     return buildListTrackingState({
+      data,
+      bootstrap,
+      device,
+    });
+  }, [data, bootstrap, device]);
+
+  const purchaseEvent = useMemo(() => {
+    return buildPurchaseEvent({
       data,
       bootstrap,
       device,
@@ -1298,6 +1697,28 @@ export default function MalakTrackingRuntime({
 
     sendTrackingEvent(event);
   }, [listState, data, device]);
+
+  useEffect(() => {
+    if (!purchaseEvent) return;
+
+    const transactionId = firstText(purchaseEvent.payload?.transaction_id);
+    if (!transactionId) return;
+
+    const key = [
+      purchaseEvent.name,
+      transactionId,
+      purchaseEvent.currency,
+      purchaseEvent.value,
+    ].join("|");
+
+    if (sentPurchasesRef.current.has(key)) return;
+    if (wasPurchaseAlreadySent(purchaseEvent)) return;
+
+    sentPurchasesRef.current.add(key);
+
+    sendTrackingEvent(purchaseEvent);
+    markPurchaseAsSent(purchaseEvent);
+  }, [purchaseEvent]);
 
   useEffect(() => {
     function handleAddToCartDone(event: Event) {
