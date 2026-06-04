@@ -10,8 +10,6 @@ import { loadCustomCode } from "@/theme-engine/injectors/custom-code";
 import { THEME_KIND, type ThemeCode } from "@/theme-engine/types";
 
 const PWA_SETTING_SLUGS = ["app/pwa", "store.pwa", "pwa"];
-const GOOGLE_SITE_VERIFICATION_APP_KEY = "google_site_verification";
-const GOOGLE_ANALYTICS_APP_KEY = "google_analytics";
 
 function s(value: unknown) {
   return String(value ?? "").trim();
@@ -49,28 +47,6 @@ function cleanColor(value: unknown, fallback: string) {
   return /^#[0-9a-f]{6}$/i.test(color) ? color : fallback;
 }
 
-function extractGoogleVerificationCode(value: unknown) {
-  const clean = s(value);
-
-  if (!clean) return "";
-
-  const contentMatch = clean.match(/content=["']([^"']+)["']/i);
-  if (contentMatch?.[1]) return s(contentMatch[1]);
-
-  if (clean.includes("<meta")) return "";
-
-  return clean;
-}
-
-function cleanGoogleAnalyticsMeasurementId(value: unknown) {
-  const id = s(value).toUpperCase();
-
-  if (!id) return "";
-  if (!/^G-[A-Z0-9]+$/.test(id)) return "";
-
-  return id;
-}
-
 async function loadPwaSettings(storeId: string) {
   const sb: any = await getStoreDb(storeId);
 
@@ -90,91 +66,6 @@ async function loadPwaSettings(storeId: string) {
   return safeObject(data[0]?.value);
 }
 
-async function loadInstalledAppConfig(args: {
-  storeId: string;
-  appKey: string;
-}) {
-  const sb: any = await getStoreDb(args.storeId);
-
-  const { data: appData, error: appError } = await sb
-    .from("app_catalog")
-    .select("id,key,slug")
-    .eq("key", args.appKey)
-    .maybeSingle();
-
-  if (appError || !appData?.id) return null;
-
-  const appId = s(appData.id);
-  if (!appId) return null;
-
-  const { data: installationData, error: installationError } = await sb
-    .from("store_app_installations")
-    .select("id,store_id,app_id,status,config_status,updated_at,installed_at")
-    .eq("store_id", args.storeId)
-    .eq("app_id", appId)
-    .neq("status", "uninstalled")
-    .order("updated_at", { ascending: false })
-    .order("installed_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (installationError || !installationData?.id) return null;
-
-  const installationId = s(installationData.id);
-  if (!installationId) return null;
-
-  const { data: configData, error: configError } = await sb
-    .from("store_app_configs")
-    .select("id,enabled,public_config,private_config,metadata,updated_at")
-    .eq("store_id", args.storeId)
-    .eq("app_id", appId)
-    .eq("installation_id", installationId)
-    .maybeSingle();
-
-  if (configError || !configData) return null;
-  if (configData.enabled === false) return null;
-
-  return {
-    appId,
-    installationId,
-    installation: installationData,
-    config: configData,
-    publicConfig: safeObject(configData.public_config),
-    privateConfig: safeObject(configData.private_config),
-    metadata: safeObject(configData.metadata),
-  };
-}
-
-async function loadGoogleSiteVerificationCode(storeId: string) {
-  const installed = await loadInstalledAppConfig({
-    storeId,
-    appKey: GOOGLE_SITE_VERIFICATION_APP_KEY,
-  });
-
-  if (!installed) return "";
-
-  return (
-    extractGoogleVerificationCode(installed.publicConfig.verification_code) ||
-    extractGoogleVerificationCode(installed.publicConfig.verification_meta_tag)
-  );
-}
-
-async function loadGoogleAnalyticsMeasurementId(storeId: string) {
-  const installed = await loadInstalledAppConfig({
-    storeId,
-    appKey: GOOGLE_ANALYTICS_APP_KEY,
-  });
-
-  if (!installed) return "";
-
-  return cleanGoogleAnalyticsMeasurementId(
-    installed.publicConfig.measurement_id ||
-      installed.publicConfig.measurementId ||
-      installed.publicConfig.ga4_measurement_id ||
-      installed.publicConfig.ga4MeasurementId,
-  );
-}
-
 export async function generateMetadata(): Promise<Metadata> {
   const ctx = await resolveStoreContext();
   const store = ctx.store as any;
@@ -183,11 +74,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
   const storeId = String(store.id);
 
-  const [pwa, googleSiteVerificationCode] = await Promise.all([
-    loadPwaSettings(storeId),
-    loadGoogleSiteVerificationCode(storeId),
-  ]);
-
+  const pwa = await loadPwaSettings(storeId);
   const icon = safeObject(pwa.icon);
 
   const appName = s(pwa.app_name) || s(store.name) || "Store";
@@ -234,11 +121,6 @@ export async function generateMetadata(): Promise<Metadata> {
       "apple-mobile-web-app-capable": "yes",
       "apple-mobile-web-app-title": shortName,
       "apple-mobile-web-app-status-bar-style": "default",
-      ...(googleSiteVerificationCode
-        ? {
-            "google-site-verification": googleSiteVerificationCode,
-          }
-        : {}),
     },
   };
 }
@@ -267,48 +149,17 @@ export default async function StoreLayout({
 
   if (!ctx.store) return notFound();
 
-  const storeId = String(ctx.store.id);
-
   const activeCode = resolveThemeCode(ctx.theme);
   const kind = THEME_KIND[activeCode] || "legacy";
   const isAppShell = kind === "app-shell";
 
-  const [custom, googleAnalyticsMeasurementId] = await Promise.all([
-    loadCustomCode({
-      store_id: ctx.store.id,
-      preview: false,
-    }),
-    loadGoogleAnalyticsMeasurementId(storeId),
-  ]);
+  const custom = await loadCustomCode({
+    store_id: ctx.store.id,
+    preview: false,
+  });
 
   const CustomHead = (
     <>
-      {googleAnalyticsMeasurementId ? (
-        <>
-          <Script
-            id="mk-google-analytics-src"
-            src={`https://www.googletagmanager.com/gtag/js?id=${googleAnalyticsMeasurementId}`}
-            strategy="afterInteractive"
-          />
-
-          <Script
-            id="mk-google-analytics-init"
-            strategy="afterInteractive"
-            dangerouslySetInnerHTML={{
-              __html: `
-                window.dataLayer = window.dataLayer || [];
-                function gtag(){dataLayer.push(arguments);}
-                window.gtag = window.gtag || gtag;
-                gtag('js', new Date());
-                gtag('config', '${googleAnalyticsMeasurementId}', {
-                  send_page_view: true
-                });
-              `,
-            }}
-          />
-        </>
-      ) : null}
-
       {custom.css ? (
         <style
           id="store-custom-css"
