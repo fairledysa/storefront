@@ -123,6 +123,37 @@ type MoneyFormatInfo = {
   decimals: number;
 };
 
+type CheckoutTrackingItem = {
+  item_id: string;
+  item_name: string;
+  item_variant?: string;
+  price: number;
+  quantity: number;
+  product_id: string;
+  variant_id: string | null;
+  line_key?: string;
+  image_url?: string | null;
+};
+
+type CheckoutTrackingEvent = {
+  name: "begin_checkout";
+  currency: string;
+  value: number;
+  items: CheckoutTrackingItem[];
+  source: "malak_storefront";
+  device: "desktop" | "mobile";
+  route: "checkout";
+  path: string;
+  payload: Record<string, any>;
+};
+
+declare global {
+  interface Window {
+    dataLayer?: any[];
+    gtag?: (...args: any[]) => void;
+  }
+}
+
 const INCOMPLETE_CHECKOUT_MESSAGE =
   "أكمل بيانات العنوان والشحن والدفع لتأكيد الطلب.";
 
@@ -148,6 +179,11 @@ function clampDecimals(value: any, fallback = 2) {
   if (!Number.isFinite(num)) return fallback;
 
   return Math.max(0, Math.min(4, Math.floor(num)));
+}
+
+function cleanCurrencyCode(value: unknown, fallback = "SAR") {
+  const code = s(value).toUpperCase();
+  return /^[A-Z]{3}$/.test(code) ? code : fallback;
 }
 
 function fallbackDecimalsByCurrency(code: string) {
@@ -184,6 +220,144 @@ function readMoneyFormat(summary: Summary | null): MoneyFormatInfo {
     symbol,
     decimals: clampDecimals(rawDecimals, fallbackDecimalsByCurrency(code)),
   };
+}
+
+function getCurrentPath() {
+  if (typeof window === "undefined") return "";
+  return `${window.location.pathname}${window.location.search}`;
+}
+
+function getTrackingDevice(): "desktop" | "mobile" {
+  if (typeof window === "undefined") return "desktop";
+
+  return window.matchMedia("(max-width: 767px)").matches
+    ? "mobile"
+    : "desktop";
+}
+
+function buildCheckoutTrackingItems(summary: Summary): CheckoutTrackingItem[] {
+  const rows = Array.isArray(summary.items) ? summary.items : [];
+
+  return rows
+    .map((item) => {
+      const productId = s(item.product_id) || s(item.id);
+      const itemName = s(item.title) || "المنتج";
+
+      if (!productId || !itemName) return null;
+
+      const qty = Math.max(1, Math.floor(n(item.qty) || 1));
+      const price = round2(n(item.unit_price));
+
+      return {
+        item_id: productId,
+        item_name: itemName,
+        ...(item.variant_id ? { item_variant: s(item.variant_id) } : {}),
+        price,
+        quantity: qty,
+        product_id: productId,
+        variant_id: item.variant_id ? s(item.variant_id) : null,
+        line_key: s(item.line_key) || undefined,
+        image_url: item.image_url || null,
+      };
+    })
+    .filter(Boolean) as CheckoutTrackingItem[];
+}
+
+function buildBeginCheckoutEvent(summary: Summary): CheckoutTrackingEvent | null {
+  const items = buildCheckoutTrackingItems(summary);
+
+  if (!summary?.cart_id || !items.length) return null;
+
+  const money = readMoneyFormat(summary);
+  const currency = cleanCurrencyCode(money.code);
+  const couponCode = s(summary.coupon?.code);
+
+  return {
+    name: "begin_checkout",
+    currency,
+    value: round2(n(summary.total)),
+    items,
+    source: "malak_storefront",
+    device: getTrackingDevice(),
+    route: "checkout",
+    path: getCurrentPath(),
+    payload: {
+      cart_id: s(summary.cart_id),
+      item_count: items.reduce((sum, item) => sum + n(item.quantity), 0),
+      subtotal: round2(n(summary.subtotal)),
+      discount: round2(n(summary.discount)),
+      shipping: round2(n(summary.shipping)),
+      tax: round2(n(summary.tax)),
+      payment_fee: round2(n(summary.payment_fee)),
+      order_options_fee: round2(readOrderOptionsFee(summary)),
+      total: round2(n(summary.total)),
+      ...(couponCode ? { coupon: couponCode } : {}),
+    },
+  };
+}
+
+function buildGoogleBeginCheckoutPayload(event: CheckoutTrackingEvent) {
+  const coupon = s(event.payload?.coupon);
+
+  return {
+    currency: event.currency,
+    value: event.value,
+    items: event.items,
+    ...(coupon ? { coupon } : {}),
+  };
+}
+
+function pushBeginCheckoutToDataLayer(event: CheckoutTrackingEvent) {
+  if (typeof window === "undefined") return;
+
+  const ecommerce = buildGoogleBeginCheckoutPayload(event);
+
+  window.dataLayer = window.dataLayer || [];
+
+  window.dataLayer.push({
+    event: "mk_tracking_event",
+    mk_event_name: event.name,
+    mk_google_event_name: "begin_checkout",
+    mk_source: event.source,
+    mk_device: event.device,
+    mk_route: event.route,
+    mk_path: event.path,
+    ecommerce,
+    payload: event.payload,
+  });
+}
+
+function dispatchBeginCheckoutUnifiedEvent(event: CheckoutTrackingEvent) {
+  if (typeof window === "undefined") return;
+
+  window.dispatchEvent(
+    new CustomEvent("mk:tracking:event", {
+      detail: event,
+    }),
+  );
+
+  window.dispatchEvent(
+    new CustomEvent("elyaia:tracking:event", {
+      detail: event,
+    }),
+  );
+}
+
+function sendBeginCheckoutToGoogle(event: CheckoutTrackingEvent) {
+  if (typeof window === "undefined") return;
+  if (typeof window.gtag !== "function") return;
+
+  window.gtag("event", "begin_checkout", buildGoogleBeginCheckoutPayload(event));
+}
+
+function sendBeginCheckoutTracking(summary: Summary) {
+  const event = buildBeginCheckoutEvent(summary);
+
+  if (!event) return;
+
+  dispatchBeginCheckoutUnifiedEvent(event);
+  pushBeginCheckoutToDataLayer(event);
+  sendBeginCheckoutToGoogle(event);
 }
 
 function readOrderOptionsFee(summary: Partial<Summary>) {
@@ -300,6 +474,7 @@ export default function OrderSummary({
   const hasInitialSummaryRef = useRef(Boolean(initial));
   const actionLockRef = useRef<ActionLock>(null);
   const stockIssueRef = useRef<StockIssue | null>(null);
+  const sentBeginCheckoutRef = useRef<Set<string>>(new Set());
 
   const drawerOpen = drawerMounted && !drawerClosing;
 
@@ -556,6 +731,18 @@ export default function OrderSummary({
       clearDrawerCloseTimer();
     };
   }, [clearDrawerCloseTimer, fetchPrepare, schedulePrepare]);
+
+  useEffect(() => {
+    if (!summary?.cart_id) return;
+    if (!Array.isArray(summary.items) || summary.items.length <= 0) return;
+
+    const key = `${summary.cart_id}|${getCurrentPath()}`;
+
+    if (sentBeginCheckoutRef.current.has(key)) return;
+
+    sentBeginCheckoutRef.current.add(key);
+    sendBeginCheckoutTracking(summary);
+  }, [summary]);
 
   useEffect(() => {
     if (!drawerMounted) return;
@@ -897,7 +1084,6 @@ export default function OrderSummary({
               >
                 <X size={20} />
               </button>
-
               <div>
                 <h2>تفاصيل الطلب</h2>
                 <p>راجع المنتجات والإجمالي قبل التأكيد</p>
