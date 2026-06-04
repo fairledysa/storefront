@@ -31,8 +31,6 @@ type Props = {
 
 const SWIPE_MIN_DISTANCE = 34;
 const SWIPE_LOCK_DISTANCE = 8;
-const AUTOPLAY_DELAY = 4200;
-const RESUME_AFTER_INTERACTION = 5200;
 
 const SLIDE_TRANSITION =
   "transform 420ms cubic-bezier(0.22, 0.85, 0.22, 1)";
@@ -64,9 +62,9 @@ function resolveInternalHref(rawHref: string) {
   }
 }
 
-function normalizeIndex(index: number, total: number) {
+function clampIndex(index: number, total: number) {
   if (total <= 0) return 0;
-  return ((index % total) + total) % total;
+  return Math.max(0, Math.min(total - 1, index));
 }
 
 export default function MobileHero({ slides }: Props) {
@@ -84,10 +82,7 @@ export default function MobileHero({ slides }: Props) {
   const [visualIndex, setVisualIndex] = useState(0);
   const [dragX, setDragX] = useState(0);
   const [dragging, setDragging] = useState(false);
-  const [paused, setPaused] = useState(false);
   const [transitionEnabled, setTransitionEnabled] = useState(true);
-
-  const resumeTimerRef = useRef<number | null>(null);
 
   const gestureRef = useRef({
     active: false,
@@ -101,7 +96,7 @@ export default function MobileHero({ slides }: Props) {
 
   const clickBlockedRef = useRef(false);
 
-  const actualIndex = hasMany ? normalizeIndex(visualIndex, total) : 0;
+  const actualIndex = clampIndex(visualIndex, total);
 
   useEffect(() => {
     setTransitionEnabled(false);
@@ -116,40 +111,7 @@ export default function MobileHero({ slides }: Props) {
     return () => window.cancelAnimationFrame(frame);
   }, [total]);
 
-  useEffect(() => {
-    if (!hasMany || paused || dragging) return;
-
-    const timer = window.setInterval(() => {
-      setTransitionEnabled(true);
-      setDragX(0);
-      setVisualIndex((index) => normalizeIndex(index + 1, total));
-    }, AUTOPLAY_DELAY);
-
-    return () => window.clearInterval(timer);
-  }, [dragging, hasMany, paused, total]);
-
-  useEffect(() => {
-    return () => {
-      if (resumeTimerRef.current) {
-        window.clearTimeout(resumeTimerRef.current);
-      }
-    };
-  }, []);
-
   if (!cleanSlides.length) return null;
-
-  function pauseThenResume() {
-    setPaused(true);
-
-    if (resumeTimerRef.current) {
-      window.clearTimeout(resumeTimerRef.current);
-    }
-
-    resumeTimerRef.current = window.setTimeout(() => {
-      setPaused(false);
-      resumeTimerRef.current = null;
-    }, RESUME_AFTER_INTERACTION);
-  }
 
   function blockNextClick() {
     clickBlockedRef.current = true;
@@ -162,31 +124,28 @@ export default function MobileHero({ slides }: Props) {
   function goTo(index: number) {
     if (!hasMany) return;
 
-    pauseThenResume();
     setDragging(false);
     setTransitionEnabled(true);
     setDragX(0);
-    setVisualIndex(normalizeIndex(index, total));
+    setVisualIndex(clampIndex(index, total));
   }
 
   function goPrev() {
     if (!hasMany) return;
 
-    pauseThenResume();
     setDragging(false);
     setTransitionEnabled(true);
     setDragX(0);
-    setVisualIndex((index) => normalizeIndex(index - 1, total));
+    setVisualIndex((index) => clampIndex(index - 1, total));
   }
 
   function goNext() {
     if (!hasMany) return;
 
-    pauseThenResume();
     setDragging(false);
     setTransitionEnabled(true);
     setDragX(0);
-    setVisualIndex((index) => normalizeIndex(index + 1, total));
+    setVisualIndex((index) => clampIndex(index + 1, total));
   }
 
   function resetGesture() {
@@ -219,7 +178,6 @@ export default function MobileHero({ slides }: Props) {
       moved: false,
     };
 
-    pauseThenResume();
     setDragging(true);
     setTransitionEnabled(false);
     setDragX(0);
@@ -451,10 +409,11 @@ export default function MobileHero({ slides }: Props) {
     if (!hasMany) return true;
     if (total <= 3) return true;
 
-    const prevIndex = normalizeIndex(actualIndex - 1, total);
-    const nextIndex = normalizeIndex(actualIndex + 1, total);
-
-    return index === actualIndex || index === prevIndex || index === nextIndex;
+    return (
+      index === actualIndex ||
+      index === actualIndex - 1 ||
+      index === actualIndex + 1
+    );
   }
 
   const count = cleanSlides.length;
@@ -524,9 +483,7 @@ export default function MobileHero({ slides }: Props) {
                           slide.title || `slide-${originalIndex + 1}`
                         }
                         draggable={false}
-                        onClick={(event) =>
-                          handleLinkClick(event, slide.href)
-                        }
+                        onClick={(event) => handleLinkClick(event, slide.href)}
                         onDragStart={(event) => event.preventDefault()}
                       >
                         {shouldRenderImage ? (
