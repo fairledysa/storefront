@@ -28,6 +28,8 @@ export default function TermsPage() {
             العودة للرئيسية
           </Link>
 
+
+
           <h1 className="text-3xl font-black tracking-[-0.04em] text-[#0d3b45]">
             شروط الاستخدام
           </h1>
