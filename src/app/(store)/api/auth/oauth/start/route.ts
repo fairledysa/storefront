@@ -43,9 +43,12 @@ export async function GET(request: NextRequest) {
   const currentHostWithPort = getRequestHostWithPort(request);
 
   /*
-    مهم جدًا:
-    لو الطلب جاء من دومين متجر، لا نبدأ Supabase OAuth من المتجر.
-    نحوله أولًا إلى منصة elyaia.com حتى تكون PKCE cookies على نفس دومين callback.
+    لو الطلب جاء من متجر:
+    - دومين خاص مثل elyavya.com
+    - أو ساب دومين مثل elyavya.elyaia.com
+
+    لا نبدأ OAuth من دومين المتجر.
+    نرسله إلى منصة elyaia.com المركزية.
   */
   if (!isPlatformHost(currentHost)) {
     const ctx = await resolveStoreContext();
@@ -69,8 +72,11 @@ export async function GET(request: NextRequest) {
   }
 
   /*
-    هنا نحن على المنصة الأساسية:
-    https://elyaia.com/api/auth/oauth/start
+    هنا نحن داخل المنصة المركزية.
+    مهم جدًا:
+    لا نستخدم getRequestOrigin هنا لأنه ممكن يرجع www.elyaia.com.
+    لازم نستخدم getPlatformOriginForRequest عشان يثبتها على:
+    https://elyaia.com
   */
   const storeHostRaw = request.nextUrl.searchParams.get("store_host") || "";
   const storeOriginRaw = request.nextUrl.searchParams.get("store_origin");
@@ -96,7 +102,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const platformOrigin = getRequestOrigin(request);
+  const platformOrigin = getPlatformOriginForRequest(request);
 
   const callbackUrl = new URL("/api/auth/oauth/callback", platformOrigin);
   callbackUrl.searchParams.set("store_host", storeHostRaw);
