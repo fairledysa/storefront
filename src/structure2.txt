@@ -1,5 +1,5 @@
 Folder PATH listing for volume Data
-Volume serial number is 0000004E 60BC:862A
+Volume serial number is 000000B2 60BC:862A
 D:.
 |   structure2.txt
 |   
@@ -35,6 +35,19 @@ D:.
 |   |   |   |   +---me
 |   |   |   |   |       route.ts
 |   |   |   |   |       
+|   |   |   |   +---oauth
+|   |   |   |   |   +---callback
+|   |   |   |   |   |       route.ts
+|   |   |   |   |   |       
+|   |   |   |   |   +---finish
+|   |   |   |   |   |       route.ts
+|   |   |   |   |   |       
+|   |   |   |   |   +---start
+|   |   |   |   |   |       route.ts
+|   |   |   |   |   |       
+|   |   |   |   |   \---_lib
+|   |   |   |   |           oauth-shared.ts
+|   |   |   |   |           
 |   |   |   |   +---onboarding
 |   |   |   |   |       route.ts
 |   |   |   |   |       
@@ -212,6 +225,9 @@ D:.
 |   |   \---pricing
 |   |           page.tsx
 |   |           
+|   +---privacy
+|   |       page.tsx
+|   |       
 |   +---robots.txt
 |   |       route.ts
 |   |       
@@ -223,6 +239,9 @@ D:.
 |   |       
 |   +---sitemap.xml
 |   |       route.ts
+|   |       
+|   +---terms
+|   |       page.tsx
 |   |       
 |   \---_seo
 |           storefront-seo-files.ts
@@ -578,7 +597,11 @@ D:.
 |   |   |   |           MobileOrderReviewSheet.tsx
 |   |   |   |           MobileOrdersList.tsx
 |   |   |   |           OrderDetailsMobileScreen.tsx
+|   |   |   |           RequireMobileCustomer.tsx
 |   |   |   |           
+|   |   |   +---auth
+|   |   |   |       LoginMobileScreen.tsx
+|   |   |   |       
 |   |   |   +---cart
 |   |   |   |   |   CartMobileScreen.tsx
 |   |   |   |   |   useMobileCart.ts
@@ -638,6 +661,7 @@ D:.
 |   |   |   |   typography.css
 |   |   |   |   
 |   |   |   +---components
+|   |   |   |       auth-modal.css
 |   |   |   |       badges.css
 |   |   |   |       buttons.css
 |   |   |   |       cards.css
@@ -696,6 +720,7 @@ D:.
 |   |   |   |       categories.css
 |   |   |   |       category.css
 |   |   |   |       home.css
+|   |   |   |       login.css
 |   |   |   |       order-details.css
 |   |   |   |       product.css
 |   |   |   |       search.css
