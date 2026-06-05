@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import AccountMobileLayout from "./AccountMobileLayout";
-import RequireCustomer from "../../screens/account/_components/RequireCustomer";
+import RequireMobileCustomer from "./_components/RequireMobileCustomer";
 
 type Customer = {
   id?: string | null;
@@ -641,7 +641,7 @@ export default function AccountMobileScreen() {
   }
 
   return (
-    <RequireCustomer>
+    <RequireMobileCustomer>
       <AccountMobileLayout active="account" title="حسابي">
         <EditProfileSheet
           open={editOpen}
@@ -749,6 +749,6 @@ export default function AccountMobileScreen() {
           </div>
         )}
       </AccountMobileLayout>
-    </RequireCustomer>
+    </RequireMobileCustomer>
   );
 }

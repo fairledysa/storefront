@@ -1,4 +1,5 @@
 // FILE: apps/storefront/src/themes/malak/app-shell/ScreenContainer.tsx
+
 "use client";
 
 import { useEffect, useMemo } from "react";
@@ -58,6 +59,10 @@ function inferRouteFromPathname(pathname: string | null) {
   const lower = path.toLowerCase();
 
   if (!path || path === "/") return "home";
+
+  if (lower === "/login" || lower.startsWith("/login?")) {
+    return "login";
+  }
 
   if (
     lower === "/thankyou" ||

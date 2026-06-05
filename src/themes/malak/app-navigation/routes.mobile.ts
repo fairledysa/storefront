@@ -17,12 +17,19 @@ import WalletMobileScreen from "../screens-mobile/account/WalletMobileScreen";
 import OrderDetailsMobileScreen from "../screens-mobile/account/OrderDetailsMobileScreen";
 import SearchMobileScreen from "../screens-mobile/search/SearchMobileScreen";
 import ThankYouMobileScreen from "../screens-mobile/thankyou/ThankYouMobileScreen";
+import LoginMobileScreen from "../screens-mobile/auth/LoginMobileScreen";
 
 export const MOBILE_ROUTES = {
   home: {
     key: "home",
     path: "/",
     component: HomeMobileScreen,
+  },
+
+  login: {
+    key: "login",
+    path: "/login",
+    component: LoginMobileScreen,
   },
 
   categories: {

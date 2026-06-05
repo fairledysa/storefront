@@ -1,4 +1,5 @@
 // FILE: apps/storefront/src/themes/malak/app-shell/MobileShell.tsx
+
 "use client";
 
 import type { ReactNode } from "react";
@@ -61,6 +62,7 @@ function isMobileInternalRoute(pathname: string | null) {
   const path = cleanPath(pathname);
 
   return (
+    path === "/login" ||
     path === "/categories" ||
     path === "/cart" ||
     path === "/account" ||
@@ -146,6 +148,7 @@ export default function MobileShell({
   }, [forcedRoute, effectivePath, currentKey]);
 
   const isHome = effectiveKey === "home";
+  const isAuthScreen = effectiveKey === "login" || effectivePath === "/login";
 
   const dataWithBootstrap = useMemo(() => {
     const source = safeObject(data);
@@ -213,10 +216,7 @@ export default function MobileShell({
         null,
 
       tax:
-        source.tax ??
-        mergedBootstrap.tax ??
-        bootstrap?.tax ??
-        null,
+        source.tax ?? mergedBootstrap.tax ?? bootstrap?.tax ?? null,
 
       navigation:
         source.navigation ??
@@ -230,11 +230,7 @@ export default function MobileShell({
         bootstrap?.marketing ??
         null,
 
-      pwa:
-        source.pwa ??
-        mergedBootstrap.pwa ??
-        bootstrap?.pwa ??
-        null,
+      pwa: source.pwa ?? mergedBootstrap.pwa ?? bootstrap?.pwa ?? null,
     };
   }, [data, bootstrap, forceScreenContainer, effectiveKey]);
 
@@ -274,6 +270,7 @@ export default function MobileShell({
 
   useEffect(() => {
     function handleAuthOpen() {
+      if (isAuthScreen) return;
       setAuthOpen(true);
     }
 
@@ -282,7 +279,7 @@ export default function MobileShell({
     }
 
     function handleSearchOpen() {
-      if (!showSearch) return;
+      if (!showSearch || isAuthScreen) return;
       setSearchOpen(true);
     }
 
@@ -295,7 +292,7 @@ export default function MobileShell({
       window.removeEventListener("auth:changed", handleAuthChanged);
       window.removeEventListener("mk:search:open", handleSearchOpen);
     };
-  }, [showSearch]);
+  }, [showSearch, isAuthScreen]);
 
   return (
     <>
@@ -303,19 +300,22 @@ export default function MobileShell({
         className="mk-mobile-shell"
         data-mk-theme={theme?.ui?.darkMode ? "dark" : "light"}
         data-mk-route={effectiveKey}
+        data-mk-auth-screen={isAuthScreen ? "true" : "false"}
       >
-        <TopBar
-          theme={theme}
-          bootstrap={shellBootstrap}
-          isHome={isHome}
-          onSearchOpen={
-            showSearch
-              ? () => {
-                  setSearchOpen(true);
-                }
-              : undefined
-          }
-        />
+        {!isAuthScreen ? (
+          <TopBar
+            theme={theme}
+            bootstrap={shellBootstrap}
+            isHome={isHome}
+            onSearchOpen={
+              showSearch
+                ? () => {
+                    setSearchOpen(true);
+                  }
+                : undefined
+            }
+          />
+        ) : null}
 
         <div className="mk-mobile-content">
           {forceScreenContainer ? (
@@ -326,35 +326,41 @@ export default function MobileShell({
             <ScreenContainer data={dataWithBootstrap} />
           )}
 
-          <Footer bootstrap={shellBootstrap} />
+          {!isAuthScreen ? <Footer bootstrap={shellBootstrap} /> : null}
         </div>
 
- <BottomNav
-  seoMode={seoMode}
-  bootstrap={shellBootstrap}
-  initialCartCount={initialCartCount}
-/>
+        {!isAuthScreen ? (
+          <>
+            <BottomNav
+              seoMode={seoMode}
+              bootstrap={shellBootstrap}
+              initialCartCount={initialCartCount}
+            />
 
-<InstallAppPrompt bootstrap={shellBootstrap} />
+            <InstallAppPrompt bootstrap={shellBootstrap} />
 
-        <SearchOverlay
-          open={searchOpen && showSearch}
-          onOpenChange={setSearchOpen}
-          placeholder={searchPlaceholder}
-          groups={searchGroups}
-          currencies={shellBootstrap?.currencies ?? null}
-          tax={shellBootstrap?.tax ?? null}
-        />
+            <SearchOverlay
+              open={searchOpen && showSearch}
+              onOpenChange={setSearchOpen}
+              placeholder={searchPlaceholder}
+              groups={searchGroups}
+              currencies={shellBootstrap?.currencies ?? null}
+              tax={shellBootstrap?.tax ?? null}
+            />
+          </>
+        ) : null}
       </div>
 
-      <AuthModal
-        open={authOpen}
-        onClose={() => setAuthOpen(false)}
-        onAuthed={() => {
-          void fetchMe();
-          window.dispatchEvent(new CustomEvent("auth:changed"));
-        }}
-      />
+      {!isAuthScreen ? (
+        <AuthModal
+          open={authOpen}
+          onClose={() => setAuthOpen(false)}
+          onAuthed={() => {
+            void fetchMe();
+            window.dispatchEvent(new CustomEvent("auth:changed"));
+          }}
+        />
+      ) : null}
     </>
   );
 }
