@@ -1,124 +1,222 @@
-// FILE: apps/storefront/src/app/(store)/api/auth/oauth/start/route.ts
+// FILE: apps/storefront/src/app/(store)/api/auth/oauth/callback/route.ts
 
 import { NextRequest, NextResponse } from "next/server";
 
+import { getStoreDb } from "@/data/db/store-db.server";
 import { supabaseSSR } from "@/data/store/supabase.ssr";
-import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
+import { signOAuthTransfer } from "@/lib/auth/session";
+
+import {
+  redirectWithAuthError,
+  resolveOAuthStoreFromHost,
+  s,
+  safeNextPath,
+  safeStoreOrigin,
+} from "../_lib/oauth-shared";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type OAuthProvider = "google" | "facebook";
-
-function s(value: unknown) {
-  return String(value ?? "").trim();
+function extractFullName(user: any) {
+  return (
+    s(user?.user_metadata?.full_name) ||
+    s(user?.user_metadata?.name) ||
+    s(user?.user_metadata?.user_name) ||
+    s(user?.user_metadata?.preferred_username) ||
+    ""
+  );
 }
 
-function safeNextPath(value: string | null) {
-  const raw = s(value);
-
-  if (!raw) return "/";
-  if (!raw.startsWith("/")) return "/";
-  if (raw.startsWith("//")) return "/";
-  if (raw.startsWith("/api/")) return "/";
-
-  return raw;
-}
-
-function normalizeProvider(value: string | null): OAuthProvider | null {
-  const raw = s(value).toLowerCase();
-
-  if (raw === "google") return "google";
-  if (raw === "facebook") return "facebook";
-
-  return null;
-}
-
-function getRequestOrigin(request: NextRequest) {
-  const forwardedHost = request.headers.get("x-forwarded-host");
-  const forwardedProto = request.headers.get("x-forwarded-proto");
-
-  const host = forwardedHost || request.headers.get("host");
-  const proto =
-    forwardedProto ||
-    (process.env.NODE_ENV === "production" ? "https" : "http");
-
-  if (host) return `${proto}://${host}`;
-
-  return request.nextUrl.origin;
-}
-
-function redirectBackWithError(args: {
-  request: NextRequest;
-  next: string;
-  error: string;
+async function ensureCustomerFromOAuth(args: {
+  sb: any;
+  storeId: string;
+  user: any;
 }) {
-  const origin = getRequestOrigin(args.request);
-  const url = new URL(args.next, origin);
+  const { sb, storeId, user } = args;
 
-  url.searchParams.set("auth_error", args.error);
+  const authUserId = s(user?.id);
+  const email = s(user?.email).toLowerCase();
+  const fullName = extractFullName(user);
 
-  return NextResponse.redirect(url);
+  if (!authUserId) {
+    throw new Error("OAUTH_USER_ID_MISSING");
+  }
+
+  if (!email) {
+    throw new Error("OAUTH_EMAIL_MISSING");
+  }
+
+  const byAuthUser = await sb
+    .from("customers")
+    .select("id,email,auth_user_id,full_name,birth_date,gender,city_id")
+    .eq("auth_user_id", authUserId)
+    .maybeSingle();
+
+  if (byAuthUser.error) {
+    throw new Error(byAuthUser.error.message);
+  }
+
+  let customer = byAuthUser.data ?? null;
+
+  if (!customer?.id) {
+    const byEmail = await sb
+      .from("customers")
+      .select("id,email,auth_user_id,full_name,birth_date,gender,city_id")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (byEmail.error) {
+      throw new Error(byEmail.error.message);
+    }
+
+    customer = byEmail.data ?? null;
+  }
+
+  const patch: any = {
+    auth_user_id: authUserId,
+    email,
+  };
+
+  if (fullName && !s(customer?.full_name)) {
+    patch.full_name = fullName;
+  }
+
+  let customerId = "";
+
+  if (customer?.id) {
+    const updated = await sb
+      .from("customers")
+      .update(patch)
+      .eq("id", customer.id)
+      .select("id,email,auth_user_id,full_name,birth_date,gender,city_id")
+      .single();
+
+    if (updated.error || !updated.data?.id) {
+      throw new Error(updated.error?.message || "CUSTOMER_UPDATE_FAILED");
+    }
+
+    customerId = String(updated.data.id);
+  } else {
+    const created = await sb
+      .from("customers")
+      .insert({
+        ...patch,
+        full_name: fullName || null,
+      })
+      .select("id,email,auth_user_id,full_name,birth_date,gender,city_id")
+      .single();
+
+    if (created.error || !created.data?.id) {
+      throw new Error(created.error?.message || "CUSTOMER_CREATE_FAILED");
+    }
+
+    customerId = String(created.data.id);
+  }
+
+  const link = await sb.from("store_customers").upsert(
+    {
+      store_id: storeId,
+      customer_id: customerId,
+      last_seen_at: new Date().toISOString(),
+    },
+    { onConflict: "store_id,customer_id" },
+  );
+
+  if (link.error) {
+    throw new Error(link.error.message);
+  }
+
+  return customerId;
 }
 
 export async function GET(request: NextRequest) {
-  const provider = normalizeProvider(request.nextUrl.searchParams.get("provider"));
   const next = safeNextPath(request.nextUrl.searchParams.get("next"));
 
-  if (!provider) {
-    return redirectBackWithError({
-      request,
+  const storeHostRaw = request.nextUrl.searchParams.get("store_host") || "";
+  const storeOrigin = safeStoreOrigin({
+    storeOriginRaw: request.nextUrl.searchParams.get("store_origin"),
+    storeHostRaw,
+  });
+
+  const fallbackOrigin = storeOrigin || "https://elyaia.com";
+
+  function fail(error: string) {
+    return redirectWithAuthError({
+      origin: fallbackOrigin,
       next,
-      error: "OAUTH_PROVIDER_INVALID",
+      error,
     });
   }
 
-  const ctx = await resolveStoreContext();
+  const providerError =
+    request.nextUrl.searchParams.get("error_description") ||
+    request.nextUrl.searchParams.get("error");
 
-  if (!ctx?.store?.id) {
-    return redirectBackWithError({
-      request,
-      next,
-      error: "STORE_NOT_FOUND",
-    });
+  if (providerError) {
+    return fail(providerError);
   }
 
-  const origin = getRequestOrigin(request);
+  if (!storeOrigin) {
+    return fail("INVALID_STORE_ORIGIN");
+  }
 
-  const callbackUrl = new URL("/api/auth/oauth/callback", origin);
-  callbackUrl.searchParams.set("next", next);
+  const store = await resolveOAuthStoreFromHost(storeHostRaw);
+
+  if (!store?.storeId) {
+    return fail("STORE_NOT_FOUND");
+  }
+
+  const code = s(request.nextUrl.searchParams.get("code"));
+
+  if (!code) {
+    return fail("OAUTH_CODE_MISSING");
+  }
 
   try {
     const supabase = await supabaseSSR();
 
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: {
-        redirectTo: callbackUrl.toString(),
-        queryParams:
-          provider === "google"
-            ? {
-                access_type: "offline",
-                prompt: "consent",
-              }
-            : undefined,
-      },
-    });
+    const exchanged = await supabase.auth.exchangeCodeForSession(code);
 
-    if (error || !data?.url) {
-      return redirectBackWithError({
-        request,
-        next,
-        error: error?.message || "OAUTH_START_FAILED",
-      });
+    if (exchanged.error) {
+      throw new Error(exchanged.error.message || "OAUTH_EXCHANGE_FAILED");
     }
 
-    return NextResponse.redirect(data.url);
-  } catch (error: any) {
-    return redirectBackWithError({
-      request,
-      next,
-      error: error?.message || "OAUTH_START_FAILED",
+    let user = exchanged.data?.user ?? null;
+
+    if (!user?.id) {
+      const userResult = await supabase.auth.getUser();
+
+      if (userResult.error) {
+        throw new Error(userResult.error.message || "OAUTH_USER_FAILED");
+      }
+
+      user = userResult.data?.user ?? null;
+    }
+
+    if (!user?.id) {
+      throw new Error("OAUTH_USER_MISSING");
+    }
+
+    const storeDb: any = await getStoreDb(store.storeId);
+
+    const customerId = await ensureCustomerFromOAuth({
+      sb: storeDb,
+      storeId: store.storeId,
+      user,
     });
+
+    const transfer = signOAuthTransfer({
+      store_id: store.storeId,
+      customer_id: customerId,
+      next,
+      exp: Math.floor(Date.now() / 1000) + 60 * 5,
+    });
+
+    const finishUrl = new URL("/api/auth/oauth/finish", storeOrigin);
+    finishUrl.searchParams.set("token", transfer);
+
+    return NextResponse.redirect(finishUrl);
+  } catch (error: any) {
+    return fail(error?.message || "OAUTH_CALLBACK_FAILED");
   }
 }
