@@ -1,4 +1,6 @@
-// FILE: apps/storefront/src/app/(store)/_components/auth/AuthModal.tsx
+ 
+// FILE: apps/storefront/src/themes/malak/app-shell/_components/AuthModal.tsx
+
 "use client";
 
 import React, {
