@@ -5,8 +5,7 @@ import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "شروط الاستخدام | منصة elyaia",
-  description:
-    "شروط استخدام منصة elyaia والخدمات المرتبطة بها للمتاجر والعملاء.",
+  description: "شروط استخدام منصة elyaia للتجارة الإلكترونية.",
   robots: {
     index: true,
     follow: true,
@@ -17,104 +16,103 @@ export default function TermsPage() {
   return (
     <main
       dir="rtl"
-      className="min-h-screen bg-[#fafbfc] px-4 py-10 text-[#1f2933]"
+      className="min-h-screen bg-[#FAFBFC] px-5 py-10 text-[#1F2933]"
     >
-      <section className="mx-auto w-full max-w-3xl rounded-[28px] border border-[#e2e8f0] bg-white p-6 shadow-sm sm:p-9">
-        <div className="mb-7 border-b border-[#e2e8f0] pb-5">
+      <section className="mx-auto max-w-3xl rounded-[28px] border border-[#E2E8F0] bg-white p-6 shadow-sm sm:p-8">
+        <div className="mb-8 border-b border-[#E2E8F0] pb-6">
           <Link
             href="/"
-            className="mb-4 inline-flex rounded-full border border-[#e2e8f0] px-4 py-2 text-sm font-bold text-[#0d3b45] hover:bg-[#ecfaf5]"
+            className="mb-4 inline-flex text-sm font-bold text-[#0D3B45]"
           >
-            العودة للرئيسية
+            ← العودة للرئيسية
           </Link>
 
-
-
-          <h1 className="text-3xl font-black tracking-[-0.04em] text-[#0d3b45]">
+          <h1 className="text-3xl font-black tracking-[-0.04em] text-[#0D3B45]">
             شروط الاستخدام
           </h1>
 
-          <p className="mt-3 text-sm font-semibold leading-7 text-[#64748b]">
-            باستخدامك لمنصة elyaia أو أي متجر يعمل من خلالها، فإنك توافق على
-            الالتزام بهذه الشروط والأحكام.
+          <p className="mt-3 text-sm font-semibold leading-7 text-[#64748B]">
+            توضح هذه الصفحة الشروط العامة لاستخدام منصة elyaia وخدماتها
+            المرتبطة بإنشاء وإدارة المتاجر الإلكترونية.
           </p>
         </div>
 
         <div className="space-y-7 text-sm font-semibold leading-8 text-[#334155]">
           <section>
-            <h2 className="mb-2 text-xl font-black text-[#1f2933]">
+            <h2 className="mb-2 text-lg font-black text-[#1F2933]">
               1. قبول الشروط
             </h2>
             <p>
-              عند استخدام المنصة أو إنشاء حساب أو تنفيذ طلب، فإنك تقر بأنك
-              قرأت هذه الشروط وتوافق على الالتزام بها.
+              باستخدامك لمنصة elyaia، فإنك توافق على الالتزام بهذه الشروط
+              والسياسات المرتبطة بها. إذا كنت لا توافق على هذه الشروط، يجب عليك
+              عدم استخدام المنصة.
             </p>
           </section>
 
           <section>
-            <h2 className="mb-2 text-xl font-black text-[#1f2933]">
-              2. استخدام الخدمة
+            <h2 className="mb-2 text-lg font-black text-[#1F2933]">
+              2. استخدام المنصة
             </h2>
             <p>
-              يجب استخدام المنصة بطريقة نظامية ومشروعة، وعدم إساءة استخدام
-              الخدمات أو محاولة تعطيلها أو الوصول غير المصرح به لأي جزء منها.
+              توفر منصة elyaia أدوات لإنشاء وإدارة المتاجر الإلكترونية، بما في
+              ذلك إدارة المنتجات والطلبات والعملاء وبعض أدوات التسويق والتقارير.
+              يجب استخدام المنصة بطريقة نظامية ولا تخالف الأنظمة أو حقوق الآخرين.
             </p>
           </section>
 
           <section>
-            <h2 className="mb-2 text-xl font-black text-[#1f2933]">
-              3. الحسابات والبيانات
+            <h2 className="mb-2 text-lg font-black text-[#1F2933]">
+              3. حساب المستخدم
             </h2>
             <p>
-              يتحمل المستخدم مسؤولية صحة البيانات المدخلة، مثل الاسم، البريد
-              الإلكتروني، رقم الجوال، عنوان الشحن، وأي بيانات لازمة لإتمام
-              الطلبات.
+              المستخدم مسؤول عن صحة البيانات التي يقدمها وعن الحفاظ على سرية
+              بيانات الدخول الخاصة به. يحق للمنصة اتخاذ الإجراءات المناسبة عند
+              وجود استخدام غير مصرح أو مخالف.
             </p>
           </section>
 
           <section>
-            <h2 className="mb-2 text-xl font-black text-[#1f2933]">
-              4. الطلبات والمدفوعات
+            <h2 className="mb-2 text-lg font-black text-[#1F2933]">
+              4. المتاجر والمحتوى
             </h2>
             <p>
-              تخضع الطلبات والأسعار وطرق الدفع وسياسات الشحن والاسترجاع
-              للسياسات المعروضة داخل كل متجر، وقد تختلف من متجر إلى آخر.
+              يتحمل صاحب المتجر المسؤولية الكاملة عن المنتجات والمحتوى والأسعار
+              والسياسات التي يعرضها في متجره، بما في ذلك الالتزام بالأنظمة
+              المحلية وحماية حقوق المستهلك.
             </p>
           </section>
 
           <section>
-            <h2 className="mb-2 text-xl font-black text-[#1f2933]">
-              5. الملكية الفكرية
+            <h2 className="mb-2 text-lg font-black text-[#1F2933]">
+              5. المدفوعات والخدمات الخارجية
             </h2>
             <p>
-              جميع الحقوق المتعلقة بالمنصة وتصميمها وبرمجياتها محفوظة، ولا
-              يجوز نسخها أو إعادة استخدامها دون إذن مسبق.
+              قد ترتبط المنصة بخدمات خارجية مثل بوابات الدفع، الشحن، التحليلات،
+              أو تسجيل الدخول عبر مزودي الهوية. يخضع استخدام هذه الخدمات لشروط
+              مزوديها إضافة إلى شروط المنصة.
             </p>
           </section>
 
           <section>
-            <h2 className="mb-2 text-xl font-black text-[#1f2933]">
-              6. حدود المسؤولية
+            <h2 className="mb-2 text-lg font-black text-[#1F2933]">
+              6. التعديلات
             </h2>
             <p>
-              تسعى المنصة لتقديم خدمة مستقرة وآمنة، لكنها لا تضمن خلو الخدمة من
-              الانقطاعات أو الأخطاء التقنية الخارجة عن السيطرة.
+              قد يتم تحديث شروط الاستخدام من وقت لآخر لتحسين الخدمة أو الالتزام
+              بالمتطلبات النظامية. استمرارك في استخدام المنصة بعد التحديث يعني
+              موافقتك على الشروط المحدثة.
             </p>
           </section>
 
           <section>
-            <h2 className="mb-2 text-xl font-black text-[#1f2933]">
-              7. تعديل الشروط
+            <h2 className="mb-2 text-lg font-black text-[#1F2933]">
+              7. التواصل
             </h2>
             <p>
-              قد يتم تحديث هذه الشروط من وقت لآخر، ويصبح التحديث ساريًا عند
-              نشره على هذه الصفحة.
+              لأي استفسار متعلق بشروط الاستخدام، يمكنك التواصل مع إدارة المنصة
+              عبر قنوات التواصل الرسمية المتاحة في موقع elyaia.
             </p>
           </section>
-
-          <p className="rounded-2xl bg-[#f8fafc] px-4 py-3 text-xs font-bold text-[#64748b]">
-            آخر تحديث: 2026/06/05
-          </p>
         </div>
       </section>
     </main>
