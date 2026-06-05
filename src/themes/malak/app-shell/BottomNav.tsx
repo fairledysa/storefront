@@ -105,6 +105,11 @@ function isInstantMobileHref(href: string) {
   );
 }
 
+function isProtectedAccountHref(href: string) {
+  const path = cleanPath(href);
+  return path === "/account" || path.startsWith("/account/");
+}
+
 function getWindowPath() {
   if (typeof window === "undefined") return "/";
   return cleanPath(window.location.pathname);
@@ -142,6 +147,34 @@ function pushInstantMobileHref(href: string) {
   );
 }
 
+function buildLoginHref(nextHref: string) {
+  const next = cleanPath(nextHref || "/account");
+  return `/login?next=${encodeURIComponent(next)}`;
+}
+
+function isAuthedPayload(resOk: boolean, json: any) {
+  return Boolean(
+    resOk &&
+      (json?.authed === true || json?.ok === true) &&
+      (json?.customer || json?.user),
+  );
+}
+
+async function fetchCustomerAuth() {
+  try {
+    const res = await fetch("/api/auth/me", {
+      cache: "no-store",
+      credentials: "include",
+    });
+
+    const json = await res.json().catch(() => ({}));
+
+    return isAuthedPayload(res.ok, json);
+  } catch {
+    return false;
+  }
+}
+
 export default function BottomNav({ initialCartCount = 0 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -154,6 +187,14 @@ export default function BottomNav({ initialCartCount = 0 }: Props) {
     normalizeCount(initialCartCount),
   );
 
+  const [authState, setAuthState] = useState<{
+    checked: boolean;
+    authed: boolean;
+  }>({
+    checked: false,
+    authed: false,
+  });
+
   const pendingRef = useRef(false);
   const bumpTimerRef = useRef<number | null>(null);
   const pendingTimerRef = useRef<number | null>(null);
@@ -164,6 +205,34 @@ export default function BottomNav({ initialCartCount = 0 }: Props) {
     if (!pathname) return;
     setActivePath(cleanPath(pathname));
   }, [pathname]);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function warmAuth() {
+      const authed = await fetchCustomerAuth();
+
+      if (!alive) return;
+
+      setAuthState({
+        checked: true,
+        authed,
+      });
+    }
+
+    function handleAuthChanged() {
+      void warmAuth();
+    }
+
+    void warmAuth();
+
+    window.addEventListener("auth:changed", handleAuthChanged);
+
+    return () => {
+      alive = false;
+      window.removeEventListener("auth:changed", handleAuthChanged);
+    };
+  }, []);
 
   useEffect(() => {
     function handleMobilePathChange(event: Event) {
@@ -200,6 +269,12 @@ export default function BottomNav({ initialCartCount = 0 }: Props) {
       } catch {
         // ignore
       }
+    }
+
+    try {
+      router.prefetch("/login");
+    } catch {
+      // ignore
     }
   }, [router]);
 
@@ -320,6 +395,97 @@ export default function BottomNav({ initialCartCount = 0 }: Props) {
     }, 90);
   }
 
+  async function ensureCustomerAuthed() {
+    if (authState.checked) return authState.authed;
+
+    const authed = await fetchCustomerAuth();
+
+    setAuthState({
+      checked: true,
+      authed,
+    });
+
+    return authed;
+  }
+
+  async function handleItemClick({
+    item,
+    href,
+    active,
+    searchAction,
+  }: {
+    item: any;
+    href: string;
+    active: boolean;
+    searchAction: boolean;
+  }) {
+    if (searchAction) {
+      openSmartSearch();
+      return;
+    }
+
+    if (pendingRef.current) return;
+
+    const protectedAccount = isProtectedAccountHref(href);
+
+    if (!protectedAccount && active) return;
+
+    pendingRef.current = true;
+    setPendingHref(href);
+
+    if (protectedAccount) {
+      const authed = await ensureCustomerAuthed();
+
+      if (!authed) {
+        const loginHref = buildLoginHref(href);
+
+        try {
+          router.prefetch(loginHref);
+        } catch {
+          // ignore
+        }
+
+        startMobileNavigation({
+          href: loginHref,
+          source: "bottom-nav",
+        });
+
+        router.push(loginHref);
+        releasePendingSoon();
+        return;
+      }
+
+      if (active) {
+        releasePendingSoon();
+        return;
+      }
+    }
+
+    if (item.type === "screen") {
+      reset(item.key);
+    }
+
+    if (isInstantMobileHref(href)) {
+      setActivePath(cleanPath(href));
+      pushInstantMobileHref(href);
+      releasePendingSoon();
+      return;
+    }
+
+    try {
+      router.prefetch(href);
+    } catch {
+      // ignore
+    }
+
+    startMobileNavigation({
+      href,
+      source: "bottom-nav",
+    });
+
+    router.push(href);
+  }
+
   return (
     <nav dir="rtl" className="mk-tabbar" aria-label="التنقل السفلي">
       <div className="mk-tabbar__inner">
@@ -334,40 +500,12 @@ export default function BottomNav({ initialCartCount = 0 }: Props) {
               key={`${item.label}-${href}`}
               type="button"
               onClick={() => {
-                if (searchAction) {
-                  openSmartSearch();
-                  return;
-                }
-
-                if (active) return;
-                if (pendingRef.current) return;
-
-                pendingRef.current = true;
-                setPendingHref(href);
-
-                if (item.type === "screen") {
-                  reset(item.key);
-                }
-
-                if (isInstantMobileHref(href)) {
-                  setActivePath(cleanPath(href));
-                  pushInstantMobileHref(href);
-                  releasePendingSoon();
-                  return;
-                }
-
-                try {
-                  router.prefetch(href);
-                } catch {
-                  // ignore
-                }
-
-                startMobileNavigation({
+                void handleItemClick({
+                  item,
                   href,
-                  source: "bottom-nav",
+                  active,
+                  searchAction,
                 });
-
-                router.push(href);
               }}
               className={[
                 "mk-tab-item",

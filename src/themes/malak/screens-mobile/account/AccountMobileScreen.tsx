@@ -2,8 +2,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import AccountMobileLayout from "./AccountMobileLayout";
 import RequireMobileCustomer from "./_components/RequireMobileCustomer";
+import { startMobileNavigation } from "../../app-navigation/mobile-navigation";
 
 type Customer = {
   id?: string | null;
@@ -487,11 +489,16 @@ function EditProfileSheet({
 }
 
 export default function AccountMobileScreen() {
+  const router = useRouter();
+
   const [state, setState] = useState<State>({ kind: "loading" });
   const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [saveSuccess, setSaveSuccess] = useState("");
+
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState("");
 
   async function loadMe() {
     const r = await fetch("/api/auth/me", {
@@ -640,6 +647,50 @@ export default function AccountMobileScreen() {
     }
   }
 
+  async function handleLogout() {
+    if (loggingOut) return;
+
+    setLoggingOut(true);
+    setLogoutError("");
+
+    try {
+      const res = await fetch("/api/auth/logout", {
+        method: "POST",
+        cache: "no-store",
+        credentials: "include",
+      });
+
+      const json = await safeJson(res);
+
+      if (!res.ok) {
+        throw new Error(
+          s(json?.message) ||
+            s(json?.message_ar) ||
+            s(json?.error) ||
+            "تعذر تسجيل الخروج",
+        );
+      }
+
+      const href = "/";
+
+setEditOpen(false);
+
+startMobileNavigation({
+  href,
+  source: "programmatic",
+});
+
+router.replace(href);
+
+window.dispatchEvent(new CustomEvent("auth:changed"));
+
+    } catch (e: any) {
+      setLogoutError(s(e?.message) || "تعذر تسجيل الخروج");
+    } finally {
+      setLoggingOut(false);
+    }
+  }
+
   return (
     <RequireMobileCustomer>
       <AccountMobileLayout active="account" title="حسابي">
@@ -745,6 +796,26 @@ export default function AccountMobileScreen() {
                   {birthDateLabel(state.customer.birth_date)}
                 </div>
               </div>
+            </div>
+
+            <div className="mk-maccount-logout">
+              <div className="mk-maccount-logout__text">
+                <strong>تسجيل الخروج</strong>
+                <span>سيتم إنهاء جلستك الحالية من هذا المتجر.</span>
+              </div>
+
+              {logoutError ? (
+                <div className="mk-maccount-logout__error">{logoutError}</div>
+              ) : null}
+
+              <button
+                type="button"
+                disabled={loggingOut}
+                onClick={handleLogout}
+                className="mk-maccount-logout__btn"
+              >
+                {loggingOut ? "جاري تسجيل الخروج..." : "تسجيل الخروج"}
+              </button>
             </div>
           </div>
         )}
