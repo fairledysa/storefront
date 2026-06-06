@@ -26,6 +26,19 @@ export type AddressOut = {
   postal_code: string | null;
 };
 
+type LocationValidationResult =
+  | {
+      ok: true;
+      country_id: string;
+      city_id: string;
+      district_id: string | null;
+    }
+  | {
+      ok: false;
+      status: number;
+      error: string;
+    };
+
 function s(x: any) {
   return String(x ?? "").trim();
 }
@@ -122,71 +135,97 @@ function mapRowToOut(row: any): AddressOut {
   };
 }
 
-async function validateCityAndDistrict(
-  sb: any,
-  city_id: string,
-  district_id: string | null,
-) {
+async function validateAddressLocation(args: {
+  sb: any;
+  country_id: string | null;
+  city_id: string;
+  district_id: string | null;
+}): Promise<LocationValidationResult> {
+  const { sb } = args;
+  const requestedCountryId = s(args.country_id) || null;
+  const cityId = s(args.city_id);
+  const districtId = s(args.district_id) || null;
+
+  if (!cityId) {
+    return { ok: false, status: 400, error: "CITY_REQUIRED" };
+  }
+
   const cityR = await sb
     .from("ref_cities")
-    .select("id")
-    .eq("id", city_id)
+    .select("id,country_id,status")
+    .eq("id", cityId)
+    .eq("status", "active")
     .limit(1)
     .maybeSingle();
 
   if (cityR.error) {
-    return { ok: false as const, status: 500, error: cityR.error.message };
+    return { ok: false, status: 500, error: cityR.error.message };
   }
 
   if (!cityR.data?.id) {
-    return { ok: false as const, status: 400, error: "CITY_NOT_FOUND" };
+    return { ok: false, status: 400, error: "CITY_NOT_FOUND" };
   }
 
-  if (district_id) {
+  const actualCountryId = s(cityR.data.country_id);
+
+  if (!actualCountryId) {
+    return { ok: false, status: 400, error: "CITY_COUNTRY_NOT_FOUND" };
+  }
+
+  if (requestedCountryId) {
+    const countryR = await sb
+      .from("ref_countries")
+      .select("id,status")
+      .eq("id", requestedCountryId)
+      .eq("status", "active")
+      .limit(1)
+      .maybeSingle();
+
+    if (countryR.error) {
+      return { ok: false, status: 500, error: countryR.error.message };
+    }
+
+    if (!countryR.data?.id) {
+      return { ok: false, status: 400, error: "COUNTRY_NOT_FOUND" };
+    }
+
+    if (String(requestedCountryId) !== String(actualCountryId)) {
+      return { ok: false, status: 400, error: "CITY_COUNTRY_MISMATCH" };
+    }
+  }
+
+  if (districtId) {
     const dR = await sb
       .from("ref_districts")
-      .select("id,city_id")
-      .eq("id", district_id)
+      .select("id,city_id,status")
+      .eq("id", districtId)
+      .eq("status", "active")
       .limit(1)
       .maybeSingle();
 
     if (dR.error) {
-      return { ok: false as const, status: 500, error: dR.error.message };
+      return { ok: false, status: 500, error: dR.error.message };
     }
 
     if (!dR.data?.id) {
-      return { ok: false as const, status: 400, error: "DISTRICT_NOT_FOUND" };
+      return { ok: false, status: 400, error: "DISTRICT_NOT_FOUND" };
     }
 
-    if (String(dR.data.city_id) !== String(city_id)) {
+    if (String(dR.data.city_id) !== String(cityId)) {
       return {
-        ok: false as const,
+        ok: false,
         status: 400,
         error: "DISTRICT_CITY_MISMATCH",
       };
     }
   }
 
-  return { ok: true as const };
-}
-
-async function validateCountry(sb: any, country_id: string) {
-  const r = await sb
-    .from("ref_countries")
-    .select("id")
-    .eq("id", country_id)
-    .limit(1)
-    .maybeSingle();
-
-  if (r.error) {
-    return { ok: false as const, status: 500, error: r.error.message };
-  }
-
-  if (!r.data?.id) {
-    return { ok: false as const, status: 400, error: "COUNTRY_NOT_FOUND" };
-  }
-
-  return { ok: true as const };
+  return {
+    ok: true,
+    country_id: actualCountryId,
+    city_id: cityId,
+    district_id: districtId,
+  };
 }
 
 export async function GET() {
@@ -271,29 +310,24 @@ export async function POST(req: Request) {
     let recipient_name = s(body?.recipient_name) || null;
     let phone_e164 = normalizePhone(body?.phone_e164);
 
-    if (!city_id || !address_line1) {
+    if (!country_id || !city_id || !address_line1) {
       return NextResponse.json(
         { ok: false, error: "INVALID_ADDRESS" },
         { status: 400 },
       );
     }
 
-    if (country_id) {
-      const vc = await validateCountry(sb, country_id);
-      if (!vc.ok) {
-        return NextResponse.json(
-          { ok: false, error: vc.error },
-          { status: vc.status },
-        );
-      }
-    }
+    const location = await validateAddressLocation({
+      sb,
+      country_id,
+      city_id,
+      district_id,
+    });
 
-    const v = await validateCityAndDistrict(sb, city_id, district_id);
-
-    if (!v.ok) {
+    if (!location.ok) {
       return NextResponse.json(
-        { ok: false, error: v.error },
-        { status: v.status },
+        { ok: false, error: location.error },
+        { status: location.status },
       );
     }
 
@@ -307,9 +341,9 @@ export async function POST(req: Request) {
       .from("customer_addresses")
       .insert({
         customer_id,
-        country_id,
-        city_id,
-        district_id,
+        country_id: location.country_id,
+        city_id: location.city_id,
+        district_id: location.district_id,
         address_line1,
         address_line2,
         postal_code,
@@ -386,7 +420,7 @@ export async function PATCH(req: Request) {
     let recipient_name = s(body?.recipient_name) || null;
     let phone_e164 = normalizePhone(body?.phone_e164);
 
-    if (!id || !city_id || !address_line1) {
+    if (!id || !country_id || !city_id || !address_line1) {
       return NextResponse.json(
         { ok: false, error: "INVALID_ADDRESS" },
         { status: 400 },
@@ -415,22 +449,17 @@ export async function PATCH(req: Request) {
       );
     }
 
-    if (country_id) {
-      const vc = await validateCountry(sb, country_id);
-      if (!vc.ok) {
-        return NextResponse.json(
-          { ok: false, error: vc.error },
-          { status: vc.status },
-        );
-      }
-    }
+    const location = await validateAddressLocation({
+      sb,
+      country_id,
+      city_id,
+      district_id,
+    });
 
-    const v = await validateCityAndDistrict(sb, city_id, district_id);
-
-    if (!v.ok) {
+    if (!location.ok) {
       return NextResponse.json(
-        { ok: false, error: v.error },
-        { status: v.status },
+        { ok: false, error: location.error },
+        { status: location.status },
       );
     }
 
@@ -443,9 +472,9 @@ export async function PATCH(req: Request) {
     const upd = await sb
       .from("customer_addresses")
       .update({
-        country_id,
-        city_id,
-        district_id,
+        country_id: location.country_id,
+        city_id: location.city_id,
+        district_id: location.district_id,
         address_line1,
         address_line2,
         postal_code,

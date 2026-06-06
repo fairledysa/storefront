@@ -11,6 +11,7 @@ type Address = {
   label: string;
   full: string;
   national?: string | null;
+  country_id?: string | null;
   city_id?: string | null;
   district_id?: string | null;
   address_line1?: string | null;
@@ -18,7 +19,20 @@ type Address = {
   postal_code?: string | null;
 };
 
-type City = { id: string; name_ar: string; name_en?: string | null };
+type Country = {
+  id: string;
+  iso2?: string | null;
+  name_ar: string;
+  name_en?: string | null;
+};
+
+type City = {
+  id: string;
+  country_id?: string | null;
+  name_ar: string;
+  name_en?: string | null;
+};
+
 type District = { id: string; name_ar: string; name_en?: string | null };
 
 type ConfirmResult = {
@@ -31,8 +45,11 @@ type ConfirmResult = {
 
 type FormMode = "create" | "edit";
 
-let citiesCache: City[] | null = null;
-let citiesPromise: Promise<City[]> | null = null;
+let countriesCache: Country[] | null = null;
+let countriesPromise: Promise<Country[]> | null = null;
+
+const citiesCache = new Map<string, City[]>();
+const citiesPromise = new Map<string, Promise<City[]>>();
 
 const districtsCache = new Map<string, District[]>();
 const districtsPromise = new Map<string, Promise<District[]>>();
@@ -70,11 +87,11 @@ function setSubmitEnabled(enabled: boolean) {
   dispatchCheckoutEvent("checkout:submitEnabled", { enabled });
 }
 
-async function fetchCitiesOnce(): Promise<City[]> {
-  if (citiesCache) return citiesCache;
-  if (citiesPromise) return citiesPromise;
+async function fetchCountriesOnce(): Promise<Country[]> {
+  if (countriesCache) return countriesCache;
+  if (countriesPromise) return countriesPromise;
 
-  citiesPromise = fetch("/api/ref/cities", {
+  countriesPromise = fetch("/api/ref/countries", {
     method: "GET",
     credentials: "same-origin",
     cache: "no-store",
@@ -82,19 +99,56 @@ async function fetchCitiesOnce(): Promise<City[]> {
   })
     .then(async (r) => {
       const j = await safeJson(r);
-      const list: City[] = Array.isArray(j?.cities) ? j.cities : [];
-      citiesCache = list;
+      const list: Country[] = Array.isArray(j?.countries) ? j.countries : [];
+      countriesCache = list;
       return list;
     })
     .catch(() => {
-      citiesCache = [];
+      countriesCache = [];
       return [];
     })
     .finally(() => {
-      citiesPromise = null;
+      countriesPromise = null;
     });
 
-  return citiesPromise;
+  return countriesPromise;
+}
+
+async function fetchCitiesOnce(countryId: string): Promise<City[]> {
+  const cleanCountryId = s(countryId);
+  if (!cleanCountryId) return [];
+
+  const cached = citiesCache.get(cleanCountryId);
+  if (cached) return cached;
+
+  const pending = citiesPromise.get(cleanCountryId);
+  if (pending) return pending;
+
+  const promise = fetch(
+    `/api/ref/cities?country_id=${encodeURIComponent(cleanCountryId)}`,
+    {
+      method: "GET",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { "Cache-Control": "no-store" },
+    },
+  )
+    .then(async (r) => {
+      const j = await safeJson(r);
+      const list: City[] = Array.isArray(j?.cities) ? j.cities : [];
+      citiesCache.set(cleanCountryId, list);
+      return list;
+    })
+    .catch(() => {
+      citiesCache.set(cleanCountryId, []);
+      return [];
+    })
+    .finally(() => {
+      citiesPromise.delete(cleanCountryId);
+    });
+
+  citiesPromise.set(cleanCountryId, promise);
+  return promise;
 }
 
 async function fetchDistrictsOnce(cityId: string): Promise<District[]> {
@@ -118,7 +172,9 @@ async function fetchDistrictsOnce(cityId: string): Promise<District[]> {
   )
     .then(async (r) => {
       const j = await safeJson(r);
-      const list: District[] = Array.isArray(j?.districts) ? j.districts : [];
+      const list: District[] = Array.isArray(j?.districts)
+        ? j.districts
+        : [];
       districtsCache.set(cleanCityId, list);
       return list;
     })
@@ -147,8 +203,10 @@ function buildAddressLine(address?: Address | null) {
 function AddressForm(props: {
   isActive: boolean;
   mode: FormMode;
+  countries: Country[];
   cities: City[];
   districts: District[];
+  countryId: string;
   cityId: string;
   districtId: string;
   line1: string;
@@ -156,6 +214,7 @@ function AddressForm(props: {
   postal: string;
   saving: boolean;
   errorMsg?: string;
+  onCountryChange: (v: string) => void;
   onCityChange: (v: string) => void;
   onDistrictChange: (v: string) => void;
   onLine1Change: (v: string) => void;
@@ -173,7 +232,7 @@ function AddressForm(props: {
           <strong>
             {props.mode === "edit" ? "تعديل العنوان" : "إضافة عنوان جديد"}
           </strong>
-          <p>اكتب العنوان بوضوح حتى تصل الشحنة بدون تأخير.</p>
+          <p>اختر الدولة أولًا، ثم المدينة والحي حتى لا تختلط مناطق الشحن.</p>
         </div>
 
         {props.onCancel ? (
@@ -192,35 +251,69 @@ function AddressForm(props: {
       <div className="co-form-grid co-form-grid--2">
         <select
           className="co-field"
-          disabled={formDisabled || props.cities.length === 0}
-          value={props.cityId}
-          onChange={(e) => props.onCityChange(e.target.value)}
+          disabled={formDisabled || props.countries.length === 0}
+          value={props.countryId}
+          onChange={(e) => props.onCountryChange(e.target.value)}
         >
-          {props.cities.length === 0 ? (
-            <option value="">جاري تحميل المدن...</option>
-          ) : null}
+          <option value="">
+            {props.countries.length === 0 ? "جاري تحميل الدول..." : "اختر الدولة"}
+          </option>
 
-          {props.cities.map((c) => (
-            <option key={c.id} value={c.id}>
-              {s(c.name_ar || c.name_en)}
+          {props.countries.map((country) => (
+            <option key={country.id} value={country.id}>
+              {s(country.name_ar || country.name_en)}
             </option>
           ))}
         </select>
 
         <select
           className="co-field"
+          disabled={formDisabled || !props.countryId}
+          value={props.cityId}
+          onChange={(e) => props.onCityChange(e.target.value)}
+        >
+          <option value="">
+            {!props.countryId
+              ? "اختر الدولة أولًا"
+              : props.cities.length === 0
+                ? "لا توجد مدن لهذه الدولة"
+                : "اختر المدينة"}
+          </option>
+
+          {props.cities.map((city) => (
+            <option key={city.id} value={city.id}>
+              {s(city.name_ar || city.name_en)}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="co-form-grid co-form-grid--2">
+        <select
+          className="co-field"
           disabled={formDisabled || !props.cityId}
           value={props.districtId}
           onChange={(e) => props.onDistrictChange(e.target.value)}
         >
-          <option value="">اختر الحي</option>
+          <option value="">
+            {!props.cityId ? "اختر المدينة أولًا" : "اختر الحي"}
+          </option>
 
-          {props.districts.map((d) => (
-            <option key={d.id} value={d.id}>
-              {s(d.name_ar || d.name_en)}
+          {props.districts.map((district) => (
+            <option key={district.id} value={district.id}>
+              {s(district.name_ar || district.name_en)}
             </option>
           ))}
         </select>
+
+        <input
+          className="co-field"
+          placeholder="الرمز البريدي، إن وجد"
+          value={props.postal}
+          onChange={(e) => props.onPostalChange(e.target.value)}
+          disabled={formDisabled}
+          dir="ltr"
+        />
       </div>
 
       <div className="co-form-grid">
@@ -239,15 +332,6 @@ function AddressForm(props: {
           onChange={(e) => props.onLine2Change(e.target.value)}
           disabled={formDisabled}
         />
-
-        <input
-          className="co-field"
-          placeholder="الرمز البريدي، إن وجد"
-          value={props.postal}
-          onChange={(e) => props.onPostalChange(e.target.value)}
-          disabled={formDisabled}
-          dir="ltr"
-        />
       </div>
 
       {props.errorMsg ? (
@@ -256,7 +340,12 @@ function AddressForm(props: {
 
       <button
         className="co-btn co-btn--dark co-btn--full"
-        disabled={formDisabled || !props.cityId || !props.line1.trim()}
+        disabled={
+          formDisabled ||
+          !props.countryId ||
+          !props.cityId ||
+          !props.line1.trim()
+        }
         onClick={props.onSubmit}
         type="button"
       >
@@ -287,6 +376,7 @@ export default function AddressStep(props: {
   const [value, setValue] = useState<string>(confirmedId ?? "");
   const [query, setQuery] = useState("");
 
+  const [countries, setCountries] = useState<Country[]>([]);
   const [cities, setCities] = useState<City[]>([]);
   const [districts, setDistricts] = useState<District[]>([]);
 
@@ -294,6 +384,7 @@ export default function AddressStep(props: {
   const [mode, setMode] = useState<FormMode>("create");
   const [editingId, setEditingId] = useState<string>("");
 
+  const [countryId, setCountryId] = useState("");
   const [cityId, setCityId] = useState("");
   const [districtId, setDistrictId] = useState("");
   const [line1, setLine1] = useState("");
@@ -306,6 +397,8 @@ export default function AddressStep(props: {
 
   const mountedRef = useRef(true);
   const addressReqSeq = useRef(0);
+  const countryReqSeq = useRef(0);
+  const cityReqSeq = useRef(0);
   const districtReqSeq = useRef(0);
 
   const picked = useMemo(() => {
@@ -390,42 +483,55 @@ export default function AddressStep(props: {
     }
   }
 
-  async function loadCities() {
-    const list = await fetchCitiesOnce();
+  async function loadCountries() {
+    const seq = ++countryReqSeq.current;
+    const list = await fetchCountriesOnce();
 
-    if (!mountedRef.current) return;
+    if (!mountedRef.current || seq !== countryReqSeq.current) return;
+
+    setCountries(list);
+
+    setCountryId((current) => {
+      if (current && list.some((country) => String(country.id) === current)) {
+        return current;
+      }
+
+      return "";
+    });
+  }
+
+  async function loadCities(nextCountryId: string) {
+    const cleanCountryId = s(nextCountryId);
+    const seq = ++cityReqSeq.current;
+
+    setCities([]);
+    setCityId("");
+    setDistricts([]);
+    setDistrictId("");
+
+    if (!cleanCountryId) return;
+
+    const list = await fetchCitiesOnce(cleanCountryId);
+
+    if (!mountedRef.current || seq !== cityReqSeq.current) return;
 
     setCities(list);
-
-    setCityId((current) => {
-      if (current) return current;
-      return list[0]?.id ? String(list[0].id) : "";
-    });
   }
 
   async function loadDistricts(nextCityId: string) {
     const cleanCityId = s(nextCityId);
     const seq = ++districtReqSeq.current;
 
-    if (!cleanCityId) {
-      setDistricts([]);
-      setDistrictId("");
-      return;
-    }
+    setDistricts([]);
+    setDistrictId("");
+
+    if (!cleanCityId) return;
 
     const list = await fetchDistrictsOnce(cleanCityId);
 
     if (!mountedRef.current || seq !== districtReqSeq.current) return;
 
     setDistricts(list);
-
-    setDistrictId((current) => {
-      if (current && list.some((d) => String(d.id) === String(current))) {
-        return current;
-      }
-
-      return list[0]?.id ? String(list[0].id) : "";
-    });
   }
 
   useEffect(() => {
@@ -434,6 +540,8 @@ export default function AddressStep(props: {
     return () => {
       mountedRef.current = false;
       addressReqSeq.current += 1;
+      countryReqSeq.current += 1;
+      cityReqSeq.current += 1;
       districtReqSeq.current += 1;
     };
   }, []);
@@ -461,9 +569,16 @@ export default function AddressStep(props: {
     if (!showForm) return;
 
     setFormError("");
-    void loadCities();
+    void loadCountries();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showForm]);
+
+  useEffect(() => {
+    if (!showForm) return;
+
+    void loadCities(countryId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countryId, showForm]);
 
   useEffect(() => {
     if (!showForm) return;
@@ -476,10 +591,14 @@ export default function AddressStep(props: {
     setMode("create");
     setEditingId("");
     setFormError("");
+    setCountryId("");
+    setCityId("");
+    setDistrictId("");
+    setCities([]);
+    setDistricts([]);
     setLine1("");
     setLine2("");
     setPostal("");
-    setDistrictId("");
   }
 
   function openCreateForm() {
@@ -496,7 +615,8 @@ export default function AddressStep(props: {
     setEditingId(String(a.id));
     setFormError("");
 
-    setCityId(s(a.city_id) || cityId || "");
+    setCountryId(s(a.country_id) || "");
+    setCityId(s(a.city_id) || "");
     setDistrictId(s(a.district_id) || "");
     setLine1(s(a.address_line1) || "");
     setLine2(s(a.address_line2) || "");
@@ -514,6 +634,22 @@ export default function AddressStep(props: {
     setMode("create");
   }
 
+  function handleCountryChange(nextCountryId: string) {
+    setCountryId(nextCountryId);
+    setCityId("");
+    setDistrictId("");
+    setCities([]);
+    setDistricts([]);
+    setFormError("");
+  }
+
+  function handleCityChange(nextCityId: string) {
+    setCityId(nextCityId);
+    setDistrictId("");
+    setDistricts([]);
+    setFormError("");
+  }
+
   function upsertAddressLocally(address: Address) {
     const id = s(address?.id);
     if (!id) return;
@@ -526,7 +662,7 @@ export default function AddressStep(props: {
   }
 
   async function submitForm() {
-    if (!cityId || !line1.trim() || saving) return;
+    if (!countryId || !cityId || !line1.trim() || saving) return;
 
     setSaving(true);
     setFormError("");
@@ -534,6 +670,7 @@ export default function AddressStep(props: {
 
     try {
       const payload = {
+        country_id: countryId,
         city_id: cityId,
         district_id: districtId || null,
         address_line1: line1,
@@ -685,8 +822,10 @@ export default function AddressStep(props: {
         <AddressForm
           isActive={isActive && !confirming}
           mode="create"
+          countries={countries}
           cities={cities}
           districts={districts}
+          countryId={countryId}
           cityId={cityId}
           districtId={districtId}
           line1={line1}
@@ -694,7 +833,8 @@ export default function AddressStep(props: {
           postal={postal}
           saving={saving || confirming}
           errorMsg={formError}
-          onCityChange={setCityId}
+          onCountryChange={handleCountryChange}
+          onCityChange={handleCityChange}
           onDistrictChange={setDistrictId}
           onLine1Change={setLine1}
           onLine2Change={setLine2}
@@ -742,8 +882,10 @@ export default function AddressStep(props: {
           <AddressForm
             isActive={isActive && !confirming}
             mode={mode}
+            countries={countries}
             cities={cities}
             districts={districts}
+            countryId={countryId}
             cityId={cityId}
             districtId={districtId}
             line1={line1}
@@ -751,7 +893,8 @@ export default function AddressStep(props: {
             postal={postal}
             saving={saving}
             errorMsg={formError}
-            onCityChange={setCityId}
+            onCountryChange={handleCountryChange}
+            onCityChange={handleCityChange}
             onDistrictChange={setDistrictId}
             onLine1Change={setLine1}
             onLine2Change={setLine2}
