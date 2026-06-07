@@ -53,6 +53,9 @@ export type ProductRow = {
   public_no?: number | null;
   sold_qty?: number;
 
+  display_order?: number | null;
+  displayOrder?: number | null;
+
   brand_id?: string | null;
 
   short_url?: string | null;
@@ -140,6 +143,76 @@ function readMetaBool(meta: any, keys: string[]) {
   }
 
   return null;
+}
+
+function readDisplayOrder(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+
+  const text = s(value);
+  if (!text) return null;
+
+  const n = Number(text);
+  if (!Number.isFinite(n)) return null;
+
+  const int = Math.floor(n);
+  return int > 0 ? int : null;
+}
+
+function compareDisplayOrder(a: any, b: any) {
+  const aOrder = readDisplayOrder(a?.display_order ?? a?.displayOrder);
+  const bOrder = readDisplayOrder(b?.display_order ?? b?.displayOrder);
+
+  if (aOrder !== null && bOrder !== null && aOrder !== bOrder) {
+    return aOrder - bOrder;
+  }
+
+  if (aOrder !== null && bOrder === null) return -1;
+  if (aOrder === null && bOrder !== null) return 1;
+
+  return 0;
+}
+
+function getCreatedTime(row: any) {
+  const value = row?.created_at ?? row?.seo?.created_at ?? null;
+  const time = new Date(value ?? 0).getTime();
+
+  return Number.isFinite(time) ? time : 0;
+}
+
+function compareCreatedDesc(a: any, b: any) {
+  return getCreatedTime(b) - getCreatedTime(a);
+}
+
+function compareCategoryProductRows(a: any, b: any) {
+  const displayOrderCompare = compareDisplayOrder(a, b);
+  if (displayOrderCompare !== 0) return displayOrderCompare;
+
+  const aCategoryOrder =
+    a?.__category_sort_order === null || a?.__category_sort_order === undefined
+      ? null
+      : Number(a.__category_sort_order);
+
+  const bCategoryOrder =
+    b?.__category_sort_order === null || b?.__category_sort_order === undefined
+      ? null
+      : Number(b.__category_sort_order);
+
+  const aHasCategoryOrder =
+    aCategoryOrder !== null && Number.isFinite(aCategoryOrder);
+  const bHasCategoryOrder =
+    bCategoryOrder !== null && Number.isFinite(bCategoryOrder);
+
+  if (aHasCategoryOrder && bHasCategoryOrder && aCategoryOrder !== bCategoryOrder) {
+    return aCategoryOrder - bCategoryOrder;
+  }
+
+  if (aHasCategoryOrder && !bHasCategoryOrder) return -1;
+  if (!aHasCategoryOrder && bHasCategoryOrder) return 1;
+
+  const createdCompare = compareCreatedDesc(a, b);
+  if (createdCompare !== 0) return createdCompare;
+
+  return Number(a?.__fallback_rank ?? 0) - Number(b?.__fallback_rank ?? 0);
 }
 
 function isPublishedStatus(status: any) {
@@ -254,7 +327,7 @@ function productMetadataFromRow(row: any) {
 }
 
 const BASE_SELECT =
-  "id,store_id,name,description,status,public_no,created_at,brand_id,metadata,product_metadata(url,title,description)";
+  "id,store_id,name,description,status,public_no,display_order,created_at,brand_id,metadata,product_metadata(url,title,description)";
 
 type ProductBulkMaps = {
   pricingByProductId: Map<string, any>;
@@ -287,6 +360,8 @@ function mapBaseProductRowFromBulk(row: any, maps: ProductBulkMaps): ProductRow 
 
   const metadata =
     row?.metadata && typeof row.metadata === "object" ? row.metadata : null;
+
+  const displayOrder = readDisplayOrder(row?.display_order);
 
   const seo: ProductSEOData = {
     created_at: row.created_at ?? null,
@@ -321,6 +396,9 @@ function mapBaseProductRowFromBulk(row: any, maps: ProductBulkMaps): ProductRow 
     sold_qty: Number(
       maps.soldQtyByProductId?.get(productId) ?? row?.sold_qty ?? 0,
     ),
+
+    display_order: displayOrder,
+    displayOrder,
 
     brand_id: row.brand_id ?? null,
 
@@ -789,7 +867,7 @@ export async function getProductById(opts: { store_id: string; id: string }) {
   if (!fn) {
     fn = unstable_cache(
       () => getProductByIdRaw(opts),
-      ["product-by-id", opts.store_id, opts.id],
+      ["product-by-id-v2-display-order", opts.store_id, opts.id],
       { revalidate: 60 },
     );
 
@@ -809,7 +887,7 @@ export async function getProductByPublicNo(opts: {
   if (!fn) {
     fn = unstable_cache(
       () => getProductByPublicNoRaw(opts),
-      ["product-by-public-no", opts.store_id, String(opts.public_no)],
+      ["product-by-public-no-v2-display-order", opts.store_id, String(opts.public_no)],
       { revalidate: 60 },
     );
 
@@ -829,7 +907,7 @@ export async function getProductByShortUrl(opts: {
   if (!fn) {
     fn = unstable_cache(
       () => getProductByShortUrlRaw(opts),
-      ["product-by-short-url", opts.store_id, opts.short_url],
+      ["product-by-short-url-v2-display-order", opts.store_id, opts.short_url],
       { revalidate: 60 },
     );
 
@@ -846,16 +924,29 @@ async function getProductsByCategoryRaw(opts: {
 }) {
   const sb = await getStoreDb(opts.store_id);
   const limit = Math.min(Math.max(Number(opts.limit ?? 24), 1), 200);
+  const fetchLimit = Math.min(Math.max(limit * 4, limit), 500);
 
   const firstR = await sb
     .from("category_products")
     .select(`sort_order, products:products(${BASE_SELECT})`)
     .eq("category_id", opts.category_id)
     .order("sort_order", { ascending: true })
-    .limit(limit);
+    .limit(fetchLimit);
 
   const firstProducts = (firstR.data || [])
-    .map((x: any) => readOne(x.products))
+    .map((x: any, index: number) => {
+      const product = readOne(x.products);
+      if (!product) return null;
+
+      return {
+        ...product,
+        __category_sort_order:
+          x?.sort_order === null || x?.sort_order === undefined
+            ? null
+            : Number(x.sort_order),
+        __fallback_rank: index,
+      };
+    })
     .filter(Boolean)
     .filter((p: any) => p.store_id === opts.store_id)
     .filter((p: any) => isProductVisibleInWeb(p));
@@ -869,19 +960,26 @@ async function getProductsByCategoryRaw(opts: {
 
     seen.add(id);
     merged.push(product);
-
-    if (merged.length >= limit) break;
   }
 
-  if (merged.length < limit) {
+  if (merged.length < fetchLimit) {
     const secondR = await sb
       .from("product_categories")
       .select(`products:products(${BASE_SELECT})`)
       .eq("category_id", opts.category_id)
-      .limit(limit);
+      .limit(fetchLimit);
 
     const secondProducts = (secondR.data || [])
-      .map((x: any) => readOne(x.products))
+      .map((x: any, index: number) => {
+        const product = readOne(x.products);
+        if (!product) return null;
+
+        return {
+          ...product,
+          __category_sort_order: null,
+          __fallback_rank: firstProducts.length + index,
+        };
+      })
       .filter(Boolean)
       .filter((p: any) => p.store_id === opts.store_id)
       .filter((p: any) => isProductVisibleInWeb(p));
@@ -893,13 +991,18 @@ async function getProductsByCategoryRaw(opts: {
       seen.add(id);
       merged.push(product);
 
-      if (merged.length >= limit) break;
+      if (merged.length >= fetchLimit) break;
     }
   }
 
   if (!merged.length) return [] as ProductRow[];
 
-  return await mapProductRowsBulk(merged.slice(0, limit));
+  const picked = merged
+    .slice()
+    .sort(compareCategoryProductRows)
+    .slice(0, limit);
+
+  return await mapProductRowsBulk(picked);
 }
 
 const productsByCategoryCache = new Map<string, () => Promise<ProductRow[]>>();
@@ -910,14 +1013,19 @@ export async function getProductsByCategory(opts: {
   limit: number;
 }) {
   const limit = Math.min(Math.max(Number(opts.limit ?? 24), 1), 200);
-  const key = `${opts.store_id}:${opts.category_id}:${limit}`;
+  const key = `${opts.store_id}:${opts.category_id}:${limit}:display-order-v2`;
 
   let fn = productsByCategoryCache.get(key);
 
   if (!fn) {
     fn = unstable_cache(
       () => getProductsByCategoryRaw({ ...opts, limit }),
-      ["products-by-category", opts.store_id, opts.category_id, String(limit)],
+      [
+        "products-by-category-v2-display-order",
+        opts.store_id,
+        opts.category_id,
+        String(limit),
+      ],
       { revalidate: 60 },
     );
 
@@ -940,6 +1048,7 @@ async function getProductsForGridRaw(opts: {
     .from("products")
     .select(BASE_SELECT)
     .eq("store_id", opts.store_id)
+    .order("display_order", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: false })
     .limit(fetchLimit);
 
@@ -958,14 +1067,14 @@ export async function getProductsForGrid(opts: {
   limit?: number;
 }): Promise<ProductRow[]> {
   const limit = Math.min(Math.max(Number(opts.limit ?? 12), 1), 60);
-  const key = `${opts.store_id}:${limit}`;
+  const key = `${opts.store_id}:${limit}:display-order-v2`;
 
   let fn = productsForGridCache.get(key);
 
   if (!fn) {
     fn = unstable_cache(
       () => getProductsForGridRaw({ ...opts, limit }),
-      ["products-for-grid", opts.store_id, String(limit)],
+      ["products-for-grid-v2-display-order", opts.store_id, String(limit)],
       { revalidate: 60 },
     );
 
@@ -1107,7 +1216,7 @@ export async function getBestSellingProductsForGrid(opts: {
   if (!fn) {
     fn = unstable_cache(
       () => getBestSellingProductsForGridRaw({ ...opts, limit }),
-      ["best-selling-products-for-grid", opts.store_id, String(limit)],
+      ["best-selling-products-for-grid-v2-display-order", opts.store_id, String(limit)],
       { revalidate: 120 },
     );
 
@@ -1405,7 +1514,7 @@ export async function getProductsByIds(opts: {
   if (!storeId || !ids.length) return [];
 
   const sortedIds = [...ids].sort();
-  const key = `${storeId}:${limit}:${sortedIds.join(",")}`;
+  const key = `${storeId}:${limit}:${sortedIds.join(",")}:display-order-v2`;
 
   let fn = productsByIdsCache.get(key);
 
@@ -1417,7 +1526,12 @@ export async function getProductsByIds(opts: {
           ids: sortedIds,
           limit,
         }),
-      ["products-by-ids", storeId, String(limit), sortedIds.join(",")],
+      [
+        "products-by-ids-v2-display-order",
+        storeId,
+        String(limit),
+        sortedIds.join(","),
+      ],
       { revalidate: 60 },
     );
 
@@ -1756,7 +1870,7 @@ export async function getProductsBySearch(opts: {
 
   if (!q || q.length < 2) return [];
 
-  const key = `${opts.store_id}:${normalizeArabicSearchText(q)}:${limit}`;
+  const key = `${opts.store_id}:${normalizeArabicSearchText(q)}:${limit}:display-order-v2`;
 
   let fn = productsBySearchCache.get(key);
 
@@ -1769,7 +1883,7 @@ export async function getProductsBySearch(opts: {
           limit,
         }),
       [
-        "products-by-smart-search",
+        "products-by-smart-search-v2-display-order",
         opts.store_id,
         normalizeArabicSearchText(q),
         String(limit),
