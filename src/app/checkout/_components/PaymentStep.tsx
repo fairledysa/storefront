@@ -5,39 +5,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import StepShell from "./StepShell";
 import { CreditCard, Loader2 } from "lucide-react";
-
-type PaymentDisabledHelp =
-  | {
-      kind: "cod_untrusted_customer";
-      title: string;
-      message: string;
-      records: Array<{
-        store_name: string;
-        reason_text: string;
-        reason_note?: string | null;
-        created_at?: string | null;
-      }>;
-    }
-  | null;
-
-type PaymentOption = {
-  id: string;
-  type: "cod" | "bank_transfer" | "provider";
-  title: string;
-  subtitle?: string | null;
-  fee_text?: string | null;
-  fee_amount?: number | null;
-  recommended?: boolean;
-  disabled?: boolean;
-  disabled_reason?: string | null;
-  disabled_help?: PaymentDisabledHelp;
-  bank_details?: {
-    bank_name: string;
-    account_holder: string;
-    iban: string;
-    note: string;
-  } | null;
-};
+import PaymentMethodsPanel, {
+  fallbackPaymentTitle,
+  paymentPatchKey,
+  readPaymentFee,
+  type PaymentOption,
+} from "./PaymentMethodsPanel";
 
 type ConfirmResult = {
   ok?: boolean;
@@ -62,11 +35,6 @@ type SaveOptions = {
 
 function s(x: any) {
   return String(x ?? "").trim();
-}
-
-function n(x: any) {
-  const v = Number(x ?? 0);
-  return Number.isFinite(v) ? v : 0;
 }
 
 async function safeJson(r: Response) {
@@ -106,18 +74,6 @@ function requestSubmitOrder() {
   dispatchCheckoutEvent("checkout:submitOrder");
 }
 
-function readPaymentFee(option?: PaymentOption | null) {
-  if (!option || option.disabled) return 0;
-
-  const fee = n(option.fee_amount);
-  return fee > 0 ? fee : 0;
-}
-
-function paymentPatchKey(option?: PaymentOption | null) {
-  if (!option) return "";
-  return `${option.id}:${readPaymentFee(option)}`;
-}
-
 function patchPaymentSummary(option: PaymentOption) {
   dispatchCheckoutEvent("checkout:summaryPatch", {
     patch: {
@@ -136,92 +92,6 @@ function clearPaymentSummaryPatch() {
     },
     reconcile: false,
   });
-}
-
-function fmtDate(value?: string | null) {
-  if (!value) return "";
-
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "";
-
-  return new Intl.DateTimeFormat("ar-SA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(d);
-}
-
-function humanizePaymentDisabledReason(reason?: string | null) {
-  const value = s(reason);
-
-  if (!value) return "الدفع عند الاستلام غير متاح حاليًا.";
-
-  const map: Record<string, string> = {
-    NEED_SHIPPING: "اختر شركة الشحن أولًا لتأكيد توفر الدفع عند الاستلام.",
-    COD_NOT_AVAILABLE: "الدفع عند الاستلام غير متاح مع طريقة الشحن المختارة.",
-    COD_NOT_ENABLED_FOR_SHIPPING_RATE:
-      "الدفع عند الاستلام غير مفعل لطريقة الشحن الحالية.",
-    SHIPPING_RATE_NOT_FOUND: "طريقة الشحن الحالية غير متاحة.",
-    SHIPPING_CARRIER_DISABLED: "طريقة الشحن الحالية غير مفعلة.",
-    COD_NOT_AVAILABLE_FOR_PICKUP:
-      "الدفع عند الاستلام غير متاح مع الاستلام من الفرع.",
-    COD_MINIMUM_SUBTOTAL:
-      "الدفع عند الاستلام غير متاح لأن إجمالي المشتريات أقل من الحد الأدنى.",
-    COD_MIN_SUBTOTAL:
-      "الدفع عند الاستلام غير متاح لأن إجمالي المشتريات أقل من الحد الأدنى.",
-    COD_MAXIMUM_SUBTOTAL:
-      "الدفع عند الاستلام غير متاح لأن إجمالي المشتريات أعلى من الحد الأعلى.",
-    COD_MAX_SUBTOTAL:
-      "الدفع عند الاستلام غير متاح لأن إجمالي المشتريات أعلى من الحد الأعلى.",
-    COD_MAXIMUM_WEIGHT:
-      "الدفع عند الاستلام غير متاح لأن وزن المنتجات في السلة أعلى من الحد المسموح.",
-    COD_MAXIMUM_WEIGHT_KG:
-      "الدفع عند الاستلام غير متاح لأن وزن المنتجات في السلة أعلى من الحد المسموح.",
-    COD_MAX_WEIGHT:
-      "الدفع عند الاستلام غير متاح لأن وزن المنتجات في السلة أعلى من الحد المسموح.",
-    COD_PRODUCT_EXCLUDED:
-      "الدفع عند الاستلام غير متاح لأن السلة تحتوي على منتج مستثنى.",
-    COD_EXCLUDED_PRODUCT:
-      "الدفع عند الاستلام غير متاح لأن السلة تحتوي على منتج مستثنى.",
-    COD_CATEGORY_EXCLUDED:
-      "الدفع عند الاستلام غير متاح لأن السلة تحتوي على منتج من تصنيف مستثنى.",
-    COD_EXCLUDED_CATEGORY:
-      "الدفع عند الاستلام غير متاح لأن السلة تحتوي على منتج من تصنيف مستثنى.",
-    COD_UNTRUSTED_CUSTOMER: "الدفع عند الاستلام غير متاح لك مؤقتًا.",
-    COD_BLOCKED_CUSTOMER: "الدفع عند الاستلام غير متاح لك مؤقتًا.",
-    COD_RESTRICTED: "الدفع عند الاستلام غير متاح حسب قيود المتجر.",
-    COD_RESTRICTION_FAILED: "الدفع عند الاستلام غير متاح حسب قيود المتجر.",
-  };
-
-  return map[value] || "الدفع عند الاستلام غير متاح حسب قيود المتجر.";
-}
-
-function fallbackPaymentTitle(id?: string) {
-  const value = s(id);
-
-  if (value === "cod") return "الدفع عند الاستلام";
-  if (value === "bank_transfer") return "تحويل بنكي";
-
-  if (value.startsWith("provider:")) {
-    const code = value.replace("provider:", "").trim();
-    return code ? `الدفع الإلكتروني (${code})` : "الدفع الإلكتروني";
-  }
-
-  return "طريقة دفع محفوظة";
-}
-
-function maskIban(value?: string | null) {
-  const iban = s(value).replace(/\s+/g, "");
-  if (!iban) return "";
-  if (iban.length <= 10) return iban;
-
-  return `${iban.slice(0, 6)}…${iban.slice(-4)}`;
-}
-
-function getPaymentBadge(option: PaymentOption) {
-  if (option.type === "cod") return "عند الاستلام";
-  if (option.type === "bank_transfer") return "تحويل";
-  return "إلكتروني";
 }
 
 async function fetchPaymentOptionsFresh() {
@@ -243,23 +113,6 @@ async function fetchPaymentOptionsFresh() {
   return Array.isArray(j?.options) ? (j.options as PaymentOption[]) : [];
 }
 
-function PaymentSkeleton() {
-  return (
-    <div className="co-payment-list">
-      {Array.from({ length: 2 }).map((_, i) => (
-        <div key={i} className="co-payment-option is-skeleton">
-          <span className="co-payment-radio" />
-
-          <div className="co-payment-main">
-            <span className="co-skeleton co-skeleton--title" />
-            <span className="co-skeleton co-skeleton--line" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export default function PaymentStep({
   isActive,
   isDone,
@@ -277,7 +130,6 @@ export default function PaymentStep({
   const [savingId, setSavingId] = useState("");
   const [submitSaving, setSubmitSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
-  const [helpModal, setHelpModal] = useState<PaymentDisabledHelp>(null);
 
   const mountedRef = useRef(true);
   const loadSeqRef = useRef(0);
@@ -285,64 +137,6 @@ export default function PaymentStep({
   const saveAbortRef = useRef<AbortController | null>(null);
   const lastSyncedRef = useRef<string>(initialSyncedId);
   const lastPatchedRef = useRef("");
-
-  useEffect(() => {
-    mountedRef.current = true;
-
-    return () => {
-      mountedRef.current = false;
-      loadSeqRef.current += 1;
-      saveSeqRef.current += 1;
-      saveAbortRef.current?.abort();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (isDone && confirmedId) {
-      setMethod(confirmedId);
-      lastSyncedRef.current = confirmedId;
-      return;
-    }
-
-    if (!isDone) {
-      lastSyncedRef.current = "";
-    }
-  }, [confirmedId, isDone]);
-
-  useEffect(() => {
-    if (isLocked || !isActive) {
-      if (!isDone) setSubmitEnabled(false);
-      return;
-    }
-
-    void loadOptions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLocked, isActive]);
-
-  useEffect(() => {
-    if (isLocked || !isActive || loading) return;
-
-    if (!method || !options.length) {
-      setSubmitEnabled(false);
-      return;
-    }
-
-    const selected = options.find((option) => option.id === method);
-
-    if (!selected || selected.disabled) {
-      setSubmitEnabled(false);
-      return;
-    }
-
-    const patchKey = paymentPatchKey(selected);
-
-    if (lastPatchedRef.current !== patchKey) {
-      lastPatchedRef.current = patchKey;
-      patchPaymentSummary(selected);
-    }
-
-    setSubmitEnabled(true);
-  }, [isLocked, isActive, loading, method, options]);
 
   async function loadOptions() {
     const seq = ++loadSeqRef.current;
@@ -566,6 +360,64 @@ export default function PaymentStep({
     await saveSelectedPayment(method, { submitAfter: true });
   }
 
+  useEffect(() => {
+    mountedRef.current = true;
+
+    return () => {
+      mountedRef.current = false;
+      loadSeqRef.current += 1;
+      saveSeqRef.current += 1;
+      saveAbortRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isDone && confirmedId) {
+      setMethod(confirmedId);
+      lastSyncedRef.current = confirmedId;
+      return;
+    }
+
+    if (!isDone) {
+      lastSyncedRef.current = "";
+    }
+  }, [confirmedId, isDone]);
+
+  useEffect(() => {
+    if (isLocked || !isActive) {
+      if (!isDone) setSubmitEnabled(false);
+      return;
+    }
+
+    void loadOptions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLocked, isActive]);
+
+  useEffect(() => {
+    if (isLocked || !isActive || loading) return;
+
+    if (!method || !options.length) {
+      setSubmitEnabled(false);
+      return;
+    }
+
+    const selected = options.find((option) => option.id === method);
+
+    if (!selected || selected.disabled) {
+      setSubmitEnabled(false);
+      return;
+    }
+
+    const patchKey = paymentPatchKey(selected);
+
+    if (lastPatchedRef.current !== patchKey) {
+      lastPatchedRef.current = patchKey;
+      patchPaymentSummary(selected);
+    }
+
+    setSubmitEnabled(true);
+  }, [isLocked, isActive, loading, method, options]);
+
   const picked = useMemo(() => {
     const id = confirmedId ?? method;
     return options.find((m) => m.id === id);
@@ -574,11 +426,6 @@ export default function PaymentStep({
   const selectedOption = useMemo(() => {
     return options.find((m) => m.id === method) ?? null;
   }, [method, options]);
-
-  const selectedBankDetails =
-    selectedOption?.type === "bank_transfer" ? selectedOption.bank_details : null;
-
-  const selectedBankMaskedIban = maskIban(selectedBankDetails?.iban);
 
   const submitDisabled =
     isLocked ||
@@ -630,145 +477,19 @@ export default function PaymentStep({
       onEdit={isDone ? onEdit : undefined}
       rightChip={<span>الحالية</span>}
     >
-      {loading ? (
-        <PaymentSkeleton />
-      ) : errorMsg && options.length === 0 ? (
+      {errorMsg && options.length === 0 && !loading ? (
         <div className="co-field-error">{errorMsg}</div>
-      ) : options.length === 0 ? (
-        <div className="co-empty-small">
-          <strong>لا توجد طرق دفع متاحة</strong>
-          <span>جرّب لاحقًا أو تواصل مع المتجر.</span>
-        </div>
-      ) : (
-        <div className="co-payment-list">
-          {options.map((option) => {
-            const selected = option.id === method;
-            const isFinalizing = submitSaving && savingId === option.id;
-            const disabledReason = humanizePaymentDisabledReason(
-              option.disabled_reason,
-            );
-
-            return (
-              <div
-                key={option.id}
-                role="button"
-                tabIndex={option.disabled ? -1 : 0}
-                aria-disabled={option.disabled ? "true" : "false"}
-                data-selected={selected ? "true" : "false"}
-                className={[
-                  "co-payment-option",
-                  selected ? "is-selected" : "",
-                  option.disabled ? "is-disabled" : "",
-                  isFinalizing ? "is-loading" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-                onClick={() => {
-                  if (option.disabled) return;
-                  choosePayment(option.id);
-                }}
-                onKeyDown={(event) => {
-                  if (option.disabled) return;
-                  if (event.key !== "Enter" && event.key !== " ") return;
-
-                  event.preventDefault();
-                  choosePayment(option.id);
-                }}
-              >
-                <span className="co-payment-radio" aria-hidden="true">
-                  {selected ? "✓" : ""}
-                </span>
-
-                <div className="co-payment-main">
-                  <div className="co-payment-title">
-                    <strong>{option.title}</strong>
-
-                    <div className="co-payment-badges">
-                      <em>{getPaymentBadge(option)}</em>
-
-                      {option.recommended ? <em>موصى به</em> : null}
-
-                      {selected ? <span>محدد</span> : null}
-                    </div>
-                  </div>
-
-                  {option.subtitle ? <p>{option.subtitle}</p> : null}
-
-                  {option.fee_text ? <small>{option.fee_text}</small> : null}
-
-                  {selected && isFinalizing ? (
-                    <small className="co-inline-loader">
-                      <Loader2 size={13} className="co-spin" />
-                      جاري تجهيز الدفع...
-                    </small>
-                  ) : null}
-
-                  {option.disabled ? (
-                    <small className="co-payment-disabled-text">
-                      {disabledReason}
-                    </small>
-                  ) : null}
-
-                  {option.disabled &&
-                  option.disabled_help?.kind === "cod_untrusted_customer" ? (
-                    <button
-                      type="button"
-                      className="co-payment-help-btn"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setHelpModal(option.disabled_help ?? null);
-                      }}
-                    >
-                      معرفة السبب
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {!loading && selectedOption?.type === "bank_transfer" ? (
-        <div className="co-payment-note co-payment-note--bank">
-          <strong>بيانات التحويل البنكي</strong>
-
-          {selectedBankDetails ? (
-            <p>
-              {selectedBankDetails.bank_name} —{" "}
-              {selectedBankDetails.account_holder}
-              <br />
-              {selectedBankMaskedIban || selectedBankDetails.iban}
-            </p>
-          ) : selectedOption.subtitle ? (
-            <p>{selectedOption.subtitle}</p>
-          ) : (
-            <p>سيتم عرض بيانات التحويل بعد اختيار طريقة الدفع.</p>
-          )}
-        </div>
       ) : null}
 
-      {!loading && selectedOption?.type === "provider" ? (
-        <div className="co-payment-note">
-          <strong>بوابة دفع آمنة</strong>
-          <p>بعد تأكيد الطلب سيتم توجيهك لإكمال عملية الدفع الإلكتروني.</p>
-        </div>
-      ) : null}
-
-      {!loading && selectedOption?.type === "cod" ? (
-        <div className="co-payment-note">
-          <strong>الدفع عند الاستلام</strong>
-          <p>
-            سيتم تحصيل قيمة الطلب عند وصول الشحنة.
-            {selectedOption.fee_text ? (
-              <>
-                <br />
-                {selectedOption.fee_text}
-              </>
-            ) : null}
-          </p>
-        </div>
-      ) : null}
+      <PaymentMethodsPanel
+        options={options}
+        selectedId={method}
+        loading={loading}
+        disabled={isLocked || !isActive || submitSaving}
+        savingId={savingId}
+        submitSaving={submitSaving}
+        onSelect={(nextId) => choosePayment(nextId)}
+      />
 
       {errorMsg && options.length > 0 ? (
         <div className="co-field-error">{errorMsg}</div>
@@ -786,67 +507,6 @@ export default function PaymentStep({
           {submitSaving ? <Loader2 className="co-spin" size={16} /> : null}
           {submitSaving ? "جاري تجهيز الدفع..." : "تأكيد الدفع"}
         </button>
-      ) : null}
-
-      {helpModal ? (
-        <div className="co-modal-layer" dir="rtl">
-          <button
-            type="button"
-            aria-label="إغلاق"
-            className="co-modal-backdrop"
-            onClick={() => setHelpModal(null)}
-          />
-
-          <div className="co-modal">
-            <div className="co-modal__head">
-              <div>
-                <strong>{helpModal.title}</strong>
-                <p>سجل الدفع عند الاستلام</p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setHelpModal(null)}
-                aria-label="إغلاق"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="co-modal__body">
-              <div className="co-alert co-alert--warning">
-                {helpModal.message}
-              </div>
-
-              <div className="co-modal-records">
-                {helpModal.records.map((record, index) => (
-                  <div key={`${record.store_name}-${index}`}>
-                    <span>{index + 1}</span>
-
-                    <div>
-                      <strong>{record.store_name}</strong>
-                      <p>{record.reason_text}</p>
-
-                      {record.reason_note ? <p>{record.reason_note}</p> : null}
-
-                      {record.created_at ? (
-                        <small>{fmtDate(record.created_at)}</small>
-                      ) : null}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <button
-                type="button"
-                className="co-btn co-btn--dark co-btn--full"
-                onClick={() => setHelpModal(null)}
-              >
-                فهمت
-              </button>
-            </div>
-          </div>
-        </div>
       ) : null}
     </StepShell>
   );

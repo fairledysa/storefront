@@ -4,19 +4,13 @@ import { createHash } from "crypto";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import type { ReactNode } from "react";
-import {
-  AlertTriangle,
-  CreditCard,
-  Loader2,
-  Package,
-  ShieldCheck,
-  ShoppingCart,
-  Ticket,
-} from "lucide-react";
+import { AlertTriangle, CreditCard, Package, ShieldCheck, ShoppingCart } from "lucide-react";
 
 import CheckoutHeader from "../_components/CheckoutHeader";
 import CheckoutUiLock from "../_components/CheckoutUiLock";
+import PaymentMethodsPanel, {
+  type PaymentOption,
+} from "../_components/PaymentMethodsPanel";
 
 import { getOrdersDb } from "@/data/db/orders-db.server";
 import { getStoreDb } from "@/data/db/store-db.server";
@@ -57,7 +51,6 @@ type OrderItemRow = {
   total_price?: number | string | null;
   selected_options?: any;
   selected_option_value_ids?: any;
-  image_url?: string | null;
 };
 
 type ProductMediaRow = {
@@ -124,9 +117,7 @@ function safeObject(value: any): Record<string, any> {
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
         return parsed;
       }
-    } catch {
-      //
-    }
+    } catch {}
   }
 
   return {};
@@ -138,9 +129,7 @@ function safeArray(value: any): any[] {
 
 function firstValue(...values: any[]) {
   for (const value of values) {
-    if (value !== null && value !== undefined && s(value) !== "") {
-      return value;
-    }
+    if (value !== null && value !== undefined && s(value) !== "") return value;
   }
 
   return null;
@@ -165,8 +154,6 @@ function paymentMethodLabel(value: unknown) {
   if (!method) return "غير محدد";
   if (method === "cod") return "الدفع عند الاستلام";
   if (method === "bank_transfer") return "تحويل بنكي";
-  if (method.includes("tamara")) return "تمارا";
-  if (method.includes("tabby")) return "تابي";
   if (method.startsWith("provider:")) {
     return `دفع إلكتروني - ${method.replace("provider:", "")}`;
   }
@@ -183,17 +170,6 @@ function paymentStatusLabel(value: unknown) {
   if (status === "refunded") return "تم الاسترجاع";
 
   return s(value) || "غير محدد";
-}
-
-function sessionStatusLabel(value: unknown) {
-  const status = s(value).toLowerCase();
-
-  if (status === "pending") return "بانتظار الدفع";
-  if (status === "paid") return "تم السداد";
-  if (status === "expired") return "منتهي";
-  if (status === "cancelled") return "ملغي";
-
-  return status || "بانتظار الدفع";
 }
 
 function providerLabel(code: unknown) {
@@ -339,7 +315,6 @@ function resolveEffectiveAmountDue(args: {
 
 function getLineTotal(item: OrderItemRow) {
   const direct = n(item.total_price);
-
   if (direct > 0) return round2(direct);
 
   return round2(n(item.unit_price) * Math.max(1, Math.floor(n(item.qty) || 1)));
@@ -399,9 +374,7 @@ async function loadImageMap(args: {
     .eq("store_id", args.storeId)
     .in("product_id", productIds);
 
-  if (mediaR.error || !Array.isArray(mediaR.data)) {
-    return imageMap;
-  }
+  if (mediaR.error || !Array.isArray(mediaR.data)) return imageMap;
 
   const grouped = new Map<string, ProductMediaRow[]>();
 
@@ -426,14 +399,24 @@ function ErrorState({
   title,
   message,
   storeName,
+  logoUrl,
 }: {
   title: string;
   message: string;
   storeName: string;
+  logoUrl?: string | null;
 }) {
   return (
     <>
-      <CheckoutHeader storeName={storeName} logoUrl={null} />
+      <CheckoutHeader
+        storeName={storeName}
+        logoUrl={logoUrl}
+        backHref="/"
+        titleLabel="إتمام الدفع"
+        breadcrumbBaseHref="/"
+        breadcrumbBaseLabel="الرئيسية"
+        breadcrumbCurrentLabel="دفع الطلب"
+      />
       <CheckoutUiLock />
 
       <main className="co-page">
@@ -461,97 +444,6 @@ function ErrorState({
         دفع آمن ومشفّر — راجع بياناتك قبل تأكيد الدفع.
       </footer>
     </>
-  );
-}
-
-function StatusPill({
-  tone,
-  children,
-}: {
-  tone: "ok" | "warn" | "neutral" | "danger";
-  children: ReactNode;
-}) {
-  const className =
-    tone === "ok"
-      ? "co-pay-session-pill co-pay-session-pill--ok"
-      : tone === "warn"
-        ? "co-pay-session-pill co-pay-session-pill--warn"
-        : tone === "danger"
-          ? "co-pay-session-pill co-pay-session-pill--danger"
-          : "co-pay-session-pill";
-
-  return <span className={className}>{children}</span>;
-}
-
-function PaymentMethodCard({
-  selected,
-  disabled,
-  title,
-  subtitle,
-  badge,
-  children,
-}: {
-  selected?: boolean;
-  disabled?: boolean;
-  title: string;
-  subtitle?: string;
-  badge: string;
-  children?: ReactNode;
-}) {
-  return (
-    <div
-      className={[
-        "co-payment-option",
-        selected ? "is-selected" : "",
-        disabled ? "is-disabled" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      data-selected={selected ? "true" : "false"}
-      aria-disabled={disabled ? "true" : "false"}
-    >
-      <span className="co-payment-radio" aria-hidden="true">
-        {selected ? "✓" : ""}
-      </span>
-
-      <div className="co-payment-main">
-        <div className="co-payment-title">
-          <strong>{title}</strong>
-
-          <div className="co-payment-badges">
-            <em>{badge}</em>
-            {selected ? <span>محدد</span> : null}
-          </div>
-        </div>
-
-        {subtitle ? <p>{subtitle}</p> : null}
-
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function BankDetails({ bank }: { bank: BankAccount }) {
-  const bankName = s(bank.bank_name) || "حساب بنكي";
-  const holder = s(bank.account_holder) || "اسم المستفيد غير محدد";
-  const iban = s(bank.iban) || "IBAN غير محدد";
-
-  return (
-    <div className="co-payment-note co-payment-note--bank">
-      <strong>بيانات التحويل البنكي</strong>
-
-      <p>
-        {bankName} — {holder}
-        <br />
-        <span dir="ltr">{iban}</span>
-      </p>
-
-      <small>
-        بعد التحويل أرسل صورة الإيصال لخدمة العملاء مع رقم الطلب حتى يتم اعتماد
-        الدفع.
-      </small>
-    </div>
   );
 }
 
@@ -592,8 +484,7 @@ function CheckoutTokenSummary({
 
             <div className="co-summary__thumbs" aria-hidden>
               {items.slice(0, 3).map((item, index) => {
-                const image =
-                  imageMap.get(s(item.product_id)) || s(item.image_url) || "";
+                const image = imageMap.get(s(item.product_id)) || "";
 
                 return (
                   <span key={s(item.id) || `${s(item.product_id)}-${index}`}>
@@ -619,10 +510,10 @@ function CheckoutTokenSummary({
 
       <div className="co-summary__toggle-bg">
         <div className="co-summary__toggle">
-          <details className="co-token-details">
+          <details>
             <summary className="co-summary__details">تفاصيل الطلب</summary>
 
-            <div className="co-token-details__panel">
+            <div className="co-drawer__body">
               <section className="co-drawer-section">
                 <h3>المنتجات</h3>
 
@@ -630,10 +521,7 @@ function CheckoutTokenSummary({
                   <div className="co-summary-items">
                     {items.map((item, index) => {
                       const qty = Math.max(1, Math.floor(n(item.qty) || 1));
-                      const image =
-                        imageMap.get(s(item.product_id)) ||
-                        s(item.image_url) ||
-                        "";
+                      const image = imageMap.get(s(item.product_id)) || "";
 
                       return (
                         <div
@@ -722,6 +610,54 @@ function CheckoutTokenSummary({
   );
 }
 
+function buildTokenPaymentOptions(args: {
+  banks: BankAccount[];
+  providers: ProviderMethod[];
+}) {
+  const options: PaymentOption[] = [];
+
+  const primaryBank =
+    args.banks.find((bank) => bank.is_primary) || args.banks[0] || null;
+
+  if (primaryBank) {
+    const bankName = s(primaryBank.bank_name) || "حساب بنكي";
+    const holder = s(primaryBank.account_holder) || "اسم المستفيد غير محدد";
+    const iban = s(primaryBank.iban) || "IBAN غير محدد";
+
+    options.push({
+      id: "bank_transfer",
+      type: "bank_transfer",
+      title: "تحويل بنكي",
+      subtitle: "حوّل المبلغ إلى الحساب البنكي ثم أرسل الإيصال للمتجر",
+      recommended: true,
+      bank_details: {
+        bank_name: bankName,
+        account_holder: holder,
+        iban,
+        note: "بعد التحويل أرسل صورة الإيصال لخدمة العملاء مع رقم الطلب حتى يتم اعتماد الدفع.",
+      },
+    });
+  }
+
+  for (const provider of args.providers) {
+    const code = s(provider.provider_code);
+    if (!code) continue;
+
+    options.push({
+      id: `provider:${code}`,
+      type: "provider",
+      title: `الدفع الإلكتروني (${providerLabel(code)})`,
+      subtitle: "سيتم ربط الدفع الإلكتروني بجلسة دفع الطلب في المرحلة التالية.",
+      disabled: true,
+      disabled_reason: "PAYMENT_PROVIDER_PENDING",
+      disabled_message:
+        "الدفع الإلكتروني لهذا النوع من روابط الدفع سيتم ربطه في المرحلة التالية.",
+    });
+  }
+
+  return options;
+}
+
 export default async function CheckoutSessionPage(props: PageProps) {
   const ctx = await resolveStoreContext();
 
@@ -737,6 +673,7 @@ export default async function CheckoutSessionPage(props: PageProps) {
     return (
       <ErrorState
         storeName={storeName}
+        logoUrl={storeLogo}
         title="رابط الدفع غير صالح"
         message="الرابط ناقص أو لا يحتوي على رمز جلسة الدفع الصحيح."
       />
@@ -772,6 +709,7 @@ export default async function CheckoutSessionPage(props: PageProps) {
     return (
       <ErrorState
         storeName={storeName}
+        logoUrl={storeLogo}
         title="رابط الدفع غير متوفر"
         message="لم نتمكن من العثور على جلسة الدفع أو أن الرابط غير صحيح."
       />
@@ -785,6 +723,7 @@ export default async function CheckoutSessionPage(props: PageProps) {
     return (
       <ErrorState
         storeName={storeName}
+        logoUrl={storeLogo}
         title="انتهت صلاحية رابط الدفع"
         message="رابط الدفع انتهت صلاحيته. تواصل مع المتجر للحصول على رابط جديد."
       />
@@ -795,6 +734,7 @@ export default async function CheckoutSessionPage(props: PageProps) {
     return (
       <ErrorState
         storeName={storeName}
+        logoUrl={storeLogo}
         title="تم إلغاء رابط الدفع"
         message="هذا الرابط لم يعد صالحًا. تواصل مع المتجر للحصول على رابط جديد."
       />
@@ -835,6 +775,7 @@ export default async function CheckoutSessionPage(props: PageProps) {
     return (
       <ErrorState
         storeName={storeName}
+        logoUrl={storeLogo}
         title="الطلب غير متوفر"
         message="جلسة الدفع موجودة لكن لم نتمكن من قراءة الطلب المرتبط بها."
       />
@@ -911,15 +852,19 @@ export default async function CheckoutSessionPage(props: PageProps) {
     items,
   });
 
-  const primaryBank = banks.find((bank) => bank.is_primary) || banks[0] || null;
-  const firstProvider = providers[0] || null;
+  const paymentOptions = buildTokenPaymentOptions({
+    banks,
+    providers,
+  });
 
-  const sessionPaid = sessionStatus === "paid";
-  const hasAmountDue = effectiveAmountDue > 0 && !sessionPaid;
+  const selectedPaymentId =
+    paymentOptions.find((option) => !option.disabled)?.id || "";
+
+  const hasAmountDue = effectiveAmountDue > 0 && sessionStatus !== "paid";
   const hasRefund = paymentState.kind === "refund_due";
 
   const pageTitle =
-    sessionPaid || (!hasAmountDue && !hasRefund)
+    sessionStatus === "paid" || (!hasAmountDue && !hasRefund)
       ? "تمت تسوية الطلب"
       : paymentState.kind === "difference_due"
         ? "دفع فرق الطلب"
@@ -929,7 +874,15 @@ export default async function CheckoutSessionPage(props: PageProps) {
 
   return (
     <>
-      <CheckoutHeader storeName={storeName} logoUrl={storeLogo} />
+      <CheckoutHeader
+        storeName={storeName}
+        logoUrl={storeLogo}
+        backHref="/"
+        titleLabel="إتمام الدفع"
+        breadcrumbBaseHref="/"
+        breadcrumbBaseLabel="الرئيسية"
+        breadcrumbCurrentLabel="دفع الطلب"
+      />
       <CheckoutUiLock />
 
       <main className="co-page">
@@ -946,51 +899,39 @@ export default async function CheckoutSessionPage(props: PageProps) {
           <section className="co-checkout-area">
             <section className="co-flow" data-active-step="payment">
               <div className="co-checkout-card">
-                <div className="co-token-payment-head">
-                  <div>
-                    <div className="co-eyebrow">إتمام الدفع</div>
-                    <h2>{pageTitle}</h2>
-                    <p>
-                      هذا الرابط مخصص لدفع مبلغ مرتبط بطلب موجود، ولا ينشئ طلبًا
-                      جديدًا.
-                    </p>
-                  </div>
-
-                  <div className="co-token-payment-head__badges">
-                    <StatusPill tone={hasAmountDue ? "warn" : "ok"}>
-                      {sessionStatusLabel(session.status)}
-                    </StatusPill>
-
-                    <StatusPill tone="neutral">
-                      {paymentStatusLabel(order.payment_status)}
-                    </StatusPill>
-
-                    <StatusPill tone="neutral">
-                      {paymentMethodLabel(order.payment_method)}
-                    </StatusPill>
-                  </div>
+                <div className="co-empty-card__head">
+                  <div className="co-eyebrow">إتمام الدفع</div>
+                  <h1>{pageTitle}</h1>
                 </div>
 
-                <div className="co-token-amount-card">
-                  <span>المبلغ المطلوب دفعه الآن</span>
-                  <strong dir="ltr">{money(effectiveAmountDue, currency)}</strong>
-                </div>
-
-                {!hasAmountDue && hasRefund ? (
-                  <div className="co-alert co-alert--warning">
-                    لا يوجد مبلغ مطلوب دفعه من العميل. يوجد فرق لصالح العميل
-                    تتم تسويته من لوحة المتجر.
+                <div className="co-empty-card__body">
+                  <div className="co-note">
+                    هذا الرابط مخصص لدفع مبلغ مرتبط بطلب موجود، ولا ينشئ طلبًا
+                    جديدًا.
+                    <div className="co-note__list">
+                      <div>• رقم الطلب: #{orderNo}</div>
+                      <div>• حالة الدفع: {paymentStatusLabel(order.payment_status)}</div>
+                      <div>• طريقة الطلب: {paymentMethodLabel(order.payment_method)}</div>
+                    </div>
                   </div>
-                ) : null}
 
-                {!hasAmountDue && !hasRefund ? (
-                  <div className="co-alert co-alert--success">
-                    تمت تسوية هذا الطلب ماليًا ولا يوجد مبلغ متبقي حاليًا.
-                  </div>
-                ) : null}
+                  {hasAmountDue ? (
+                    <div className="co-alert co-alert--warning">
+                      المبلغ المطلوب دفعه الآن:{" "}
+                      <strong dir="ltr">{money(effectiveAmountDue, currency)}</strong>
+                    </div>
+                  ) : hasRefund ? (
+                    <div className="co-alert co-alert--warning">
+                      لا يوجد مبلغ مطلوب دفعه من العميل. يوجد فرق لصالح العميل
+                      تتم تسويته من لوحة المتجر.
+                    </div>
+                  ) : (
+                    <div className="co-alert co-alert--success">
+                      تمت تسوية هذا الطلب ماليًا ولا يوجد مبلغ متبقي حاليًا.
+                    </div>
+                  )}
 
-                {hasAmountDue ? (
-                  <>
+                  {hasAmountDue ? (
                     <div className="co-step-shell is-active">
                       <div className="co-step-shell__head">
                         <span className="co-step-shell__icon">
@@ -1005,58 +946,14 @@ export default async function CheckoutSessionPage(props: PageProps) {
                         <span className="co-step-shell__chip">الحالية</span>
                       </div>
 
-                      <div className="co-payment-list">
-                        {primaryBank ? (
-                          <PaymentMethodCard
-                            selected
-                            title="تحويل بنكي"
-                            subtitle="حوّل المبلغ إلى الحساب البنكي ثم أرسل الإيصال للمتجر"
-                            badge="تحويل"
-                          >
-                            <small>
-                              {s(primaryBank.bank_name) || "حساب بنكي"} —{" "}
-                              {s(primaryBank.iban)
-                                ? `${s(primaryBank.iban).slice(0, 6)}…${s(
-                                    primaryBank.iban,
-                                  ).slice(-4)}`
-                                : "IBAN"}
-                            </small>
-                          </PaymentMethodCard>
-                        ) : null}
-
-                        {firstProvider ? (
-                          <PaymentMethodCard
-                            disabled
-                            title={providerLabel(firstProvider.provider_code)}
-                            subtitle="الدفع الإلكتروني سيتم ربطه بجلسة الدفع في المرحلة التالية"
-                            badge="إلكتروني"
-                          >
-                            <small className="co-inline-loader">
-                              <Loader2 size={13} className="co-spin" />
-                              قيد الربط
-                            </small>
-                          </PaymentMethodCard>
-                        ) : null}
-
-                        {!primaryBank && !firstProvider ? (
-                          <div className="co-empty-small">
-                            <strong>لا توجد طرق دفع متاحة</strong>
-                            <span>تواصل مع المتجر لإكمال الدفع.</span>
-                          </div>
-                        ) : null}
-                      </div>
-
-                      {primaryBank ? <BankDetails bank={primaryBank} /> : null}
-
-                      {firstProvider ? (
-                        <div className="co-payment-note">
-                          <strong>بوابة دفع آمنة</strong>
-                          <p>
-                            في المرحلة التالية سيتم توجيه العميل لبوابة الدفع
-                            الإلكترونية للمبلغ المتبقي فقط.
-                          </p>
-                        </div>
-                      ) : null}
+                      <PaymentMethodsPanel
+                        options={paymentOptions}
+                        selectedId={selectedPaymentId}
+                        disabled
+                        showSelectedNote
+                        emptyTitle="لا توجد طرق دفع متاحة"
+                        emptyText="تواصل مع المتجر لإكمال الدفع."
+                      />
 
                       <button
                         type="button"
@@ -1066,13 +963,15 @@ export default async function CheckoutSessionPage(props: PageProps) {
                         تأكيد الدفع الإلكتروني يتم ربطه في المرحلة التالية
                       </button>
                     </div>
+                  ) : null}
 
+                  {hasAmountDue ? (
                     <div className="co-secure-note">
                       <ShieldCheck size={15} />
                       دفع آمن ومشفّر
                     </div>
-                  </>
-                ) : null}
+                  ) : null}
+                </div>
               </div>
             </section>
           </section>

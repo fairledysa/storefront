@@ -7,14 +7,27 @@ import { ChevronRight, Lock, ShieldCheck, ShoppingBag } from "lucide-react";
 type Props = {
   storeName: string;
   logoUrl?: string | null;
+  backHref?: string;
+  titleLabel?: string;
+  breadcrumbBaseHref?: string;
+  breadcrumbBaseLabel?: string;
+  breadcrumbCurrentLabel?: string;
 };
 
-export default function CheckoutHeader({ storeName, logoUrl }: Props) {
+export default function CheckoutHeader({
+  storeName,
+  logoUrl,
+  backHref = "/cart",
+  titleLabel = "إتمام الطلب",
+  breadcrumbBaseHref = "/cart",
+  breadcrumbBaseLabel = "سلة المشتريات",
+  breadcrumbCurrentLabel = "إتمام الطلب",
+}: Props) {
   return (
     <header className="co-header">
       <div className="co-header__inner">
         <div className="co-header__side">
-          <Link href="/cart" className="co-icon-btn" aria-label="الرجوع">
+          <Link href={backHref} className="co-icon-btn" aria-label="الرجوع">
             <ChevronRight size={20} />
           </Link>
 
@@ -35,16 +48,16 @@ export default function CheckoutHeader({ storeName, logoUrl }: Props) {
             </span>
 
             <span className="co-store-name">
-              <span>إتمام الطلب</span>
+              <span>{titleLabel}</span>
               <strong>{storeName}</strong>
             </span>
           </Link>
         </div>
 
         <nav className="co-header__crumb">
-          <Link href="/cart">سلة المشتريات</Link>
+          <Link href={breadcrumbBaseHref}>{breadcrumbBaseLabel}</Link>
           <span>/</span>
-          <strong>إتمام الطلب</strong>
+          <strong>{breadcrumbCurrentLabel}</strong>
         </nav>
 
         <div className="co-header__side co-header__side--left">
