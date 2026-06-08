@@ -1,7 +1,7 @@
 // FILE: apps/storefront/src/themes/malak/screens/thankyou/ThankYouScreen.tsx
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
   Check,
@@ -61,6 +61,11 @@ type OrderOptionLine = {
 type ThankYouData = {
   orderNo?: string | number;
 
+  paymentSubmitted?: boolean | number | string | null;
+  payment_submitted?: boolean | number | string | null;
+  bankTransferSubmitted?: boolean | number | string | null;
+  bank_transfer_submitted?: boolean | number | string | null;
+
   totalAmount?: number | string;
   total?: number | string;
   grandTotal?: number | string;
@@ -99,7 +104,7 @@ type ThankYouData = {
   orderOptionsFee?: number | string | null;
   order_options_fee?: number | string | null;
 
-  taxAmount?: number | string | null;
+  taxAmount?: number | string | Record<string, any> | null;
   tax?: number | string | Record<string, any> | null;
   vatAmount?: number | string | null;
 
@@ -241,7 +246,10 @@ function formatMoney(currency: string, amount: number, decimalDigits = 2) {
   const value = Number(amount ?? 0);
   const safeValue = Number.isFinite(value) ? value : 0;
   const cleanCurrency = s(currency) || "SAR";
-  const decimals = clampDecimals(decimalDigits, inferCurrencyDecimals(cleanCurrency));
+  const decimals = clampDecimals(
+    decimalDigits,
+    inferCurrencyDecimals(cleanCurrency),
+  );
 
   const formatted = safeValue.toLocaleString("en-US", {
     minimumFractionDigits: 0,
@@ -323,7 +331,9 @@ function getFooterSupportContacts(bootstrap?: MalakBootstrap | null) {
 }
 
 function normalizeOrderOptionChoice(choice: any): OrderOptionChoice | null {
-  const label = s(choice?.label ?? choice?.name ?? choice?.title ?? choice?.value);
+  const label = s(
+    choice?.label ?? choice?.name ?? choice?.title ?? choice?.value,
+  );
 
   if (!label) return null;
 
@@ -363,7 +373,8 @@ function normalizeOrderOptions(data: ThankYouData) {
         .filter(Boolean) as OrderOptionChoice[];
 
       const choicesFee = choices.reduce(
-        (acc, choice) => acc + round2(choice.price_customer ?? choice.priceCustomer ?? 0),
+        (acc, choice) =>
+          acc + round2(choice.price_customer ?? choice.priceCustomer ?? 0),
         0,
       );
 
@@ -386,7 +397,12 @@ function normalizeOrderOptions(data: ThankYouData) {
           snapshot?.optionName,
         ) || `خيار الطلب ${index + 1}`;
 
-      const type = pickText(row?.type, row?.option_type, row?.optionType, snapshot?.option_type);
+      const type = pickText(
+        row?.type,
+        row?.option_type,
+        row?.optionType,
+        snapshot?.option_type,
+      );
 
       const value = pickText(row?.value, metadata?.value, snapshot?.value);
 
@@ -431,6 +447,35 @@ function orderOptionDisplayValue(option: OrderOptionLine) {
   if (date) return date;
 
   return "";
+}
+
+function usePaymentSubmittedFlag(data: ThankYouData) {
+  const fromData = readBool(
+    firstValue(
+      data?.paymentSubmitted,
+      data?.payment_submitted,
+      data?.bankTransferSubmitted,
+      data?.bank_transfer_submitted,
+    ),
+    false,
+  );
+
+  const [fromUrl, setFromUrl] = useState(false);
+
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+
+      setFromUrl(
+        params.get("payment_submitted") === "1" ||
+          params.get("bank_transfer_submitted") === "1",
+      );
+    } catch {
+      setFromUrl(false);
+    }
+  }, []);
+
+  return fromData || fromUrl;
 }
 
 function SectionCard({
@@ -612,7 +657,6 @@ function OrderItemRow({
 
       <div className="grid h-[74px] w-[74px] shrink-0 place-items-center overflow-hidden rounded-2xl bg-zinc-50">
         {s(item.imageUrl) ? (
-          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={s(item.imageUrl)}
             alt={s(item.title) || "product"}
@@ -701,6 +745,7 @@ function DetailCard({
 
 export default function ThankYouScreen(props: AnyProps) {
   const data = props?.data ?? {};
+  const isPaymentSubmitted = usePaymentSubmittedFlag(data);
 
   const orderNo = s(firstValue(props?.orderNo, data?.orderNo)) || "-";
 
@@ -754,7 +799,8 @@ export default function ThankYouScreen(props: AnyProps) {
     ? round2(orderOptionsFeeFromData)
     : round2(
         orderOptions.reduce(
-          (acc, option) => acc + round2(option.price_customer ?? option.priceCustomer ?? 0),
+          (acc, option) =>
+            acc + round2(option.price_customer ?? option.priceCustomer ?? 0),
           0,
         ),
       );
@@ -796,7 +842,6 @@ export default function ThankYouScreen(props: AnyProps) {
     data?.total,
     data?.grandTotal,
   );
-
   const totalAmountFromOrder = hasValue(rawTotal) ? n(rawTotal) : 0;
 
   const knownTotalWithoutPaymentFee = Math.max(
@@ -873,7 +918,12 @@ export default function ThankYouScreen(props: AnyProps) {
 
   const computedFromParts = Math.max(
     0,
-    subtotal + taxAmount + shippingAmount + paymentFeeAmount + orderOptionsFee - discountAmount,
+    subtotal +
+      taxAmount +
+      shippingAmount +
+      paymentFeeAmount +
+      orderOptionsFee -
+      discountAmount,
   );
 
   const computedTotal =
@@ -882,8 +932,13 @@ export default function ThankYouScreen(props: AnyProps) {
   const money = (amount: number) =>
     formatMoney(currency, amount, currencyDecimals);
 
-  const paymentLabel = s(data?.paymentLabel) || "طريقة الدفع المسجلة";
-  const paymentStatusLabel = s(data?.paymentStatusLabel) || "قيد المعالجة";
+  const paymentLabel = isPaymentSubmitted
+    ? "تحويل بنكي"
+    : s(data?.paymentLabel) || "طريقة الدفع المسجلة";
+
+  const paymentStatusLabel = isPaymentSubmitted
+    ? "بانتظار مراجعة التحويل"
+    : s(data?.paymentStatusLabel) || "قيد المعالجة";
 
   const estimatedDeliveryText =
     s(data?.estimatedDeliveryText) || "سيتم تحديده قريبًا";
@@ -891,15 +946,18 @@ export default function ThankYouScreen(props: AnyProps) {
   const deliveryAddressText =
     s(data?.deliveryAddressText) || "العنوان المختار أثناء إتمام الطلب";
 
-  const statusLabel = s(data?.statusLabel) || "تم الاستلام";
-  const statusDescription =
-    s(data?.statusDescription) || "تم استلام الطلب وجاري مراجعته.";
+  const statusLabel = isPaymentSubmitted
+    ? "بانتظار اعتماد الدفع"
+    : s(data?.statusLabel) || "تم الاستلام";
+
+  const statusDescription = isPaymentSubmitted
+    ? "تم استلام طلب اعتماد التحويل، وسيقوم المتجر بمراجعته وتحديث حالة الطلب."
+    : s(data?.statusDescription) || "تم استلام الطلب وجاري مراجعته.";
 
   const items = Array.isArray(data?.items) ? data.items : [];
   const totalText = money(computedTotal);
 
-  const bootstrap =
-    props.bootstrap || data?.bootstrap || data?.theme?.bootstrap;
+  const bootstrap = props.bootstrap || data?.bootstrap || data?.theme?.bootstrap;
 
   const supportContacts = getFooterSupportContacts(bootstrap);
   const hasWhatsapp = Boolean(supportContacts.whatsappHref);
@@ -923,11 +981,15 @@ export default function ThankYouScreen(props: AnyProps) {
           </div>
 
           <h1 className="mt-5 text-[34px] font-black leading-tight tracking-tight text-zinc-950 sm:text-[46px]">
-            تم استلام طلبك بنجاح
+            {isPaymentSubmitted
+              ? "تم إرسال طلب اعتماد التحويل"
+              : "تم استلام طلبك بنجاح"}
           </h1>
 
           <p className="mx-auto mt-2 max-w-[620px] text-[15px] leading-7 text-zinc-500 sm:text-[16px]">
-            شكرًا لك، تم تأكيد طلبك وسيتم البدء في تجهيزه مباشرة.
+            {isPaymentSubmitted
+              ? "تم تسجيل طلب اعتماد التحويل لهذا الطلب. سيقوم المتجر بمراجعته وتحديث حالة الدفع بعد التحقق."
+              : "شكرًا لك، تم تأكيد طلبك وسيتم البدء في تجهيزه مباشرة."}
           </p>
 
           <div className="mt-4 flex flex-wrap items-center justify-center gap-2.5">
@@ -946,7 +1008,9 @@ export default function ThankYouScreen(props: AnyProps) {
           <div className="mt-4 flex items-center justify-center gap-2 text-[14px] leading-6 text-zinc-500">
             <Mail className="h-4 w-4 shrink-0" />
             <span>
-              تم إرسال تفاصيل الطلب إلى بريدك الإلكتروني ورسالة نصية إلى جوالك.
+              {isPaymentSubmitted
+                ? "تم تسجيل طلب اعتماد الدفع، ويمكنك متابعة حالة الطلب من حسابك."
+                : "تم إرسال تفاصيل الطلب إلى بريدك الإلكتروني ورسالة نصية إلى جوالك."}
             </span>
           </div>
 
@@ -981,7 +1045,9 @@ export default function ThankYouScreen(props: AnyProps) {
               title="ماذا يحدث الآن؟"
             >
               <div className="text-[13px] text-zinc-500">
-                هذه هي مراحل معالجة طلبك بعد الإرسال.
+                {isPaymentSubmitted
+                  ? "هذه هي مراحل مراجعة اعتماد الدفع."
+                  : "هذه هي مراحل معالجة طلبك بعد الإرسال."}
               </div>
 
               <div className="relative mt-7">
@@ -991,21 +1057,39 @@ export default function ThankYouScreen(props: AnyProps) {
                 <div className="grid grid-cols-1 gap-7 md:grid-cols-3">
                   <TimelineStep
                     number={1}
-                    title="تأكيد الطلب"
-                    text="تم استلام طلبك وسيتم تأكيد بياناته."
+                    title={
+                      isPaymentSubmitted ? "استلام طلب الاعتماد" : "تأكيد الطلب"
+                    }
+                    text={
+                      isPaymentSubmitted
+                        ? "تم استلام طلب اعتماد التحويل."
+                        : "تم استلام طلبك وسيتم تأكيد بياناته."
+                    }
                     active
                   />
 
                   <TimelineStep
                     number={2}
-                    title="جاري التجهيز"
-                    text="نقوم الآن بتجهيز طلبك بعناية."
+                    title={
+                      isPaymentSubmitted ? "مراجعة التحويل" : "جاري التجهيز"
+                    }
+                    text={
+                      isPaymentSubmitted
+                        ? "سيقوم المتجر بمراجعة بيانات التحويل."
+                        : "نقوم الآن بتجهيز طلبك بعناية."
+                    }
                   />
 
                   <TimelineStep
                     number={3}
-                    title="الشحن والتسليم"
-                    text="سيتم شحن طلبك وتسليمه إلى عنوانك."
+                    title={
+                      isPaymentSubmitted ? "تحديث حالة الدفع" : "الشحن والتسليم"
+                    }
+                    text={
+                      isPaymentSubmitted
+                        ? "بعد الاعتماد سيتم تحديث حالة الطلب."
+                        : "سيتم شحن طلبك وتسليمه إلى عنوانك."
+                    }
                   />
                 </div>
               </div>
@@ -1096,7 +1180,11 @@ export default function ThankYouScreen(props: AnyProps) {
                 </div>
               ) : null}
 
-              <div className={items.length > 0 || orderOptions.length > 0 ? "mt-4" : ""}>
+              <div
+                className={
+                  items.length > 0 || orderOptions.length > 0 ? "mt-4" : ""
+                }
+              >
                 <SummaryLine
                   label={
                     showTaxLine && !pricesIncludeTax
@@ -1109,7 +1197,10 @@ export default function ThankYouScreen(props: AnyProps) {
                 <SummaryLine label="الشحن" value={money(shippingAmount)} />
 
                 {showOrderOptionsLine ? (
-                  <SummaryLine label="خيارات الطلب" value={money(orderOptionsFee)} />
+                  <SummaryLine
+                    label="خيارات الطلب"
+                    value={money(orderOptionsFee)}
+                  />
                 ) : null}
 
                 {showPaymentFeeLine ? (

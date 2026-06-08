@@ -1,6 +1,6 @@
 // FILE: apps/storefront/src/app/checkout/[token]/page.tsx
 
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -8,13 +8,12 @@ import {
   AlertTriangle,
   CheckCircle2,
   CreditCard,
-  Package,
   ShieldCheck,
-  ShoppingCart,
 } from "lucide-react";
 
 import CheckoutHeader from "../_components/CheckoutHeader";
 import CheckoutUiLock from "../_components/CheckoutUiLock";
+import CheckoutTokenSummary from "../_components/CheckoutTokenSummary";
 import PaymentMethodsPanel, {
   type PaymentOption,
 } from "../_components/PaymentMethodsPanel";
@@ -68,10 +67,19 @@ type ProductMediaRow = {
   original_url?: string | null;
   thumbnail_url?: string | null;
   url?: string | null;
+  image_url?: string | null;
   is_default?: boolean | null;
   is_primary?: boolean | null;
   sort_order?: number | string | null;
   media_kind?: string | null;
+};
+
+type ProductImageRow = {
+  id?: string | null;
+  image_url?: string | null;
+  thumbnail_url?: string | null;
+  card_image_url?: string | null;
+  metadata?: any;
 };
 
 type PaymentSessionRow = {
@@ -86,6 +94,14 @@ type PaymentSessionRow = {
   paid_at?: string | null;
   metadata?: any;
   created_at?: string | null;
+};
+
+type OrderPublicTokenRow = {
+  id?: string | null;
+  store_id?: string | null;
+  public_token?: string | null;
+  public_no?: string | number | null;
+  order_number?: string | number | null;
 };
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -204,23 +220,6 @@ function providerLabel(code: unknown) {
   return s(code);
 }
 
-function selectedOptionsText(value: any) {
-  const rows = safeArray(value);
-
-  return rows
-    .map((row: any) => {
-      const name = s(row?.name);
-      const val = s(row?.value);
-
-      if (name && val) return `${name}: ${val}`;
-      if (val) return val;
-
-      return "";
-    })
-    .filter(Boolean)
-    .join("، ");
-}
-
 function readAdminFinancial(order: any) {
   const snapshot = safeObject(order?.shipping_snapshot);
 
@@ -333,26 +332,6 @@ function resolveEffectiveAmountDue(args: {
   return calculatedAmount;
 }
 
-function getLineTotal(item: OrderItemRow) {
-  const direct = n(item.total_price);
-  if (direct > 0) return round2(direct);
-
-  return round2(n(item.unit_price) * Math.max(1, Math.floor(n(item.qty) || 1)));
-}
-
-function getItemCount(items: OrderItemRow[]) {
-  return items.reduce(
-    (acc, item) => acc + Math.max(1, Math.floor(n(item.qty) || 1)),
-    0,
-  );
-}
-
-function getItemCountText(count: number) {
-  if (count === 1) return "منتج واحد";
-  if (count === 2) return "منتجان";
-  return `${count} منتجات`;
-}
-
 function mediaScore(row: ProductMediaRow) {
   const primary = row.is_default || row.is_primary ? 0 : 1000;
   return primary + n(row.sort_order);
@@ -370,7 +349,84 @@ function pickMediaUrl(rows: ProductMediaRow[]) {
 
   const row = sorted[0];
 
-  return s(row?.thumbnail_url) || s(row?.original_url) || s(row?.url) || "";
+  return (
+    s(row?.thumbnail_url) ||
+    s(row?.original_url) ||
+    s(row?.image_url) ||
+    s(row?.url) ||
+    ""
+  );
+}
+
+function pickProductImageUrl(row: ProductImageRow | null | undefined) {
+  const metadata = safeObject(row?.metadata);
+
+  return (
+    s(row?.thumbnail_url) ||
+    s(row?.card_image_url) ||
+    s(row?.image_url) ||
+    s(metadata.thumbnail_url) ||
+    s(metadata.thumbnailUrl) ||
+    s(metadata.cardImageUrl) ||
+    s(metadata.image_url) ||
+    s(metadata.imageUrl) ||
+    ""
+  );
+}
+
+async function loadProductMediaRows(args: {
+  storeDb: any;
+  storeId: string;
+  productIds: string[];
+}) {
+  const selects = [
+    "product_id,thumbnail_url,original_url,is_default,sort_order",
+    "product_id,original_url,is_default,sort_order",
+    "product_id,thumbnail_url,original_url,is_default,is_primary,sort_order",
+    "product_id,thumbnail_url,original_url,url,is_default,is_primary,sort_order,media_kind",
+    "product_id,url,is_primary,sort_order",
+  ];
+
+  for (const select of selects) {
+    const mediaR = await args.storeDb
+      .from("product_media")
+      .select(select)
+      .eq("store_id", args.storeId)
+      .in("product_id", args.productIds);
+
+    if (!mediaR.error && Array.isArray(mediaR.data)) {
+      return mediaR.data as ProductMediaRow[];
+    }
+  }
+
+  return [];
+}
+
+async function loadProductImageRows(args: {
+  storeDb: any;
+  storeId: string;
+  productIds: string[];
+}) {
+  const selects = [
+    "id,thumbnail_url,image_url,metadata",
+    "id,image_url,metadata",
+    "id,thumbnail_url,metadata",
+    "id,card_image_url,thumbnail_url,image_url,metadata",
+  ];
+
+  for (const select of selects) {
+    const productsR = await args.storeDb
+      .from("products")
+      .select(select)
+      .eq("store_id", args.storeId)
+      .in("id", args.productIds);
+
+    if (!productsR.error && Array.isArray(productsR.data)) {
+      return productsR.data as ProductImageRow[];
+    }
+  }
+
+  return [];
 }
 
 async function loadImageMap(args: {
@@ -386,33 +442,91 @@ async function loadImageMap(args: {
 
   if (!productIds.length) return imageMap;
 
-  const mediaR = await args.storeDb
-    .from("product_media")
-    .select(
-      "product_id,original_url,thumbnail_url,url,is_default,is_primary,sort_order,media_kind",
-    )
-    .eq("store_id", args.storeId)
-    .in("product_id", productIds);
+  const mediaRows = await loadProductMediaRows({
+    storeDb: args.storeDb,
+    storeId: args.storeId,
+    productIds,
+  });
 
-  if (mediaR.error || !Array.isArray(mediaR.data)) return imageMap;
+  if (mediaRows.length > 0) {
+    const grouped = new Map<string, ProductMediaRow[]>();
 
-  const grouped = new Map<string, ProductMediaRow[]>();
+    for (const row of mediaRows) {
+      const productId = s(row.product_id);
+      if (!productId) continue;
 
-  for (const row of mediaR.data as ProductMediaRow[]) {
-    const productId = s(row.product_id);
-    if (!productId) continue;
+      const list = grouped.get(productId) ?? [];
+      list.push(row);
+      grouped.set(productId, list);
+    }
 
-    const list = grouped.get(productId) ?? [];
-    list.push(row);
-    grouped.set(productId, list);
+    for (const [productId, rows] of grouped.entries()) {
+      const image = pickMediaUrl(rows);
+      if (image) imageMap.set(productId, image);
+    }
   }
 
-  for (const [productId, rows] of grouped.entries()) {
-    const image = pickMediaUrl(rows);
-    if (image) imageMap.set(productId, image);
+  const missingProductIds = productIds.filter((productId) => {
+    return !imageMap.get(productId);
+  });
+
+  if (missingProductIds.length > 0) {
+    const productRows = await loadProductImageRows({
+      storeDb: args.storeDb,
+      storeId: args.storeId,
+      productIds: missingProductIds,
+    });
+
+    for (const row of productRows) {
+      const productId = s(row.id);
+      if (!productId || imageMap.has(productId)) continue;
+
+      const image = pickProductImageUrl(row);
+      if (image) imageMap.set(productId, image);
+    }
   }
 
   return imageMap;
+}
+
+async function ensureOrderPublicToken(args: {
+  ordersDb: any;
+  storeId: string;
+  orderId: string;
+}) {
+  const orderR = await args.ordersDb
+    .from("orders")
+    .select("id,store_id,public_token,public_no,order_number")
+    .eq("store_id", args.storeId)
+    .eq("id", args.orderId)
+    .maybeSingle();
+
+  if (orderR.error || !orderR.data?.id) {
+    return "";
+  }
+
+  const currentToken = s(orderR.data.public_token);
+
+  if (currentToken) return currentToken;
+
+  const nextToken = randomUUID().replace(/-/g, "");
+
+  const updateR = await args.ordersDb
+    .from("orders")
+    .update({
+      public_token: nextToken,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("store_id", args.storeId)
+    .eq("id", args.orderId)
+    .select("id,public_token")
+    .maybeSingle();
+
+  if (updateR.error || !updateR.data?.public_token) {
+    return "";
+  }
+
+  return s(updateR.data.public_token);
 }
 
 async function submitBankTransferPayment(formData: FormData) {
@@ -450,6 +564,22 @@ async function submitBankTransferPayment(formData: FormData) {
   const status = s(session.status).toLowerCase();
 
   if (status === "paid" || status === "expired" || status === "cancelled") {
+    const fallbackPublicToken = await ensureOrderPublicToken({
+      ordersDb,
+      storeId: ctx.store.id,
+      orderId: s(session.order_id),
+    });
+
+    if (fallbackPublicToken) {
+      redirect(
+        `/thankyou/${encodeURIComponent(
+          fallbackPublicToken,
+        )}?payment_submitted=1&payment_session=${encodeURIComponent(
+          s(session.id),
+        )}`,
+      );
+    }
+
     redirect(`/checkout/${encodeURIComponent(rawToken)}`);
   }
 
@@ -474,9 +604,24 @@ async function submitBankTransferPayment(formData: FormData) {
         bank_transfer: nextSubmission,
         payment_submissions: [...submissions, nextSubmission],
       },
+      updated_at: new Date().toISOString(),
     })
     .eq("id", session.id)
     .eq("store_id", ctx.store.id);
+
+  const orderPublicToken = await ensureOrderPublicToken({
+    ordersDb,
+    storeId: ctx.store.id,
+    orderId: s(session.order_id),
+  });
+
+  if (orderPublicToken) {
+    redirect(
+      `/thankyou/${encodeURIComponent(
+        orderPublicToken,
+      )}?payment_submitted=1&payment_session=${encodeURIComponent(s(session.id))}`,
+    );
+  }
 
   redirect(`/checkout/${encodeURIComponent(rawToken)}?submitted=1`);
 }
@@ -536,173 +681,6 @@ function ErrorState({
   );
 }
 
-function CheckoutTokenSummary({
-  orderNo,
-  items,
-  imageMap,
-  currency,
-  effectiveAmountDue,
-}: {
-  orderNo: string;
-  items: OrderItemRow[];
-  imageMap: Map<string, string>;
-  currency: string;
-  effectiveAmountDue: number;
-}) {
-  const itemCount = getItemCount(items);
-  const itemCountText = getItemCountText(itemCount);
-
-  return (
-    <section className="co-summary-wrapper">
-      <div className="co-summary">
-        <div className="co-summary__main">
-          <div className="co-summary__right">
-            <span className="co-summary__icon">
-              <ShoppingCart size={22} />
-            </span>
-
-            <div className="co-summary__title">
-              <h1>إجمالي الطلب</h1>
-              <p>
-                {itemCountText}
-                <span>طلب #{orderNo}</span>
-              </p>
-            </div>
-
-            <div className="co-summary__thumbs" aria-hidden>
-              {items.slice(0, 3).map((item, index) => {
-                const image = imageMap.get(s(item.product_id)) || "";
-
-                return (
-                  <span key={s(item.id) || `${s(item.product_id)}-${index}`}>
-                    {image ? (
-                      <img src={image} alt="" />
-                    ) : (
-                      <Package size={15} />
-                    )}
-                  </span>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="co-summary__left">
-            <strong dir="ltr">{money(effectiveAmountDue, currency)}</strong>
-            <span className="co-coupon-link is-applied">
-              مبلغ مطلوب على نفس الطلب
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <div className="co-summary__toggle-bg">
-        <div className="co-summary__toggle">
-          <a href="#order-payment-details" className="co-summary__details">
-            تفاصيل الطلب
-          </a>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function OrderDetailsBlock({
-  items,
-  imageMap,
-  currency,
-  paymentState,
-  effectiveAmountDue,
-}: {
-  items: OrderItemRow[];
-  imageMap: Map<string, string>;
-  currency: string;
-  paymentState: ReturnType<typeof calculatePaymentState>;
-  effectiveAmountDue: number;
-}) {
-  return (
-    <div id="order-payment-details" className="co-drawer__body">
-      <section className="co-drawer-section">
-        <h3>المنتجات</h3>
-
-        {items.length > 0 ? (
-          <div className="co-summary-items">
-            {items.map((item, index) => {
-              const qty = Math.max(1, Math.floor(n(item.qty) || 1));
-              const image = imageMap.get(s(item.product_id)) || "";
-              const optionText = selectedOptionsText(item.selected_options);
-
-              return (
-                <div
-                  key={s(item.id) || `${s(item.product_id)}-${s(item.sku)}-${index}`}
-                  className="co-summary-item"
-                >
-                  <div className="co-summary-item__image">
-                    {image ? (
-                      <img src={image} alt={s(item.name) || "منتج"} />
-                    ) : (
-                      <Package size={18} />
-                    )}
-
-                    <span>{qty}</span>
-                  </div>
-
-                  <div className="co-summary-item__info">
-                    <strong>{s(item.name) || "منتج"}</strong>
-                    <p>{optionText || `الكمية: ${qty}`}</p>
-                  </div>
-
-                  <div dir="ltr" className="co-summary-item__price">
-                    {money(getLineTotal(item), s(item.currency) || currency)}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="co-empty-small">لا توجد منتجات في الملخص</div>
-        )}
-      </section>
-
-      <section className="co-drawer-section">
-        <h3>ملخص الدفع</h3>
-
-        <div className="co-totals">
-          <div className="co-total-row">
-            <span>إجمالي الطلب الحالي</span>
-            <strong dir="ltr">{money(paymentState.currentTotal, currency)}</strong>
-          </div>
-
-          {paymentState.paidReference > 0 ? (
-            <div className="co-total-row">
-              <span>المدفوع سابقًا</span>
-              <strong dir="ltr">{money(paymentState.paidReference, currency)}</strong>
-            </div>
-          ) : null}
-
-          {paymentState.walletRefunded > 0 ? (
-            <div className="co-total-row">
-              <span>إرجاع للمحفظة</span>
-              <strong dir="ltr">{money(paymentState.walletRefunded, currency)}</strong>
-            </div>
-          ) : null}
-
-          {paymentState.walletUsed > 0 ? (
-            <div className="co-total-row">
-              <span>خصم من المحفظة</span>
-              <strong dir="ltr">{money(paymentState.walletUsed, currency)}</strong>
-            </div>
-          ) : null}
-
-          <div className="co-total-line">
-            <span>المبلغ المطلوب</span>
-            <strong dir="ltr">{money(effectiveAmountDue, currency)}</strong>
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-}
-
 function buildTokenPaymentOptions(args: {
   banks: BankAccount[];
   providers: ProviderMethod[];
@@ -743,8 +721,6 @@ function buildTokenPaymentOptions(args: {
       subtitle: "سيتم ربط الدفع الإلكتروني بجلسة دفع الطلب في المرحلة التالية.",
       disabled: true,
       disabled_reason: "PAYMENT_PROVIDER_PENDING",
-      disabled_message:
-        "الدفع الإلكتروني لهذا النوع من روابط الدفع سيتم ربطه في المرحلة التالية.",
     });
   }
 
@@ -1018,6 +994,8 @@ export default async function CheckoutSessionPage(props: PageProps) {
   const selectedPaymentId =
     paymentOptions.find((option) => !option.disabled)?.id || "";
 
+  const imageByProduct = Object.fromEntries(imageMap.entries());
+
   const hasAmountDue = effectiveAmountDue > 0 && sessionStatus !== "paid";
   const hasRefund = paymentState.kind === "refund_due";
 
@@ -1048,9 +1026,15 @@ export default async function CheckoutSessionPage(props: PageProps) {
           <CheckoutTokenSummary
             orderNo={orderNo}
             items={items}
-            imageMap={imageMap}
+            imageByProduct={imageByProduct}
             currency={currency}
             effectiveAmountDue={effectiveAmountDue}
+            paymentState={{
+              currentTotal: paymentState.currentTotal,
+              paidReference: paymentState.paidReference,
+              walletRefunded: paymentState.walletRefunded,
+              walletUsed: paymentState.walletUsed,
+            }}
           />
 
           <section className="co-checkout-area">
@@ -1062,20 +1046,6 @@ export default async function CheckoutSessionPage(props: PageProps) {
                 </div>
 
                 <div className="co-empty-card__body">
-                  <div className="co-note">
-                    هذا الرابط مخصص لدفع مبلغ مرتبط بطلب موجود، ولا ينشئ طلبًا
-                    جديدًا.
-                    <div className="co-note__list">
-                      <div>• رقم الطلب: #{orderNo}</div>
-                      <div>
-                        • حالة الدفع: {paymentStatusLabel(order.payment_status)}
-                      </div>
-                      <div>
-                        • طريقة الطلب: {paymentMethodLabel(order.payment_method)}
-                      </div>
-                    </div>
-                  </div>
-
                   {hasAmountDue ? (
                     <div className="co-alert co-alert--warning">
                       المبلغ المطلوب دفعه الآن:{" "}
@@ -1094,14 +1064,6 @@ export default async function CheckoutSessionPage(props: PageProps) {
                     </div>
                   )}
 
-                  <OrderDetailsBlock
-                    items={items}
-                    imageMap={imageMap}
-                    currency={currency}
-                    paymentState={paymentState}
-                    effectiveAmountDue={effectiveAmountDue}
-                  />
-
                   {hasAmountDue ? (
                     <div className="co-step-shell is-active">
                       <div className="co-step-shell__head">
@@ -1111,7 +1073,11 @@ export default async function CheckoutSessionPage(props: PageProps) {
 
                         <div className="co-step-shell__title">
                           <h3>الدفع</h3>
-                          <p>اختر طريقة الدفع المناسبة</p>
+                          <p>
+                            رقم الطلب #{orderNo} —{" "}
+                            {paymentStatusLabel(order.payment_status)} —{" "}
+                            {paymentMethodLabel(order.payment_method)}
+                          </p>
                         </div>
 
                         <span className="co-step-shell__chip">الحالية</span>

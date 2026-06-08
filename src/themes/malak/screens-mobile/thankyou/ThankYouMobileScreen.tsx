@@ -17,7 +17,7 @@ import {
   ShoppingBag,
   Truck,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { MalakBootstrap } from "../../bootstrap/types";
 
 type OrderItem = {
@@ -31,6 +31,11 @@ type OrderItem = {
 
 type ThankYouData = {
   route?: string;
+
+  paymentSubmitted?: boolean | number | string | null;
+  payment_submitted?: boolean | number | string | null;
+  bankTransferSubmitted?: boolean | number | string | null;
+  bank_transfer_submitted?: boolean | number | string | null;
 
   orderNo?: string | number;
   order_no?: string | number;
@@ -168,7 +173,10 @@ function formatMoney(currency: string, amount: number, decimalDigits = 2) {
   const value = Number(amount ?? 0);
   const safeValue = Number.isFinite(value) ? value : 0;
   const cleanCurrency = s(currency) || "SAR";
-  const decimals = clampDecimals(decimalDigits, inferCurrencyDecimals(cleanCurrency));
+  const decimals = clampDecimals(
+    decimalDigits,
+    inferCurrencyDecimals(cleanCurrency),
+  );
 
   const formatted = safeValue.toLocaleString("en-US", {
     minimumFractionDigits: 0,
@@ -247,6 +255,35 @@ function getFooterSupportContacts(bootstrap?: MalakBootstrap | null) {
     whatsappHref: normalizeWhatsappHref(whatsappRaw),
     emailHref: normalizeEmailHref(emailRaw),
   };
+}
+
+function usePaymentSubmittedFlag(data: ThankYouData) {
+  const fromData = readBool(
+    firstValue(
+      data?.paymentSubmitted,
+      data?.payment_submitted,
+      data?.bankTransferSubmitted,
+      data?.bank_transfer_submitted,
+    ),
+    false,
+  );
+
+  const [fromUrl, setFromUrl] = useState(false);
+
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+
+      setFromUrl(
+        params.get("payment_submitted") === "1" ||
+          params.get("bank_transfer_submitted") === "1",
+      );
+    } catch {
+      setFromUrl(false);
+    }
+  }, []);
+
+  return fromData || fromUrl;
 }
 
 function Section({
@@ -387,6 +424,7 @@ function ProductRow({
 
 export default function ThankYouMobileScreen(props: Props) {
   const data = props.data ?? {};
+  const isPaymentSubmitted = usePaymentSubmittedFlag(data);
 
   const orderNo =
     s(
@@ -487,11 +525,22 @@ export default function ThankYouMobileScreen(props: Props) {
   const money = (amount: number) =>
     formatMoney(currency, amount, currencyDecimals);
 
-  const paymentLabel = s(data.paymentLabel) || "طريقة الدفع المسجلة";
-  const paymentStatusLabel = s(data.paymentStatusLabel) || "قيد المعالجة";
-  const statusLabel = s(data.statusLabel) || "تم الاستلام";
-  const statusDescription =
-    s(data.statusDescription) || "تم استلام الطلب وجاري مراجعته.";
+  const paymentLabel = isPaymentSubmitted
+    ? "تحويل بنكي"
+    : s(data.paymentLabel) || "طريقة الدفع المسجلة";
+
+  const paymentStatusLabel = isPaymentSubmitted
+    ? "بانتظار مراجعة التحويل"
+    : s(data.paymentStatusLabel) || "قيد المعالجة";
+
+  const statusLabel = isPaymentSubmitted
+    ? "بانتظار اعتماد الدفع"
+    : s(data.statusLabel) || "تم الاستلام";
+
+  const statusDescription = isPaymentSubmitted
+    ? "تم استلام طلب اعتماد التحويل، وسيقوم المتجر بمراجعته وتحديث حالة الطلب."
+    : s(data.statusDescription) || "تم استلام الطلب وجاري مراجعته.";
+
   const estimatedDeliveryText =
     s(data.estimatedDeliveryText) || "سيتم تحديده قريبًا";
   const deliveryAddressText =
@@ -518,11 +567,21 @@ export default function ThankYouMobileScreen(props: Props) {
           <Check size={34} />
         </div>
 
-        <div className="mk-mthank-hero__eyebrow">تم تأكيد الطلب</div>
+        <div className="mk-mthank-hero__eyebrow">
+          {isPaymentSubmitted ? "تم إرسال طلب الاعتماد" : "تم تأكيد الطلب"}
+        </div>
 
-        <h1>تم استلام طلبك بنجاح</h1>
+        <h1>
+          {isPaymentSubmitted
+            ? "تم إرسال طلب اعتماد التحويل"
+            : "تم استلام طلبك بنجاح"}
+        </h1>
 
-        <p>شكرًا لك، تم استلام الطلب وسيتم البدء في مراجعته وتجهيزه.</p>
+        <p>
+          {isPaymentSubmitted
+            ? "تم تسجيل طلب اعتماد التحويل لهذا الطلب. سيقوم المتجر بمراجعته وتحديث حالة الدفع بعد التحقق."
+            : "شكرًا لك، تم استلام الطلب وسيتم البدء في مراجعته وتجهيزه."}
+        </p>
 
         <div className="mk-mthank-hero__chips">
           <span>
@@ -575,18 +634,32 @@ export default function ThankYouMobileScreen(props: Props) {
         <div className="mk-mthank-timeline">
           <TimelineStep
             done
-            title="استلام الطلب"
-            text="وصل طلبك للمتجر وتم تسجيله بنجاح."
+            title={
+              isPaymentSubmitted ? "استلام طلب الاعتماد" : "استلام الطلب"
+            }
+            text={
+              isPaymentSubmitted
+                ? "وصل طلب اعتماد التحويل للمتجر وتم تسجيله."
+                : "وصل طلبك للمتجر وتم تسجيله بنجاح."
+            }
           />
 
           <TimelineStep
-            title="المراجعة والتجهيز"
-            text="سيتم مراجعة بيانات الطلب وتجهيزه للشحن."
+            title={isPaymentSubmitted ? "مراجعة التحويل" : "المراجعة والتجهيز"}
+            text={
+              isPaymentSubmitted
+                ? "سيقوم المتجر بمراجعة بيانات التحويل وتحديث حالة الدفع."
+                : "سيتم مراجعة بيانات الطلب وتجهيزه للشحن."
+            }
           />
 
           <TimelineStep
-            title="الشحن والتسليم"
-            text="سيتم تسليم الطلب حسب العنوان وطريقة الشحن."
+            title={isPaymentSubmitted ? "اعتماد الدفع" : "الشحن والتسليم"}
+            text={
+              isPaymentSubmitted
+                ? "بعد الاعتماد سيتم تحديث حالة الطلب."
+                : "سيتم تسليم الطلب حسب العنوان وطريقة الشحن."
+            }
           />
         </div>
       </Section>

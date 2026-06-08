@@ -7,12 +7,18 @@ import { ChevronRight, Lock, ShieldCheck, ShoppingBag } from "lucide-react";
 type Props = {
   storeName: string;
   logoUrl?: string | null;
+
   backHref?: string;
   titleLabel?: string;
+
   breadcrumbBaseHref?: string;
   breadcrumbBaseLabel?: string;
   breadcrumbCurrentLabel?: string;
 };
+
+function s(value: unknown) {
+  return String(value ?? "").trim();
+}
 
 export default function CheckoutHeader({
   storeName,
@@ -23,11 +29,18 @@ export default function CheckoutHeader({
   breadcrumbBaseLabel = "سلة المشتريات",
   breadcrumbCurrentLabel = "إتمام الطلب",
 }: Props) {
+  const safeStoreName = s(storeName) || "المتجر";
+  const safeBackHref = s(backHref) || "/";
+  const safeTitleLabel = s(titleLabel) || "إتمام الطلب";
+  const safeBreadcrumbBaseHref = s(breadcrumbBaseHref) || "/";
+  const safeBreadcrumbBaseLabel = s(breadcrumbBaseLabel) || "الرئيسية";
+  const safeBreadcrumbCurrentLabel = s(breadcrumbCurrentLabel) || safeTitleLabel;
+
   return (
     <header className="co-header">
       <div className="co-header__inner">
         <div className="co-header__side">
-          <Link href={backHref} className="co-icon-btn" aria-label="الرجوع">
+          <Link href={safeBackHref} className="co-icon-btn" aria-label="الرجوع">
             <ChevronRight size={20} />
           </Link>
 
@@ -36,7 +49,7 @@ export default function CheckoutHeader({
               {logoUrl ? (
                 <Image
                   src={logoUrl}
-                  alt={storeName}
+                  alt={safeStoreName}
                   fill
                   sizes="38px"
                   className="co-store-logo__img"
@@ -48,16 +61,16 @@ export default function CheckoutHeader({
             </span>
 
             <span className="co-store-name">
-              <span>{titleLabel}</span>
-              <strong>{storeName}</strong>
+              <span>{safeTitleLabel}</span>
+              <strong>{safeStoreName}</strong>
             </span>
           </Link>
         </div>
 
         <nav className="co-header__crumb">
-          <Link href={breadcrumbBaseHref}>{breadcrumbBaseLabel}</Link>
+          <Link href={safeBreadcrumbBaseHref}>{safeBreadcrumbBaseLabel}</Link>
           <span>/</span>
-          <strong>{breadcrumbCurrentLabel}</strong>
+          <strong>{safeBreadcrumbCurrentLabel}</strong>
         </nav>
 
         <div className="co-header__side co-header__side--left">
