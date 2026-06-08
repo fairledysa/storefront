@@ -3,8 +3,15 @@
 import { createHash } from "crypto";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { AlertTriangle, CreditCard, Package, ShieldCheck, ShoppingCart } from "lucide-react";
+import { notFound, redirect } from "next/navigation";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  CreditCard,
+  Package,
+  ShieldCheck,
+  ShoppingCart,
+} from "lucide-react";
 
 import CheckoutHeader from "../_components/CheckoutHeader";
 import CheckoutUiLock from "../_components/CheckoutUiLock";
@@ -19,8 +26,11 @@ import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store"
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+type SP = Record<string, string | string[] | undefined>;
+
 type PageProps = {
   params?: Promise<{ token?: string }> | { token?: string };
+  searchParams?: Promise<SP> | SP;
 };
 
 type BankAccount = {
@@ -135,6 +145,13 @@ function firstValue(...values: any[]) {
   return null;
 }
 
+function readSearchParam(searchParams: SP, key: string) {
+  const value = searchParams[key];
+
+  if (Array.isArray(value)) return s(value[0]);
+  return s(value);
+}
+
 function tokenHash(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
@@ -154,6 +171,7 @@ function paymentMethodLabel(value: unknown) {
   if (!method) return "غير محدد";
   if (method === "cod") return "الدفع عند الاستلام";
   if (method === "bank_transfer") return "تحويل بنكي";
+
   if (method.startsWith("provider:")) {
     return `دفع إلكتروني - ${method.replace("provider:", "")}`;
   }
@@ -310,6 +328,8 @@ function resolveEffectiveAmountDue(args: {
     return Math.min(sessionAmount, calculatedAmount);
   }
 
+  if (sessionAmount > 0) return sessionAmount;
+
   return calculatedAmount;
 }
 
@@ -395,6 +415,72 @@ async function loadImageMap(args: {
   return imageMap;
 }
 
+async function submitBankTransferPayment(formData: FormData) {
+  "use server";
+
+  const rawToken = s(formData.get("token"));
+  const payerName = s(formData.get("payer_name"));
+  const transferReference = s(formData.get("transfer_reference"));
+
+  if (!rawToken || rawToken.length < 32) {
+    redirect("/");
+  }
+
+  const ctx = await resolveStoreContext();
+
+  if (!ctx.store?.id) {
+    redirect("/");
+  }
+
+  const ordersDb: any = await getOrdersDb(ctx.store.id);
+  const hash = tokenHash(rawToken);
+
+  const sessionR = await ordersDb
+    .from("order_payment_sessions")
+    .select("id,store_id,order_id,status,metadata")
+    .eq("store_id", ctx.store.id)
+    .eq("token_hash", hash)
+    .maybeSingle();
+
+  if (sessionR.error || !sessionR.data?.id) {
+    redirect(`/checkout/${encodeURIComponent(rawToken)}?error=not_found`);
+  }
+
+  const session = sessionR.data as PaymentSessionRow;
+  const status = s(session.status).toLowerCase();
+
+  if (status === "paid" || status === "expired" || status === "cancelled") {
+    redirect(`/checkout/${encodeURIComponent(rawToken)}`);
+  }
+
+  const metadata = safeObject(session.metadata);
+  const submissions = safeArray(metadata.payment_submissions);
+
+  const submittedAt = new Date().toISOString();
+
+  const nextSubmission = {
+    type: "bank_transfer",
+    submitted_at: submittedAt,
+    payer_name: payerName,
+    transfer_reference: transferReference,
+  };
+
+  await ordersDb
+    .from("order_payment_sessions")
+    .update({
+      metadata: {
+        ...metadata,
+        customer_payment_status: "pending_merchant_review",
+        bank_transfer: nextSubmission,
+        payment_submissions: [...submissions, nextSubmission],
+      },
+    })
+    .eq("id", session.id)
+    .eq("store_id", ctx.store.id);
+
+  redirect(`/checkout/${encodeURIComponent(rawToken)}?submitted=1`);
+}
+
 function ErrorState({
   title,
   message,
@@ -428,7 +514,10 @@ function ErrorState({
             </div>
 
             <div className="co-empty-card__body">
-              <div className="co-alert co-alert--warning">{message}</div>
+              <div className="co-alert co-alert--warning">
+                <AlertTriangle size={17} />
+                {message}
+              </div>
 
               <div className="co-actions-row">
                 <Link href="/" className="co-btn co-btn--dark">
@@ -453,14 +542,12 @@ function CheckoutTokenSummary({
   imageMap,
   currency,
   effectiveAmountDue,
-  paymentState,
 }: {
   orderNo: string;
   items: OrderItemRow[];
   imageMap: Map<string, string>;
   currency: string;
   effectiveAmountDue: number;
-  paymentState: ReturnType<typeof calculatePaymentState>;
 }) {
   const itemCount = getItemCount(items);
   const itemCountText = getItemCountText(itemCount);
@@ -510,103 +597,109 @@ function CheckoutTokenSummary({
 
       <div className="co-summary__toggle-bg">
         <div className="co-summary__toggle">
-          <details>
-            <summary className="co-summary__details">تفاصيل الطلب</summary>
-
-            <div className="co-drawer__body">
-              <section className="co-drawer-section">
-                <h3>المنتجات</h3>
-
-                {items.length > 0 ? (
-                  <div className="co-summary-items">
-                    {items.map((item, index) => {
-                      const qty = Math.max(1, Math.floor(n(item.qty) || 1));
-                      const image = imageMap.get(s(item.product_id)) || "";
-
-                      return (
-                        <div
-                          key={
-                            s(item.id) ||
-                            `${s(item.product_id)}-${s(item.sku)}-${index}`
-                          }
-                          className="co-summary-item"
-                        >
-                          <div className="co-summary-item__image">
-                            {image ? (
-                              <img src={image} alt={s(item.name) || "منتج"} />
-                            ) : (
-                              <Package size={18} />
-                            )}
-
-                            <span>{qty}</span>
-                          </div>
-
-                          <div className="co-summary-item__info">
-                            <strong>{s(item.name) || "منتج"}</strong>
-                            <p>{selectedOptionsText(item.selected_options)}</p>
-                          </div>
-
-                          <div dir="ltr" className="co-summary-item__price">
-                            {money(getLineTotal(item), s(item.currency) || currency)}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="co-empty-small">لا توجد منتجات في الملخص</div>
-                )}
-              </section>
-
-              <section className="co-drawer-section">
-                <h3>ملخص الدفع</h3>
-
-                <div className="co-totals">
-                  <div className="co-total-row">
-                    <span>إجمالي الطلب الحالي</span>
-                    <strong dir="ltr">
-                      {money(paymentState.currentTotal, currency)}
-                    </strong>
-                  </div>
-
-                  {paymentState.paidReference > 0 ? (
-                    <div className="co-total-row">
-                      <span>المدفوع سابقًا</span>
-                      <strong dir="ltr">
-                        {money(paymentState.paidReference, currency)}
-                      </strong>
-                    </div>
-                  ) : null}
-
-                  {paymentState.walletRefunded > 0 ? (
-                    <div className="co-total-row">
-                      <span>إرجاع للمحفظة</span>
-                      <strong dir="ltr">
-                        {money(paymentState.walletRefunded, currency)}
-                      </strong>
-                    </div>
-                  ) : null}
-
-                  {paymentState.walletUsed > 0 ? (
-                    <div className="co-total-row">
-                      <span>خصم من المحفظة</span>
-                      <strong dir="ltr">
-                        {money(paymentState.walletUsed, currency)}
-                      </strong>
-                    </div>
-                  ) : null}
-
-                  <div className="co-total-line">
-                    <span>المبلغ المطلوب</span>
-                    <strong dir="ltr">{money(effectiveAmountDue, currency)}</strong>
-                  </div>
-                </div>
-              </section>
-            </div>
-          </details>
+          <a href="#order-payment-details" className="co-summary__details">
+            تفاصيل الطلب
+          </a>
         </div>
       </div>
     </section>
+  );
+}
+
+function OrderDetailsBlock({
+  items,
+  imageMap,
+  currency,
+  paymentState,
+  effectiveAmountDue,
+}: {
+  items: OrderItemRow[];
+  imageMap: Map<string, string>;
+  currency: string;
+  paymentState: ReturnType<typeof calculatePaymentState>;
+  effectiveAmountDue: number;
+}) {
+  return (
+    <div id="order-payment-details" className="co-drawer__body">
+      <section className="co-drawer-section">
+        <h3>المنتجات</h3>
+
+        {items.length > 0 ? (
+          <div className="co-summary-items">
+            {items.map((item, index) => {
+              const qty = Math.max(1, Math.floor(n(item.qty) || 1));
+              const image = imageMap.get(s(item.product_id)) || "";
+              const optionText = selectedOptionsText(item.selected_options);
+
+              return (
+                <div
+                  key={s(item.id) || `${s(item.product_id)}-${s(item.sku)}-${index}`}
+                  className="co-summary-item"
+                >
+                  <div className="co-summary-item__image">
+                    {image ? (
+                      <img src={image} alt={s(item.name) || "منتج"} />
+                    ) : (
+                      <Package size={18} />
+                    )}
+
+                    <span>{qty}</span>
+                  </div>
+
+                  <div className="co-summary-item__info">
+                    <strong>{s(item.name) || "منتج"}</strong>
+                    <p>{optionText || `الكمية: ${qty}`}</p>
+                  </div>
+
+                  <div dir="ltr" className="co-summary-item__price">
+                    {money(getLineTotal(item), s(item.currency) || currency)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="co-empty-small">لا توجد منتجات في الملخص</div>
+        )}
+      </section>
+
+      <section className="co-drawer-section">
+        <h3>ملخص الدفع</h3>
+
+        <div className="co-totals">
+          <div className="co-total-row">
+            <span>إجمالي الطلب الحالي</span>
+            <strong dir="ltr">{money(paymentState.currentTotal, currency)}</strong>
+          </div>
+
+          {paymentState.paidReference > 0 ? (
+            <div className="co-total-row">
+              <span>المدفوع سابقًا</span>
+              <strong dir="ltr">{money(paymentState.paidReference, currency)}</strong>
+            </div>
+          ) : null}
+
+          {paymentState.walletRefunded > 0 ? (
+            <div className="co-total-row">
+              <span>إرجاع للمحفظة</span>
+              <strong dir="ltr">{money(paymentState.walletRefunded, currency)}</strong>
+            </div>
+          ) : null}
+
+          {paymentState.walletUsed > 0 ? (
+            <div className="co-total-row">
+              <span>خصم من المحفظة</span>
+              <strong dir="ltr">{money(paymentState.walletUsed, currency)}</strong>
+            </div>
+          ) : null}
+
+          <div className="co-total-line">
+            <span>المبلغ المطلوب</span>
+            <strong dir="ltr">{money(effectiveAmountDue, currency)}</strong>
+          </div>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -628,13 +721,13 @@ function buildTokenPaymentOptions(args: {
       id: "bank_transfer",
       type: "bank_transfer",
       title: "تحويل بنكي",
-      subtitle: "حوّل المبلغ إلى الحساب البنكي ثم أرسل الإيصال للمتجر",
+      subtitle: "حوّل المبلغ إلى الحساب البنكي ثم أرسل طلب اعتماد الدفع",
       recommended: true,
       bank_details: {
         bank_name: bankName,
         account_holder: holder,
         iban,
-        note: "بعد التحويل أرسل صورة الإيصال لخدمة العملاء مع رقم الطلب حتى يتم اعتماد الدفع.",
+        note: "بعد التحويل أرسل طلب اعتماد الدفع، وسيتم مراجعة العملية من المتجر.",
       },
     });
   }
@@ -658,13 +751,71 @@ function buildTokenPaymentOptions(args: {
   return options;
 }
 
+function BankTransferConfirmForm({
+  rawToken,
+  selectedPaymentId,
+  submitted,
+}: {
+  rawToken: string;
+  selectedPaymentId: string;
+  submitted: boolean;
+}) {
+  if (submitted) {
+    return (
+      <div className="co-alert co-alert--success">
+        <CheckCircle2 size={17} />
+        تم إرسال طلب اعتماد التحويل. سيقوم المتجر بمراجعته وتحديث حالة الطلب.
+      </div>
+    );
+  }
+
+  if (selectedPaymentId !== "bank_transfer") return null;
+
+  return (
+    <form action={submitBankTransferPayment}>
+      <input type="hidden" name="token" value={rawToken} />
+
+      <div className="co-drawer-section">
+        <h3>معلومات بعد التحويل</h3>
+
+        <div className="co-coupon-form">
+          <input
+            name="payer_name"
+            placeholder="اسم صاحب الحساب الذي تم التحويل منه"
+            autoComplete="name"
+          />
+        </div>
+
+        <div className="co-coupon-form">
+          <input
+            name="transfer_reference"
+            placeholder="رقم العملية أو مرجع التحويل - اختياري"
+            dir="ltr"
+          />
+        </div>
+
+        <div className="co-alert co-alert--warning">
+          لا يتم اعتماد الطلب تلقائيًا بعد الإرسال. سيتم مراجعته من المتجر أولًا.
+        </div>
+      </div>
+
+      <button type="submit" className="co-payment-final-btn">
+        إرسال طلب اعتماد التحويل
+      </button>
+    </form>
+  );
+}
+
 export default async function CheckoutSessionPage(props: PageProps) {
   const ctx = await resolveStoreContext();
 
   if (!ctx.store?.id) return notFound();
 
   const params = ((await props.params) ?? {}) as { token?: string };
+  const searchParams = ((await props.searchParams) ?? {}) as SP;
+
   const rawToken = s(params.token);
+  const submittedFromQuery = readSearchParam(searchParams, "submitted") === "1";
 
   const storeName = s(ctx.store.name) || "المتجر";
   const storeLogo = s(ctx.store.logo_url);
@@ -718,6 +869,13 @@ export default async function CheckoutSessionPage(props: PageProps) {
 
   const session = sessionR.data as PaymentSessionRow;
   const sessionStatus = s(session.status).toLowerCase();
+  const sessionMetadata = safeObject(session.metadata);
+  const bankSubmission = safeObject(sessionMetadata.bank_transfer);
+
+  const submitted =
+    submittedFromQuery ||
+    s(sessionMetadata.customer_payment_status) === "pending_merchant_review" ||
+    Boolean(s(bankSubmission.submitted_at));
 
   if (sessionStatus === "expired") {
     return (
@@ -893,7 +1051,6 @@ export default async function CheckoutSessionPage(props: PageProps) {
             imageMap={imageMap}
             currency={currency}
             effectiveAmountDue={effectiveAmountDue}
-            paymentState={paymentState}
           />
 
           <section className="co-checkout-area">
@@ -910,15 +1067,21 @@ export default async function CheckoutSessionPage(props: PageProps) {
                     جديدًا.
                     <div className="co-note__list">
                       <div>• رقم الطلب: #{orderNo}</div>
-                      <div>• حالة الدفع: {paymentStatusLabel(order.payment_status)}</div>
-                      <div>• طريقة الطلب: {paymentMethodLabel(order.payment_method)}</div>
+                      <div>
+                        • حالة الدفع: {paymentStatusLabel(order.payment_status)}
+                      </div>
+                      <div>
+                        • طريقة الطلب: {paymentMethodLabel(order.payment_method)}
+                      </div>
                     </div>
                   </div>
 
                   {hasAmountDue ? (
                     <div className="co-alert co-alert--warning">
                       المبلغ المطلوب دفعه الآن:{" "}
-                      <strong dir="ltr">{money(effectiveAmountDue, currency)}</strong>
+                      <strong dir="ltr">
+                        {money(effectiveAmountDue, currency)}
+                      </strong>
                     </div>
                   ) : hasRefund ? (
                     <div className="co-alert co-alert--warning">
@@ -930,6 +1093,14 @@ export default async function CheckoutSessionPage(props: PageProps) {
                       تمت تسوية هذا الطلب ماليًا ولا يوجد مبلغ متبقي حاليًا.
                     </div>
                   )}
+
+                  <OrderDetailsBlock
+                    items={items}
+                    imageMap={imageMap}
+                    currency={currency}
+                    paymentState={paymentState}
+                    effectiveAmountDue={effectiveAmountDue}
+                  />
 
                   {hasAmountDue ? (
                     <div className="co-step-shell is-active">
@@ -949,19 +1120,16 @@ export default async function CheckoutSessionPage(props: PageProps) {
                       <PaymentMethodsPanel
                         options={paymentOptions}
                         selectedId={selectedPaymentId}
-                        disabled
                         showSelectedNote
                         emptyTitle="لا توجد طرق دفع متاحة"
                         emptyText="تواصل مع المتجر لإكمال الدفع."
                       />
 
-                      <button
-                        type="button"
-                        className="co-payment-final-btn"
-                        disabled
-                      >
-                        تأكيد الدفع الإلكتروني يتم ربطه في المرحلة التالية
-                      </button>
+                      <BankTransferConfirmForm
+                        rawToken={rawToken}
+                        selectedPaymentId={selectedPaymentId}
+                        submitted={submitted}
+                      />
                     </div>
                   ) : null}
 
