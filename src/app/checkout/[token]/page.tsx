@@ -1,20 +1,20 @@
-// FILE: apps/storefront/src/app/(store)/pay/order/[publicNo]/page.tsx
+// FILE: apps/storefront/src/app/checkout/[token]/page.tsx
 
+import { createHash } from "crypto";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { ReactNode } from "react";
 
 import { getOrdersDb } from "@/data/db/orders-db.server";
 import { getStoreDb } from "@/data/db/store-db.server";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
 
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type SP = Record<string, string | string[] | undefined>;
-
 type PageProps = {
-  params?: Promise<{ publicNo?: string }> | { publicNo?: string };
-  searchParams?: Promise<SP> | SP;
+  params?: Promise<{ token?: string }> | { token?: string };
 };
 
 type BankAccount = {
@@ -31,12 +31,12 @@ type ProviderMethod = {
   provider_code?: string | null;
   enabled?: boolean | null;
   status?: string | null;
-  sort_order?: number | null;
 };
 
 type OrderItemRow = {
   id?: string | null;
   product_id?: string | null;
+  variant_id?: string | null;
   name?: string | null;
   sku?: string | null;
   qty?: number | string | null;
@@ -44,14 +44,7 @@ type OrderItemRow = {
   unit_price?: number | string | null;
   total_price?: number | string | null;
   selected_options?: any;
-};
-
-type ProductImageRow = {
-  product_id?: string | null;
-  original_url?: string | null;
-  thumbnail_url?: string | null;
-  is_default?: boolean | null;
-  sort_order?: number | null;
+  selected_option_value_ids?: any;
 };
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -115,16 +108,8 @@ function firstValue(...values: any[]) {
   return null;
 }
 
-function firstParam(value: string | string[] | undefined) {
-  if (Array.isArray(value)) return s(value[0]);
-  return s(value);
-}
-
-function parsePublicNo(value: unknown) {
-  const raw = s(value).replace(/[^\d]/g, "");
-  const num = Number.parseInt(raw, 10);
-
-  return Number.isFinite(num) && num > 0 ? num : 0;
+function tokenHash(token: string) {
+  return createHash("sha256").update(token).digest("hex");
 }
 
 function money(amount: unknown, currency = "SAR") {
@@ -162,6 +147,17 @@ function paymentStatusLabel(value: unknown) {
   return s(value) || "غير محدد";
 }
 
+function sessionStatusLabel(value: unknown) {
+  const status = s(value).toLowerCase();
+
+  if (status === "pending") return "بانتظار الدفع";
+  if (status === "paid") return "تم السداد";
+  if (status === "expired") return "منتهي";
+  if (status === "cancelled") return "ملغي";
+
+  return status || "بانتظار الدفع";
+}
+
 function providerLabel(code: unknown) {
   const value = s(code).toLowerCase();
 
@@ -179,7 +175,7 @@ function providerLabel(code: unknown) {
 function selectedOptionsText(value: any) {
   const rows = safeArray(value);
 
-  const parts = rows
+  return rows
     .map((row: any) => {
       const name = s(row?.name);
       const val = s(row?.value);
@@ -189,19 +185,18 @@ function selectedOptionsText(value: any) {
 
       return "";
     })
-    .filter(Boolean);
-
-  return parts.join("، ");
+    .filter(Boolean)
+    .join("، ");
 }
 
-function readAdminFinancial(snapshot: any) {
-  const root = safeObject(snapshot);
+function readAdminFinancial(order: any) {
+  const snapshot = safeObject(order?.shipping_snapshot);
 
   return safeObject(
-    root.admin_financial ||
-      root.adminFinancial ||
-      root.order_edit_financial ||
-      root.orderEditFinancial,
+    snapshot.admin_financial ||
+      snapshot.adminFinancial ||
+      snapshot.order_edit_financial ||
+      snapshot.orderEditFinancial,
   );
 }
 
@@ -210,7 +205,7 @@ function calculatePaymentState(order: any) {
   const paymentStatus = s(order?.payment_status).toLowerCase();
   const currentTotal = round2(order?.total_amount);
 
-  const financial = readAdminFinancial(order?.shipping_snapshot);
+  const financial = readAdminFinancial(order);
   const hasFinancial = Object.keys(financial).length > 0;
 
   const paidReference = Math.max(
@@ -235,10 +230,13 @@ function calculatePaymentState(order: any) {
     ),
   );
 
-  const netPaid = Math.max(0, round2(paidReference - walletRefunded + walletUsed));
+  const netPaid = Math.max(
+    0,
+    round2(paidReference - walletRefunded + walletUsed),
+  );
 
   const dueForPaidOrder =
-    hasFinancial && paidReference > 0
+    paymentStatus === "paid" && hasFinancial && paidReference > 0
       ? Math.max(0, round2(currentTotal - netPaid))
       : 0;
 
@@ -278,28 +276,27 @@ function calculatePaymentState(order: any) {
   };
 }
 
-function orderDisplayNo(order: any, fallback: string) {
+function orderDisplayNo(order: any) {
   return (
     s(order?.public_no) ||
     s(order?.order_number) ||
     s(order?.invoice_no) ||
-    fallback
+    "طلب"
   );
 }
 
-function imageUrlFromRows(rows: ProductImageRow[]) {
-  const sorted = rows.slice().sort((a, b) => {
-    const aDefault = a?.is_default ? 0 : 1000;
-    const bDefault = b?.is_default ? 0 : 1000;
+function resolveEffectiveAmountDue(args: {
+  sessionAmountDue: unknown;
+  calculatedAmountDue: unknown;
+}) {
+  const sessionAmount = Math.max(0, round2(args.sessionAmountDue));
+  const calculatedAmount = Math.max(0, round2(args.calculatedAmountDue));
 
-    if (aDefault !== bDefault) return aDefault - bDefault;
+  if (sessionAmount > 0 && calculatedAmount > 0) {
+    return Math.min(sessionAmount, calculatedAmount);
+  }
 
-    return Number(a?.sort_order ?? 0) - Number(b?.sort_order ?? 0);
-  });
-
-  const first = sorted[0];
-
-  return s(first?.thumbnail_url) || s(first?.original_url) || "";
+  return calculatedAmount;
 }
 
 function ErrorState({
@@ -344,7 +341,7 @@ function StatusPill({
   children,
 }: {
   tone: "ok" | "warn" | "neutral" | "danger";
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   const classes =
     tone === "ok"
@@ -389,7 +386,10 @@ function BankAccountCard({ bank }: { bank: BankAccount }) {
 
       <div className="mt-4 rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-4">
         <p className="mb-1 text-xs font-bold text-zinc-500">IBAN</p>
-        <p dir="ltr" className="break-all text-left text-sm font-black text-zinc-950">
+        <p
+          dir="ltr"
+          className="break-all text-left text-sm font-black text-zinc-950"
+        >
           {iban}
         </p>
       </div>
@@ -404,11 +404,9 @@ function BankAccountCard({ bank }: { bank: BankAccount }) {
 
 function OrderItemsMini({
   items,
-  images,
   currency,
 }: {
   items: OrderItemRow[];
-  images: Map<string, string>;
   currency: string;
 }) {
   if (!items.length) return null;
@@ -424,56 +422,40 @@ function OrderItemsMini({
 
       <div className="space-y-3">
         {items.map((item, index) => {
-          const productId = s(item.product_id);
-          const image = productId ? images.get(productId) || "" : "";
           const options = selectedOptionsText(item.selected_options);
 
           return (
             <div
-              key={
-  s(item.id) ||
-  `${s(item.product_id)}-${s(item.sku)}-${s(item.name)}-${index}`
-}
-              className="flex gap-3 rounded-3xl border border-zinc-100 bg-zinc-50 p-3"
+              key={s(item.id) || `${s(item.product_id)}-${s(item.sku)}-${index}`}
+              className="rounded-3xl border border-zinc-100 bg-zinc-50 p-4"
             >
-              <div className="h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-white">
-                {image ? (
-                  <img
-                    src={image}
-                    alt={s(item.name) || "منتج"}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-xs font-black text-zinc-300">
-                    صورة
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="line-clamp-1 text-sm font-black text-zinc-950">
+                    {s(item.name) || "منتج"}
                   </div>
-                )}
+
+                  {options ? (
+                    <div className="mt-1 line-clamp-1 text-xs font-semibold text-zinc-500">
+                      {options}
+                    </div>
+                  ) : s(item.sku) ? (
+                    <div className="mt-1 text-xs font-semibold text-zinc-500">
+                      SKU: {s(item.sku)}
+                    </div>
+                  ) : null}
+                </div>
+
+                <span className="shrink-0 text-xs font-bold text-zinc-500">
+                  × {n(item.qty) || 1}
+                </span>
               </div>
 
-              <div className="min-w-0 flex-1">
-                <div className="line-clamp-1 text-sm font-black text-zinc-950">
-                  {s(item.name) || "منتج"}
-                </div>
-
-                {options ? (
-                  <div className="mt-1 line-clamp-1 text-xs font-semibold text-zinc-500">
-                    {options}
-                  </div>
-                ) : s(item.sku) ? (
-                  <div className="mt-1 text-xs font-semibold text-zinc-500">
-                    SKU: {s(item.sku)}
-                  </div>
-                ) : null}
-
-                <div className="mt-2 flex items-center justify-between gap-3">
-                  <span className="text-xs font-bold text-zinc-500">
-                    الكمية: {n(item.qty) || 1}
-                  </span>
-
-                  <span dir="ltr" className="text-sm font-black text-zinc-950">
-                    {money(item.total_price, s(item.currency) || currency)}
-                  </span>
-                </div>
+              <div
+                dir="ltr"
+                className="mt-3 text-left text-sm font-black text-zinc-950"
+              >
+                {money(item.total_price, s(item.currency) || currency)}
               </div>
             </div>
           );
@@ -483,33 +465,84 @@ function OrderItemsMini({
   );
 }
 
-export default async function OrderPaymentPage(props: PageProps) {
+export default async function CheckoutSessionPage(props: PageProps) {
   const ctx = await resolveStoreContext();
 
   if (!ctx.store?.id) return notFound();
 
-  const params = ((await props.params) ?? {}) as { publicNo?: string };
-  const searchParams = ((await props.searchParams) ?? {}) as SP;
-
-  const publicNoText = s(params.publicNo);
-  const publicNo = parsePublicNo(publicNoText);
-  const token = firstParam(searchParams.token);
+  const params = ((await props.params) ?? {}) as { token?: string };
+  const rawToken = s(params.token);
 
   const storeName = s(ctx.store.name) || "المتجر";
   const storeLogo = s(ctx.store.logo_url);
 
-  if (!publicNo || !token) {
+  if (!rawToken || rawToken.length < 32) {
     return (
       <ErrorState
         storeName={storeName}
         title="رابط الدفع غير صالح"
-        message="الرابط ناقص أو لا يحتوي على رمز التحقق الخاص بالطلب."
+        message="الرابط ناقص أو لا يحتوي على رمز جلسة الدفع الصحيح."
       />
     );
   }
 
   const ordersDb: any = await getOrdersDb(ctx.store.id);
   const storeDb: any = await getStoreDb(ctx.store.id);
+  const hash = tokenHash(rawToken);
+
+  const sessionR = await ordersDb
+    .from("order_payment_sessions")
+    .select(
+      [
+        "id",
+        "store_id",
+        "order_id",
+        "purpose",
+        "amount_due",
+        "currency",
+        "status",
+        "expires_at",
+        "paid_at",
+        "metadata",
+        "created_at",
+      ].join(","),
+    )
+    .eq("store_id", ctx.store.id)
+    .eq("token_hash", hash)
+    .maybeSingle();
+
+  if (sessionR.error || !sessionR.data?.id) {
+    return (
+      <ErrorState
+        storeName={storeName}
+        title="رابط الدفع غير متوفر"
+        message="لم نتمكن من العثور على جلسة الدفع أو أن الرابط غير صحيح."
+      />
+    );
+  }
+
+  const session = sessionR.data;
+  const sessionStatus = s(session.status).toLowerCase();
+
+  if (sessionStatus === "expired") {
+    return (
+      <ErrorState
+        storeName={storeName}
+        title="انتهت صلاحية رابط الدفع"
+        message="رابط الدفع انتهت صلاحيته. تواصل مع المتجر للحصول على رابط جديد."
+      />
+    );
+  }
+
+  if (sessionStatus === "cancelled") {
+    return (
+      <ErrorState
+        storeName={storeName}
+        title="تم إلغاء رابط الدفع"
+        message="هذا الرابط لم يعد صالحًا. تواصل مع المتجر للحصول على رابط جديد."
+      />
+    );
+  }
 
   const orderR = await ordersDb
     .from("orders")
@@ -520,7 +553,6 @@ export default async function OrderPaymentPage(props: PageProps) {
         "customer_id",
         "order_number",
         "public_no",
-        "public_token",
         "invoice_no",
         "status",
         "base_status_key",
@@ -539,23 +571,30 @@ export default async function OrderPaymentPage(props: PageProps) {
       ].join(","),
     )
     .eq("store_id", ctx.store.id)
-    .eq("public_token", token)
-    .or(`public_no.eq.${publicNo},order_number.eq.${publicNo}`)
+    .eq("id", session.order_id)
     .maybeSingle();
 
   if (orderR.error || !orderR.data?.id) {
     return (
       <ErrorState
         storeName={storeName}
-        title="رابط الدفع غير متوفر"
-        message="لم نتمكن من العثور على الطلب أو أن رابط الدفع منتهي/غير صحيح."
+        title="الطلب غير متوفر"
+        message="جلسة الدفع موجودة لكن لم نتمكن من قراءة الطلب المرتبط بها."
       />
     );
   }
 
   const order = orderR.data;
   const paymentState = calculatePaymentState(order);
-  const orderNo = orderDisplayNo(order, publicNoText);
+  const orderNo = orderDisplayNo(order);
+
+  const effectiveAmountDue =
+    sessionStatus === "paid"
+      ? 0
+      : resolveEffectiveAmountDue({
+          sessionAmountDue: session.amount_due,
+          calculatedAmountDue: paymentState.amountDue,
+        });
 
   const [itemsR, banksR, providersR] = await Promise.all([
     ordersDb
@@ -608,52 +647,21 @@ export default async function OrderPaymentPage(props: PageProps) {
   const providers: ProviderMethod[] =
     !providersR.error && Array.isArray(providersR.data) ? providersR.data : [];
 
-  const productIds = Array.from(
-    new Set(items.map((item) => s(item.product_id)).filter(Boolean)),
-  );
-
-  const mediaR =
-    productIds.length > 0
-      ? await storeDb
-          .from("product_media")
-          .select("product_id,original_url,thumbnail_url,is_default,sort_order")
-          .eq("store_id", ctx.store.id)
-          .in("product_id", productIds)
-      : { data: [], error: null };
-
-  const imagesByProduct = new Map<string, string>();
-
-  if (!mediaR.error && Array.isArray(mediaR.data)) {
-    const grouped = new Map<string, ProductImageRow[]>();
-
-    for (const row of mediaR.data as ProductImageRow[]) {
-      const productId = s(row.product_id);
-      if (!productId) continue;
-
-      const list = grouped.get(productId) ?? [];
-      list.push(row);
-      grouped.set(productId, list);
-    }
-
-    for (const [productId, rows] of grouped.entries()) {
-      const image = imageUrlFromRows(rows);
-      if (image) imagesByProduct.set(productId, image);
-    }
-  }
-
-  const hasAmountDue = paymentState.amountDue > 0;
-  const isDifferencePayment = paymentState.kind === "difference_due";
-  const isUnpaidOrder = paymentState.kind === "unpaid_order";
-  const isSettled = paymentState.kind === "settled";
+  const hasAmountDue = effectiveAmountDue > 0;
   const hasRefund = paymentState.kind === "refund_due";
+  const isSessionPaid = sessionStatus === "paid";
+  const isSettled = paymentState.kind === "settled" || isSessionPaid;
 
-  const pageTitle = isDifferencePayment
-    ? "دفع فرق الطلب"
-    : isUnpaidOrder
-      ? "إكمال دفع الطلب"
-      : hasRefund
-        ? "يوجد مبلغ مستحق للعميل"
-        : "تمت تسوية الطلب";
+  const pageTitle =
+    isSessionPaid || isSettled
+      ? "تمت تسوية الطلب"
+      : paymentState.kind === "difference_due"
+        ? "دفع فرق الطلب"
+        : paymentState.kind === "unpaid_order"
+          ? "إكمال دفع الطلب"
+          : hasRefund
+            ? "يوجد مبلغ مستحق للعميل"
+            : "دفع الطلب";
 
   return (
     <main dir="rtl" className="min-h-screen bg-[#fafafa] text-zinc-950">
@@ -698,17 +706,22 @@ export default async function OrderPaymentPage(props: PageProps) {
               <div className="bg-gradient-to-l from-[#ecfaf5] via-white to-[#faf4e1] p-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-black text-zinc-500">
-                      طلب رقم
-                    </p>
+                    <p className="text-sm font-black text-zinc-500">طلب رقم</p>
 
-                    <h2 dir="ltr" className="mt-1 text-3xl font-black text-zinc-950">
+                    <h2
+                      dir="ltr"
+                      className="mt-1 text-3xl font-black text-zinc-950"
+                    >
                       #{orderNo}
                     </h2>
                   </div>
 
                   <div className="flex flex-wrap gap-2">
                     <StatusPill tone={hasAmountDue ? "warn" : "ok"}>
+                      {sessionStatusLabel(session.status)}
+                    </StatusPill>
+
+                    <StatusPill tone="neutral">
                       {paymentStatusLabel(order.payment_status)}
                     </StatusPill>
 
@@ -724,7 +737,10 @@ export default async function OrderPaymentPage(props: PageProps) {
                   <p className="text-xs font-bold text-zinc-500">
                     إجمالي الطلب الحالي
                   </p>
-                  <p dir="ltr" className="mt-2 text-xl font-black text-zinc-950">
+                  <p
+                    dir="ltr"
+                    className="mt-2 text-xl font-black text-zinc-950"
+                  >
                     {money(paymentState.currentTotal, paymentState.currency)}
                   </p>
                 </div>
@@ -734,7 +750,10 @@ export default async function OrderPaymentPage(props: PageProps) {
                     <p className="text-xs font-bold text-zinc-500">
                       المدفوع سابقًا
                     </p>
-                    <p dir="ltr" className="mt-2 text-xl font-black text-zinc-950">
+                    <p
+                      dir="ltr"
+                      className="mt-2 text-xl font-black text-zinc-950"
+                    >
                       {money(paymentState.paidReference, paymentState.currency)}
                     </p>
                   </div>
@@ -745,7 +764,10 @@ export default async function OrderPaymentPage(props: PageProps) {
                     <p className="text-xs font-bold text-zinc-500">
                       تم إرجاعه للمحفظة
                     </p>
-                    <p dir="ltr" className="mt-2 text-xl font-black text-zinc-950">
+                    <p
+                      dir="ltr"
+                      className="mt-2 text-xl font-black text-zinc-950"
+                    >
                       {money(paymentState.walletRefunded, paymentState.currency)}
                     </p>
                   </div>
@@ -756,7 +778,10 @@ export default async function OrderPaymentPage(props: PageProps) {
                     <p className="text-xs font-bold text-zinc-500">
                       تم استخدامه من المحفظة
                     </p>
-                    <p dir="ltr" className="mt-2 text-xl font-black text-zinc-950">
+                    <p
+                      dir="ltr"
+                      className="mt-2 text-xl font-black text-zinc-950"
+                    >
                       {money(paymentState.walletUsed, paymentState.currency)}
                     </p>
                   </div>
@@ -774,12 +799,11 @@ export default async function OrderPaymentPage(props: PageProps) {
                       dir="ltr"
                       className="mt-2 text-4xl font-black tracking-tight text-zinc-950"
                     >
-                      {money(paymentState.amountDue, paymentState.currency)}
+                      {money(effectiveAmountDue, paymentState.currency)}
                     </p>
 
                     <p className="mt-3 text-sm leading-7 text-amber-800">
-                      هذا المبلغ ناتج عن تعديل الطلب بعد إنشائه. دفع هذا المبلغ
-                      يخص نفس الطلب ولا ينشئ طلبًا جديدًا.
+                      هذا المبلغ مرتبط بنفس الطلب ولا ينشئ طلبًا جديدًا.
                     </p>
                   </div>
                 ) : hasRefund ? (
@@ -796,11 +820,10 @@ export default async function OrderPaymentPage(props: PageProps) {
                     </p>
 
                     <p className="mt-3 text-sm leading-7 text-emerald-800">
-                      لا يوجد مبلغ مطلوب دفعه من العميل. يوجد فرق لصالح العميل
-                      تتم تسويته من لوحة المتجر.
+                      لا يوجد مبلغ مطلوب دفعه من العميل. يوجد فرق لصالح العميل.
                     </p>
                   </div>
-                ) : isSettled ? (
+                ) : (
                   <div className="rounded-[28px] border border-emerald-200 bg-emerald-50 p-5">
                     <p className="text-lg font-black text-emerald-700">
                       تمت تسوية الطلب ماليًا
@@ -808,12 +831,6 @@ export default async function OrderPaymentPage(props: PageProps) {
 
                     <p className="mt-2 text-sm leading-7 text-emerald-800">
                       لا يوجد مبلغ متبقي على هذا الطلب حاليًا.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="rounded-[28px] border border-zinc-200 bg-zinc-50 p-5">
-                    <p className="text-lg font-black text-zinc-700">
-                      لا توجد عملية دفع مطلوبة
                     </p>
                   </div>
                 )}
@@ -824,7 +841,7 @@ export default async function OrderPaymentPage(props: PageProps) {
               <section className="rounded-[32px] border border-zinc-200 bg-white p-5 shadow-sm">
                 <div className="mb-4">
                   <h2 className="text-lg font-black text-zinc-950">
-                    اختر طريقة الدفع
+                    طريقة الدفع
                   </h2>
                   <p className="mt-1 text-sm leading-7 text-zinc-500">
                     استخدم إحدى الطرق التالية لتسوية المبلغ المتبقي على نفس
@@ -846,7 +863,7 @@ export default async function OrderPaymentPage(props: PageProps) {
                           </p>
                         </div>
 
-                        <StatusPill tone="neutral">قيد الربط للرابط</StatusPill>
+                        <StatusPill tone="neutral">قيد الربط</StatusPill>
                       </div>
 
                       <div className="mt-4 flex flex-wrap gap-2">
@@ -865,8 +882,7 @@ export default async function OrderPaymentPage(props: PageProps) {
                         disabled
                         className="mt-5 flex h-12 w-full cursor-not-allowed items-center justify-center rounded-2xl bg-zinc-200 px-5 text-sm font-black text-zinc-500"
                       >
-                        الدفع الإلكتروني يحتاج Route إنشاء جلسة دفع للمبلغ
-                        المتبقي
+                        زر الدفع الإلكتروني يتم ربطه في المرحلة التالية
                       </button>
                     </div>
                   ) : null}
@@ -898,8 +914,7 @@ export default async function OrderPaymentPage(props: PageProps) {
                         لا توجد طريقة دفع متاحة
                       </h3>
                       <p className="mt-2 text-sm leading-7 text-rose-700">
-                        لا توجد حسابات بنكية أو مزودات دفع مفعلة لهذا المتجر
-                        حاليًا.
+                        لا توجد حسابات بنكية أو مزودات دفع مفعلة لهذا المتجر.
                       </p>
                     </div>
                   ) : null}
@@ -917,6 +932,13 @@ export default async function OrderPaymentPage(props: PageProps) {
                   <span className="font-bold text-zinc-500">رقم الطلب</span>
                   <span dir="ltr" className="font-black text-zinc-950">
                     #{orderNo}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between gap-4">
+                  <span className="font-bold text-zinc-500">حالة الرابط</span>
+                  <span className="font-black text-zinc-950">
+                    {sessionStatusLabel(session.status)}
                   </span>
                 </div>
 
@@ -983,16 +1005,12 @@ export default async function OrderPaymentPage(props: PageProps) {
                 </p>
 
                 <p dir="ltr" className="mt-2 text-3xl font-black">
-                  {money(paymentState.amountDue, paymentState.currency)}
+                  {money(effectiveAmountDue, paymentState.currency)}
                 </p>
               </div>
             </section>
 
-            <OrderItemsMini
-              items={items}
-              images={imagesByProduct}
-              currency={paymentState.currency}
-            />
+            <OrderItemsMini items={items} currency={paymentState.currency} />
           </aside>
         </div>
       </section>
