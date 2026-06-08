@@ -5,6 +5,18 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
+import {
+  AlertTriangle,
+  CreditCard,
+  Loader2,
+  Package,
+  ShieldCheck,
+  ShoppingCart,
+  Ticket,
+} from "lucide-react";
+
+import CheckoutHeader from "../_components/CheckoutHeader";
+import CheckoutUiLock from "../_components/CheckoutUiLock";
 
 import { getOrdersDb } from "@/data/db/orders-db.server";
 import { getStoreDb } from "@/data/db/store-db.server";
@@ -45,11 +57,37 @@ type OrderItemRow = {
   total_price?: number | string | null;
   selected_options?: any;
   selected_option_value_ids?: any;
+  image_url?: string | null;
+};
+
+type ProductMediaRow = {
+  product_id?: string | null;
+  original_url?: string | null;
+  thumbnail_url?: string | null;
+  url?: string | null;
+  is_default?: boolean | null;
+  is_primary?: boolean | null;
+  sort_order?: number | string | null;
+  media_kind?: string | null;
+};
+
+type PaymentSessionRow = {
+  id: string;
+  store_id: string;
+  order_id: string;
+  purpose?: string | null;
+  amount_due?: number | string | null;
+  currency?: string | null;
+  status?: string | null;
+  expires_at?: string | null;
+  paid_at?: string | null;
+  metadata?: any;
+  created_at?: string | null;
 };
 
 export async function generateMetadata(): Promise<Metadata> {
   return {
-    title: "دفع الطلب",
+    title: "إتمام الدفع",
     robots: {
       index: false,
       follow: false,
@@ -161,7 +199,7 @@ function sessionStatusLabel(value: unknown) {
 function providerLabel(code: unknown) {
   const value = s(code).toLowerCase();
 
-  if (!value) return "مزود دفع";
+  if (!value) return "دفع إلكتروني";
   if (value.includes("tamara")) return "تمارا";
   if (value.includes("tabby")) return "تابي";
   if (value.includes("moyasar")) return "ميسّر";
@@ -299,6 +337,91 @@ function resolveEffectiveAmountDue(args: {
   return calculatedAmount;
 }
 
+function getLineTotal(item: OrderItemRow) {
+  const direct = n(item.total_price);
+
+  if (direct > 0) return round2(direct);
+
+  return round2(n(item.unit_price) * Math.max(1, Math.floor(n(item.qty) || 1)));
+}
+
+function getItemCount(items: OrderItemRow[]) {
+  return items.reduce(
+    (acc, item) => acc + Math.max(1, Math.floor(n(item.qty) || 1)),
+    0,
+  );
+}
+
+function getItemCountText(count: number) {
+  if (count === 1) return "منتج واحد";
+  if (count === 2) return "منتجان";
+  return `${count} منتجات`;
+}
+
+function mediaScore(row: ProductMediaRow) {
+  const primary = row.is_default || row.is_primary ? 0 : 1000;
+  return primary + n(row.sort_order);
+}
+
+function pickMediaUrl(rows: ProductMediaRow[]) {
+  const sorted = rows
+    .filter((row) => {
+      const kind = s(row.media_kind);
+      if (!kind) return true;
+      return kind === "image";
+    })
+    .slice()
+    .sort((a, b) => mediaScore(a) - mediaScore(b));
+
+  const row = sorted[0];
+
+  return s(row?.thumbnail_url) || s(row?.original_url) || s(row?.url) || "";
+}
+
+async function loadImageMap(args: {
+  storeDb: any;
+  storeId: string;
+  items: OrderItemRow[];
+}) {
+  const productIds = Array.from(
+    new Set(args.items.map((item) => s(item.product_id)).filter(Boolean)),
+  );
+
+  const imageMap = new Map<string, string>();
+
+  if (!productIds.length) return imageMap;
+
+  const mediaR = await args.storeDb
+    .from("product_media")
+    .select(
+      "product_id,original_url,thumbnail_url,url,is_default,is_primary,sort_order,media_kind",
+    )
+    .eq("store_id", args.storeId)
+    .in("product_id", productIds);
+
+  if (mediaR.error || !Array.isArray(mediaR.data)) {
+    return imageMap;
+  }
+
+  const grouped = new Map<string, ProductMediaRow[]>();
+
+  for (const row of mediaR.data as ProductMediaRow[]) {
+    const productId = s(row.product_id);
+    if (!productId) continue;
+
+    const list = grouped.get(productId) ?? [];
+    list.push(row);
+    grouped.set(productId, list);
+  }
+
+  for (const [productId, rows] of grouped.entries()) {
+    const image = pickMediaUrl(rows);
+    if (image) imageMap.set(productId, image);
+  }
+
+  return imageMap;
+}
+
 function ErrorState({
   title,
   message,
@@ -309,30 +432,35 @@ function ErrorState({
   storeName: string;
 }) {
   return (
-    <main dir="rtl" className="min-h-screen bg-zinc-50 text-zinc-950">
-      <section className="mx-auto flex min-h-screen w-full max-w-3xl items-center justify-center px-4 py-10">
-        <div className="w-full rounded-[28px] border border-zinc-200 bg-white p-8 text-center shadow-sm">
-          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-950 text-xl font-black text-white">
-            !
+    <>
+      <CheckoutHeader storeName={storeName} logoUrl={null} />
+      <CheckoutUiLock />
+
+      <main className="co-page">
+        <section className="co-container co-unavailable-wrap">
+          <div className="co-empty-card">
+            <div className="co-empty-card__head">
+              <div className="co-eyebrow">إتمام الدفع</div>
+              <h1>{title}</h1>
+            </div>
+
+            <div className="co-empty-card__body">
+              <div className="co-alert co-alert--warning">{message}</div>
+
+              <div className="co-actions-row">
+                <Link href="/" className="co-btn co-btn--dark">
+                  العودة للمتجر
+                </Link>
+              </div>
+            </div>
           </div>
+        </section>
+      </main>
 
-          <p className="mb-2 text-sm font-bold text-zinc-500">{storeName}</p>
-
-          <h1 className="text-2xl font-black text-zinc-950">{title}</h1>
-
-          <p className="mx-auto mt-3 max-w-xl text-sm leading-7 text-zinc-500">
-            {message}
-          </p>
-
-          <Link
-            href="/"
-            className="mt-7 inline-flex h-11 items-center justify-center rounded-2xl bg-zinc-950 px-6 text-sm font-black text-white"
-          >
-            العودة للمتجر
-          </Link>
-        </div>
-      </section>
-    </main>
+      <footer className="co-footer">
+        دفع آمن ومشفّر — راجع بياناتك قبل تأكيد الدفع.
+      </footer>
+    </>
   );
 }
 
@@ -343,123 +471,252 @@ function StatusPill({
   tone: "ok" | "warn" | "neutral" | "danger";
   children: ReactNode;
 }) {
-  const classes =
+  const className =
     tone === "ok"
-      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+      ? "co-pay-session-pill co-pay-session-pill--ok"
       : tone === "warn"
-        ? "border-amber-200 bg-amber-50 text-amber-700"
+        ? "co-pay-session-pill co-pay-session-pill--warn"
         : tone === "danger"
-          ? "border-rose-200 bg-rose-50 text-rose-700"
-          : "border-zinc-200 bg-zinc-50 text-zinc-600";
+          ? "co-pay-session-pill co-pay-session-pill--danger"
+          : "co-pay-session-pill";
 
+  return <span className={className}>{children}</span>;
+}
+
+function PaymentMethodCard({
+  selected,
+  disabled,
+  title,
+  subtitle,
+  badge,
+  children,
+}: {
+  selected?: boolean;
+  disabled?: boolean;
+  title: string;
+  subtitle?: string;
+  badge: string;
+  children?: ReactNode;
+}) {
   return (
-    <span
+    <div
       className={[
-        "inline-flex h-8 items-center rounded-full border px-3 text-xs font-black",
-        classes,
-      ].join(" ")}
+        "co-payment-option",
+        selected ? "is-selected" : "",
+        disabled ? "is-disabled" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      data-selected={selected ? "true" : "false"}
+      aria-disabled={disabled ? "true" : "false"}
     >
-      {children}
-    </span>
+      <span className="co-payment-radio" aria-hidden="true">
+        {selected ? "✓" : ""}
+      </span>
+
+      <div className="co-payment-main">
+        <div className="co-payment-title">
+          <strong>{title}</strong>
+
+          <div className="co-payment-badges">
+            <em>{badge}</em>
+            {selected ? <span>محدد</span> : null}
+          </div>
+        </div>
+
+        {subtitle ? <p>{subtitle}</p> : null}
+
+        {children}
+      </div>
+    </div>
   );
 }
 
-function BankAccountCard({ bank }: { bank: BankAccount }) {
+function BankDetails({ bank }: { bank: BankAccount }) {
   const bankName = s(bank.bank_name) || "حساب بنكي";
   const holder = s(bank.account_holder) || "اسم المستفيد غير محدد";
   const iban = s(bank.iban) || "IBAN غير محدد";
 
   return (
-    <div className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h3 className="text-base font-black text-zinc-950">{bankName}</h3>
-          <p className="mt-1 text-sm font-semibold text-zinc-500">{holder}</p>
-        </div>
+    <div className="co-payment-note co-payment-note--bank">
+      <strong>بيانات التحويل البنكي</strong>
 
-        {bank.is_primary ? (
-          <span className="rounded-full bg-[#faf4e1] px-3 py-1 text-xs font-black text-[#8a641f]">
-            أساسي
-          </span>
-        ) : null}
-      </div>
-
-      <div className="mt-4 rounded-2xl border border-dashed border-zinc-300 bg-zinc-50 p-4">
-        <p className="mb-1 text-xs font-bold text-zinc-500">IBAN</p>
-        <p
-          dir="ltr"
-          className="break-all text-left text-sm font-black text-zinc-950"
-        >
-          {iban}
-        </p>
-      </div>
-
-      <p className="mt-3 text-xs leading-6 text-zinc-500">
-        بعد التحويل، أرسل صورة الإيصال لخدمة العملاء مع رقم الطلب ليتم اعتماد
-        الدفع.
+      <p>
+        {bankName} — {holder}
+        <br />
+        <span dir="ltr">{iban}</span>
       </p>
+
+      <small>
+        بعد التحويل أرسل صورة الإيصال لخدمة العملاء مع رقم الطلب حتى يتم اعتماد
+        الدفع.
+      </small>
     </div>
   );
 }
 
-function OrderItemsMini({
+function CheckoutTokenSummary({
+  orderNo,
   items,
+  imageMap,
   currency,
+  effectiveAmountDue,
+  paymentState,
 }: {
+  orderNo: string;
   items: OrderItemRow[];
+  imageMap: Map<string, string>;
   currency: string;
+  effectiveAmountDue: number;
+  paymentState: ReturnType<typeof calculatePaymentState>;
 }) {
-  if (!items.length) return null;
+  const itemCount = getItemCount(items);
+  const itemCountText = getItemCountText(itemCount);
 
   return (
-    <section className="rounded-[28px] border border-zinc-200 bg-white p-5 shadow-sm">
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-black text-zinc-950">منتجات الطلب</h2>
-        <span className="text-xs font-bold text-zinc-500">
-          {items.length} منتج
-        </span>
+    <section className="co-summary-wrapper">
+      <div className="co-summary">
+        <div className="co-summary__main">
+          <div className="co-summary__right">
+            <span className="co-summary__icon">
+              <ShoppingCart size={22} />
+            </span>
+
+            <div className="co-summary__title">
+              <h1>إجمالي الطلب</h1>
+              <p>
+                {itemCountText}
+                <span>طلب #{orderNo}</span>
+              </p>
+            </div>
+
+            <div className="co-summary__thumbs" aria-hidden>
+              {items.slice(0, 3).map((item, index) => {
+                const image =
+                  imageMap.get(s(item.product_id)) || s(item.image_url) || "";
+
+                return (
+                  <span key={s(item.id) || `${s(item.product_id)}-${index}`}>
+                    {image ? (
+                      <img src={image} alt="" />
+                    ) : (
+                      <Package size={15} />
+                    )}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="co-summary__left">
+            <strong dir="ltr">{money(effectiveAmountDue, currency)}</strong>
+            <span className="co-coupon-link is-applied">
+              مبلغ مطلوب على نفس الطلب
+            </span>
+          </div>
+        </div>
       </div>
 
-      <div className="space-y-3">
-        {items.map((item, index) => {
-          const options = selectedOptionsText(item.selected_options);
+      <div className="co-summary__toggle-bg">
+        <div className="co-summary__toggle">
+          <details className="co-token-details">
+            <summary className="co-summary__details">تفاصيل الطلب</summary>
 
-          return (
-            <div
-              key={s(item.id) || `${s(item.product_id)}-${s(item.sku)}-${index}`}
-              className="rounded-3xl border border-zinc-100 bg-zinc-50 p-4"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="line-clamp-1 text-sm font-black text-zinc-950">
-                    {s(item.name) || "منتج"}
+            <div className="co-token-details__panel">
+              <section className="co-drawer-section">
+                <h3>المنتجات</h3>
+
+                {items.length > 0 ? (
+                  <div className="co-summary-items">
+                    {items.map((item, index) => {
+                      const qty = Math.max(1, Math.floor(n(item.qty) || 1));
+                      const image =
+                        imageMap.get(s(item.product_id)) ||
+                        s(item.image_url) ||
+                        "";
+
+                      return (
+                        <div
+                          key={
+                            s(item.id) ||
+                            `${s(item.product_id)}-${s(item.sku)}-${index}`
+                          }
+                          className="co-summary-item"
+                        >
+                          <div className="co-summary-item__image">
+                            {image ? (
+                              <img src={image} alt={s(item.name) || "منتج"} />
+                            ) : (
+                              <Package size={18} />
+                            )}
+
+                            <span>{qty}</span>
+                          </div>
+
+                          <div className="co-summary-item__info">
+                            <strong>{s(item.name) || "منتج"}</strong>
+                            <p>{selectedOptionsText(item.selected_options)}</p>
+                          </div>
+
+                          <div dir="ltr" className="co-summary-item__price">
+                            {money(getLineTotal(item), s(item.currency) || currency)}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="co-empty-small">لا توجد منتجات في الملخص</div>
+                )}
+              </section>
+
+              <section className="co-drawer-section">
+                <h3>ملخص الدفع</h3>
+
+                <div className="co-totals">
+                  <div className="co-total-row">
+                    <span>إجمالي الطلب الحالي</span>
+                    <strong dir="ltr">
+                      {money(paymentState.currentTotal, currency)}
+                    </strong>
                   </div>
 
-                  {options ? (
-                    <div className="mt-1 line-clamp-1 text-xs font-semibold text-zinc-500">
-                      {options}
-                    </div>
-                  ) : s(item.sku) ? (
-                    <div className="mt-1 text-xs font-semibold text-zinc-500">
-                      SKU: {s(item.sku)}
+                  {paymentState.paidReference > 0 ? (
+                    <div className="co-total-row">
+                      <span>المدفوع سابقًا</span>
+                      <strong dir="ltr">
+                        {money(paymentState.paidReference, currency)}
+                      </strong>
                     </div>
                   ) : null}
+
+                  {paymentState.walletRefunded > 0 ? (
+                    <div className="co-total-row">
+                      <span>إرجاع للمحفظة</span>
+                      <strong dir="ltr">
+                        {money(paymentState.walletRefunded, currency)}
+                      </strong>
+                    </div>
+                  ) : null}
+
+                  {paymentState.walletUsed > 0 ? (
+                    <div className="co-total-row">
+                      <span>خصم من المحفظة</span>
+                      <strong dir="ltr">
+                        {money(paymentState.walletUsed, currency)}
+                      </strong>
+                    </div>
+                  ) : null}
+
+                  <div className="co-total-line">
+                    <span>المبلغ المطلوب</span>
+                    <strong dir="ltr">{money(effectiveAmountDue, currency)}</strong>
+                  </div>
                 </div>
-
-                <span className="shrink-0 text-xs font-bold text-zinc-500">
-                  × {n(item.qty) || 1}
-                </span>
-              </div>
-
-              <div
-                dir="ltr"
-                className="mt-3 text-left text-sm font-black text-zinc-950"
-              >
-                {money(item.total_price, s(item.currency) || currency)}
-              </div>
+              </section>
             </div>
-          );
-        })}
+          </details>
+        </div>
       </div>
     </section>
   );
@@ -521,7 +778,7 @@ export default async function CheckoutSessionPage(props: PageProps) {
     );
   }
 
-  const session = sessionR.data;
+  const session = sessionR.data as PaymentSessionRow;
   const sessionStatus = s(session.status).toLowerCase();
 
   if (sessionStatus === "expired") {
@@ -587,6 +844,7 @@ export default async function CheckoutSessionPage(props: PageProps) {
   const order = orderR.data;
   const paymentState = calculatePaymentState(order);
   const orderNo = orderDisplayNo(order);
+  const currency = s(session.currency) || paymentState.currency || "SAR";
 
   const effectiveAmountDue =
     sessionStatus === "paid"
@@ -647,76 +905,58 @@ export default async function CheckoutSessionPage(props: PageProps) {
   const providers: ProviderMethod[] =
     !providersR.error && Array.isArray(providersR.data) ? providersR.data : [];
 
-  const hasAmountDue = effectiveAmountDue > 0;
+  const imageMap = await loadImageMap({
+    storeDb,
+    storeId: ctx.store.id,
+    items,
+  });
+
+  const primaryBank = banks.find((bank) => bank.is_primary) || banks[0] || null;
+  const firstProvider = providers[0] || null;
+
+  const sessionPaid = sessionStatus === "paid";
+  const hasAmountDue = effectiveAmountDue > 0 && !sessionPaid;
   const hasRefund = paymentState.kind === "refund_due";
-  const isSessionPaid = sessionStatus === "paid";
-  const isSettled = paymentState.kind === "settled" || isSessionPaid;
 
   const pageTitle =
-    isSessionPaid || isSettled
+    sessionPaid || (!hasAmountDue && !hasRefund)
       ? "تمت تسوية الطلب"
       : paymentState.kind === "difference_due"
         ? "دفع فرق الطلب"
         : paymentState.kind === "unpaid_order"
           ? "إكمال دفع الطلب"
-          : hasRefund
-            ? "يوجد مبلغ مستحق للعميل"
-            : "دفع الطلب";
+          : "إتمام الدفع";
 
   return (
-    <main dir="rtl" className="min-h-screen bg-[#fafafa] text-zinc-950">
-      <section className="mx-auto w-full max-w-6xl px-4 py-6 sm:py-10">
-        <header className="mb-6 flex items-center justify-between gap-4 rounded-[28px] border border-zinc-200 bg-white p-4 shadow-sm">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50">
-              {storeLogo ? (
-                <img
-                  src={storeLogo}
-                  alt={storeName}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <span className="text-sm font-black text-zinc-400">
-                  {storeName.slice(0, 1)}
-                </span>
-              )}
-            </div>
+    <>
+      <CheckoutHeader storeName={storeName} logoUrl={storeLogo} />
+      <CheckoutUiLock />
 
-            <div className="min-w-0">
-              <p className="truncate text-sm font-bold text-zinc-500">
-                {storeName}
-              </p>
-              <h1 className="truncate text-lg font-black text-zinc-950 sm:text-2xl">
-                {pageTitle}
-              </h1>
-            </div>
-          </div>
+      <main className="co-page">
+        <div className="co-container">
+          <CheckoutTokenSummary
+            orderNo={orderNo}
+            items={items}
+            imageMap={imageMap}
+            currency={currency}
+            effectiveAmountDue={effectiveAmountDue}
+            paymentState={paymentState}
+          />
 
-          <Link
-            href="/"
-            className="hidden h-10 items-center justify-center rounded-2xl border border-zinc-200 px-4 text-sm font-black text-zinc-700 transition hover:border-zinc-950 sm:inline-flex"
-          >
-            العودة للمتجر
-          </Link>
-        </header>
-
-        <div className="grid gap-5 lg:grid-cols-[1.05fr_0.95fr]">
-          <div className="space-y-5">
-            <section className="overflow-hidden rounded-[32px] border border-zinc-200 bg-white shadow-sm">
-              <div className="bg-gradient-to-l from-[#ecfaf5] via-white to-[#faf4e1] p-6">
-                <div className="flex flex-wrap items-center justify-between gap-3">
+          <section className="co-checkout-area">
+            <section className="co-flow" data-active-step="payment">
+              <div className="co-checkout-card">
+                <div className="co-token-payment-head">
                   <div>
-                    <p className="text-sm font-black text-zinc-500">طلب رقم</p>
-
-                    <h2
-                      dir="ltr"
-                      className="mt-1 text-3xl font-black text-zinc-950"
-                    >
-                      #{orderNo}
-                    </h2>
+                    <div className="co-eyebrow">إتمام الدفع</div>
+                    <h2>{pageTitle}</h2>
+                    <p>
+                      هذا الرابط مخصص لدفع مبلغ مرتبط بطلب موجود، ولا ينشئ طلبًا
+                      جديدًا.
+                    </p>
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
+                  <div className="co-token-payment-head__badges">
                     <StatusPill tone={hasAmountDue ? "warn" : "ok"}>
                       {sessionStatusLabel(session.status)}
                     </StatusPill>
@@ -730,290 +970,118 @@ export default async function CheckoutSessionPage(props: PageProps) {
                     </StatusPill>
                   </div>
                 </div>
-              </div>
 
-              <div className="grid gap-3 p-5 sm:grid-cols-2">
-                <div className="rounded-3xl border border-zinc-100 bg-zinc-50 p-4">
-                  <p className="text-xs font-bold text-zinc-500">
-                    إجمالي الطلب الحالي
-                  </p>
-                  <p
-                    dir="ltr"
-                    className="mt-2 text-xl font-black text-zinc-950"
-                  >
-                    {money(paymentState.currentTotal, paymentState.currency)}
-                  </p>
+                <div className="co-token-amount-card">
+                  <span>المبلغ المطلوب دفعه الآن</span>
+                  <strong dir="ltr">{money(effectiveAmountDue, currency)}</strong>
                 </div>
 
-                {paymentState.paidReference > 0 ? (
-                  <div className="rounded-3xl border border-zinc-100 bg-zinc-50 p-4">
-                    <p className="text-xs font-bold text-zinc-500">
-                      المدفوع سابقًا
-                    </p>
-                    <p
-                      dir="ltr"
-                      className="mt-2 text-xl font-black text-zinc-950"
-                    >
-                      {money(paymentState.paidReference, paymentState.currency)}
-                    </p>
+                {!hasAmountDue && hasRefund ? (
+                  <div className="co-alert co-alert--warning">
+                    لا يوجد مبلغ مطلوب دفعه من العميل. يوجد فرق لصالح العميل
+                    تتم تسويته من لوحة المتجر.
                   </div>
                 ) : null}
 
-                {paymentState.walletRefunded > 0 ? (
-                  <div className="rounded-3xl border border-zinc-100 bg-zinc-50 p-4">
-                    <p className="text-xs font-bold text-zinc-500">
-                      تم إرجاعه للمحفظة
-                    </p>
-                    <p
-                      dir="ltr"
-                      className="mt-2 text-xl font-black text-zinc-950"
-                    >
-                      {money(paymentState.walletRefunded, paymentState.currency)}
-                    </p>
+                {!hasAmountDue && !hasRefund ? (
+                  <div className="co-alert co-alert--success">
+                    تمت تسوية هذا الطلب ماليًا ولا يوجد مبلغ متبقي حاليًا.
                   </div>
                 ) : null}
 
-                {paymentState.walletUsed > 0 ? (
-                  <div className="rounded-3xl border border-zinc-100 bg-zinc-50 p-4">
-                    <p className="text-xs font-bold text-zinc-500">
-                      تم استخدامه من المحفظة
-                    </p>
-                    <p
-                      dir="ltr"
-                      className="mt-2 text-xl font-black text-zinc-950"
-                    >
-                      {money(paymentState.walletUsed, paymentState.currency)}
-                    </p>
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="border-t border-zinc-100 p-5">
                 {hasAmountDue ? (
-                  <div className="rounded-[28px] border border-amber-200 bg-amber-50 p-5">
-                    <p className="text-sm font-black text-amber-700">
-                      المبلغ المطلوب دفعه الآن
-                    </p>
+                  <>
+                    <div className="co-step-shell is-active">
+                      <div className="co-step-shell__head">
+                        <span className="co-step-shell__icon">
+                          <CreditCard size={18} />
+                        </span>
 
-                    <p
-                      dir="ltr"
-                      className="mt-2 text-4xl font-black tracking-tight text-zinc-950"
-                    >
-                      {money(effectiveAmountDue, paymentState.currency)}
-                    </p>
-
-                    <p className="mt-3 text-sm leading-7 text-amber-800">
-                      هذا المبلغ مرتبط بنفس الطلب ولا ينشئ طلبًا جديدًا.
-                    </p>
-                  </div>
-                ) : hasRefund ? (
-                  <div className="rounded-[28px] border border-emerald-200 bg-emerald-50 p-5">
-                    <p className="text-sm font-black text-emerald-700">
-                      يوجد مبلغ مستحق إرجاعه
-                    </p>
-
-                    <p
-                      dir="ltr"
-                      className="mt-2 text-4xl font-black tracking-tight text-zinc-950"
-                    >
-                      {money(paymentState.refundable, paymentState.currency)}
-                    </p>
-
-                    <p className="mt-3 text-sm leading-7 text-emerald-800">
-                      لا يوجد مبلغ مطلوب دفعه من العميل. يوجد فرق لصالح العميل.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="rounded-[28px] border border-emerald-200 bg-emerald-50 p-5">
-                    <p className="text-lg font-black text-emerald-700">
-                      تمت تسوية الطلب ماليًا
-                    </p>
-
-                    <p className="mt-2 text-sm leading-7 text-emerald-800">
-                      لا يوجد مبلغ متبقي على هذا الطلب حاليًا.
-                    </p>
-                  </div>
-                )}
-              </div>
-            </section>
-
-            {hasAmountDue ? (
-              <section className="rounded-[32px] border border-zinc-200 bg-white p-5 shadow-sm">
-                <div className="mb-4">
-                  <h2 className="text-lg font-black text-zinc-950">
-                    طريقة الدفع
-                  </h2>
-                  <p className="mt-1 text-sm leading-7 text-zinc-500">
-                    استخدم إحدى الطرق التالية لتسوية المبلغ المتبقي على نفس
-                    الطلب.
-                  </p>
-                </div>
-
-                <div className="space-y-4">
-                  {providers.length > 0 ? (
-                    <div className="rounded-3xl border border-zinc-200 bg-zinc-50 p-5">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <h3 className="text-base font-black text-zinc-950">
-                            الدفع الإلكتروني
-                          </h3>
-
-                          <p className="mt-1 text-sm leading-7 text-zinc-500">
-                            مزودات الدفع المفعلة في المتجر:
-                          </p>
+                        <div className="co-step-shell__title">
+                          <h3>الدفع</h3>
+                          <p>اختر طريقة الدفع المناسبة</p>
                         </div>
 
-                        <StatusPill tone="neutral">قيد الربط</StatusPill>
+                        <span className="co-step-shell__chip">الحالية</span>
                       </div>
 
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {providers.map((provider) => (
-                          <span
-                            key={s(provider.id) || s(provider.provider_code)}
-                            className="rounded-full border border-zinc-200 bg-white px-3 py-2 text-xs font-black text-zinc-700"
+                      <div className="co-payment-list">
+                        {primaryBank ? (
+                          <PaymentMethodCard
+                            selected
+                            title="تحويل بنكي"
+                            subtitle="حوّل المبلغ إلى الحساب البنكي ثم أرسل الإيصال للمتجر"
+                            badge="تحويل"
                           >
-                            {providerLabel(provider.provider_code)}
-                          </span>
-                        ))}
+                            <small>
+                              {s(primaryBank.bank_name) || "حساب بنكي"} —{" "}
+                              {s(primaryBank.iban)
+                                ? `${s(primaryBank.iban).slice(0, 6)}…${s(
+                                    primaryBank.iban,
+                                  ).slice(-4)}`
+                                : "IBAN"}
+                            </small>
+                          </PaymentMethodCard>
+                        ) : null}
+
+                        {firstProvider ? (
+                          <PaymentMethodCard
+                            disabled
+                            title={providerLabel(firstProvider.provider_code)}
+                            subtitle="الدفع الإلكتروني سيتم ربطه بجلسة الدفع في المرحلة التالية"
+                            badge="إلكتروني"
+                          >
+                            <small className="co-inline-loader">
+                              <Loader2 size={13} className="co-spin" />
+                              قيد الربط
+                            </small>
+                          </PaymentMethodCard>
+                        ) : null}
+
+                        {!primaryBank && !firstProvider ? (
+                          <div className="co-empty-small">
+                            <strong>لا توجد طرق دفع متاحة</strong>
+                            <span>تواصل مع المتجر لإكمال الدفع.</span>
+                          </div>
+                        ) : null}
                       </div>
+
+                      {primaryBank ? <BankDetails bank={primaryBank} /> : null}
+
+                      {firstProvider ? (
+                        <div className="co-payment-note">
+                          <strong>بوابة دفع آمنة</strong>
+                          <p>
+                            في المرحلة التالية سيتم توجيه العميل لبوابة الدفع
+                            الإلكترونية للمبلغ المتبقي فقط.
+                          </p>
+                        </div>
+                      ) : null}
 
                       <button
                         type="button"
+                        className="co-payment-final-btn"
                         disabled
-                        className="mt-5 flex h-12 w-full cursor-not-allowed items-center justify-center rounded-2xl bg-zinc-200 px-5 text-sm font-black text-zinc-500"
                       >
-                        زر الدفع الإلكتروني يتم ربطه في المرحلة التالية
+                        تأكيد الدفع الإلكتروني يتم ربطه في المرحلة التالية
                       </button>
                     </div>
-                  ) : null}
 
-                  {banks.length > 0 ? (
-                    <div>
-                      <div className="mb-3 flex items-center justify-between gap-3">
-                        <h3 className="text-base font-black text-zinc-950">
-                          التحويل البنكي
-                        </h3>
-
-                        <StatusPill tone="warn">متاح الآن</StatusPill>
-                      </div>
-
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        {banks.map((bank, index) => (
-                          <BankAccountCard
-                            key={s(bank.id) || `${s(bank.iban)}-${index}`}
-                            bank={bank}
-                          />
-                        ))}
-                      </div>
+                    <div className="co-secure-note">
+                      <ShieldCheck size={15} />
+                      دفع آمن ومشفّر
                     </div>
-                  ) : null}
-
-                  {!providers.length && !banks.length ? (
-                    <div className="rounded-3xl border border-rose-200 bg-rose-50 p-5">
-                      <h3 className="text-base font-black text-rose-700">
-                        لا توجد طريقة دفع متاحة
-                      </h3>
-                      <p className="mt-2 text-sm leading-7 text-rose-700">
-                        لا توجد حسابات بنكية أو مزودات دفع مفعلة لهذا المتجر.
-                      </p>
-                    </div>
-                  ) : null}
-                </div>
-              </section>
-            ) : null}
-          </div>
-
-          <aside className="space-y-5">
-            <section className="rounded-[28px] border border-zinc-200 bg-white p-5 shadow-sm">
-              <h2 className="text-lg font-black text-zinc-950">ملخص الدفع</h2>
-
-              <div className="mt-4 space-y-3 text-sm">
-                <div className="flex items-center justify-between gap-4">
-                  <span className="font-bold text-zinc-500">رقم الطلب</span>
-                  <span dir="ltr" className="font-black text-zinc-950">
-                    #{orderNo}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between gap-4">
-                  <span className="font-bold text-zinc-500">حالة الرابط</span>
-                  <span className="font-black text-zinc-950">
-                    {sessionStatusLabel(session.status)}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between gap-4">
-                  <span className="font-bold text-zinc-500">حالة الدفع</span>
-                  <span className="font-black text-zinc-950">
-                    {paymentStatusLabel(order.payment_status)}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between gap-4">
-                  <span className="font-bold text-zinc-500">طريقة الدفع</span>
-                  <span className="font-black text-zinc-950">
-                    {paymentMethodLabel(order.payment_method)}
-                  </span>
-                </div>
-
-                <div className="my-2 border-t border-zinc-100" />
-
-                <div className="flex items-center justify-between gap-4">
-                  <span className="font-bold text-zinc-500">إجمالي الطلب</span>
-                  <span dir="ltr" className="font-black text-zinc-950">
-                    {money(paymentState.currentTotal, paymentState.currency)}
-                  </span>
-                </div>
-
-                {paymentState.paidReference > 0 ? (
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="font-bold text-zinc-500">
-                      المدفوع سابقًا
-                    </span>
-                    <span dir="ltr" className="font-black text-zinc-950">
-                      {money(paymentState.paidReference, paymentState.currency)}
-                    </span>
-                  </div>
+                  </>
                 ) : null}
-
-                {paymentState.walletRefunded > 0 ? (
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="font-bold text-zinc-500">
-                      إرجاع للمحفظة
-                    </span>
-                    <span dir="ltr" className="font-black text-zinc-950">
-                      {money(paymentState.walletRefunded, paymentState.currency)}
-                    </span>
-                  </div>
-                ) : null}
-
-                {paymentState.walletUsed > 0 ? (
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="font-bold text-zinc-500">
-                      خصم من المحفظة
-                    </span>
-                    <span dir="ltr" className="font-black text-zinc-950">
-                      {money(paymentState.walletUsed, paymentState.currency)}
-                    </span>
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="mt-5 rounded-3xl bg-zinc-950 p-5 text-white">
-                <p className="text-sm font-bold text-zinc-300">
-                  المبلغ المطلوب
-                </p>
-
-                <p dir="ltr" className="mt-2 text-3xl font-black">
-                  {money(effectiveAmountDue, paymentState.currency)}
-                </p>
               </div>
             </section>
-
-            <OrderItemsMini items={items} currency={paymentState.currency} />
-          </aside>
+          </section>
         </div>
-      </section>
-    </main>
+      </main>
+
+      <footer className="co-footer">
+        دفع آمن ومشفّر — راجع بياناتك قبل تأكيد الدفع.
+      </footer>
+    </>
   );
 }
