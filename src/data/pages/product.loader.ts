@@ -24,6 +24,11 @@ type MetaOptionValue = {
   id: string;
   name: string;
   isDefault?: boolean;
+  colorHex?: string | null;
+  color?: string | null;
+  imageUrl?: string | null;
+  image_url?: string | null;
+  image?: string | null;
 };
 
 type MetaOption = {
@@ -31,6 +36,8 @@ type MetaOption = {
   name: string;
   values?: MetaOptionValue[];
   featureType?: string;
+  display_type?: string;
+  displayType?: string;
 };
 
 type MetaVariantSelection = {
@@ -133,7 +140,9 @@ function mapMetaOptionsToDbShape(meta: any) {
       name: String(o.name),
       is_required: true,
       option_field_type: "radio",
-      display_type: (o.featureType ?? "text") as any,
+      display_type: (o.featureType ?? o.displayType ?? o.display_type ?? "text") as any,
+      displayType: (o.featureType ?? o.displayType ?? o.display_type ?? "text") as any,
+      featureType: (o.featureType ?? o.displayType ?? o.display_type ?? "text") as any,
       sort_order: idx,
       values: (Array.isArray(o.values) ? o.values : [])
         .filter((v) => v && v.id && v.name)
@@ -144,7 +153,23 @@ function mapMetaOptionsToDbShape(meta: any) {
           extra_price: 0,
           quantity: null,
           is_default: Boolean((v as any).isDefault ?? false),
-          image_url: null,
+          colorHex: (v as any).colorHex ?? null,
+          color: (v as any).color ?? (v as any).colorHex ?? null,
+          imageUrl:
+            (v as any).imageUrl ??
+            (v as any).image_url ??
+            (v as any).image ??
+            null,
+          image_url:
+            (v as any).image_url ??
+            (v as any).imageUrl ??
+            (v as any).image ??
+            null,
+          image:
+            (v as any).image ??
+            (v as any).imageUrl ??
+            (v as any).image_url ??
+            null,
           sort_order: vIdx,
         })),
     }));

@@ -50,7 +50,9 @@ export type ProductCardOptionValueVM = {
   value?: string;
   display_value?: string | null;
   displayValue?: string | null;
+  colorHex?: string | null;
   color?: string | null;
+  imageUrl?: string | null;
   image?: string | null;
   image_url?: string | null;
   quantity?: number | string | null;
@@ -74,6 +76,9 @@ export type ProductCardOptionVM = {
   id?: string;
   name?: string;
   label?: string;
+  featureType?: string | null;
+  displayType?: string | null;
+  display_type?: string | null;
   values?: ProductCardOptionValueVM[];
 };
 
@@ -1289,7 +1294,8 @@ function normalizeOptionValue(value: any): ProductCardOptionValueVM {
     value?.value,
   );
 
-  const image = firstText(value?.image, value?.image_url, value?.imageUrl);
+  const color = firstText(value?.colorHex, value?.color);
+  const image = firstText(value?.imageUrl, value?.image_url, value?.image);
 
   return {
     ...value,
@@ -1299,7 +1305,9 @@ function normalizeOptionValue(value: any): ProductCardOptionValueVM {
     value: firstText(value?.value, value?.display_value, value?.displayValue),
     display_value: value?.display_value ?? value?.displayValue ?? null,
     displayValue: value?.displayValue ?? value?.display_value ?? null,
-    color: value?.color ?? null,
+    colorHex: color || null,
+    color: color || null,
+    imageUrl: image || null,
     image: image || null,
     image_url: image || null,
     quantity: firstDefined(value?.quantity, value?.qty) ?? null,
@@ -1336,6 +1344,27 @@ function normalizeOptions(product: any): ProductCardOptionVM[] {
         id: s(option?.id) || undefined,
         name: s(option?.name) || s(option?.label) || undefined,
         label: s(option?.label) || s(option?.name) || undefined,
+        featureType:
+          firstText(
+            option?.featureType,
+            option?.feature_type,
+            option?.displayType,
+            option?.display_type,
+          ) || null,
+        displayType:
+          firstText(
+            option?.displayType,
+            option?.display_type,
+            option?.featureType,
+            option?.feature_type,
+          ) || null,
+        display_type:
+          firstText(
+            option?.display_type,
+            option?.displayType,
+            option?.featureType,
+            option?.feature_type,
+          ) || null,
         values,
       };
     });

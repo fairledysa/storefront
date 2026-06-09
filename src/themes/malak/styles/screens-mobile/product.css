@@ -314,6 +314,193 @@
   backdrop-filter: blur(10px);
 }
 
+.mk-mobile-gallery-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.94);
+  animation: mkMobileGalleryLightboxIn 180ms ease-out both;
+  contain: layout paint;
+}
+
+.mk-mobile-gallery-lightbox__backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border: 0;
+  background:
+    radial-gradient(circle at 50% 44%, rgba(255, 255, 255, 0.08), transparent 38%),
+    rgba(0, 0, 0, 0.92);
+  padding: 0;
+}
+
+.mk-mobile-gallery-lightbox__stage {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding:
+    calc(72px + env(safe-area-inset-top, 0px))
+    0
+    calc(88px + env(safe-area-inset-bottom, 0px));
+  touch-action: none;
+  user-select: none;
+  cursor: zoom-in;
+}
+
+.mk-mobile-gallery-lightbox__stage.is-zoomed {
+  cursor: grab;
+}
+
+.mk-mobile-gallery-lightbox__image {
+  width: 100vw;
+  height: 100%;
+  max-height: calc(100dvh - 156px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  display: block;
+  object-fit: contain;
+  object-position: center;
+  transform-origin: center center;
+  will-change: transform;
+  transition: transform 120ms ease-out;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
+
+.mk-mobile-gallery-lightbox__stage.is-zoomed
+  .mk-mobile-gallery-lightbox__image {
+  transition: none;
+}
+
+.mk-mobile-gallery-lightbox__close {
+  position: fixed;
+  top: calc(14px + env(safe-area-inset-top, 0px));
+  inset-inline-start: 14px;
+  z-index: 5;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  padding: 0;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.mk-mobile-gallery-lightbox__close:active {
+  transform: scale(0.94);
+}
+
+.mk-mobile-gallery-lightbox__counter {
+  position: fixed;
+  top: calc(19px + env(safe-area-inset-top, 0px));
+  left: 50%;
+  z-index: 5;
+  min-width: 64px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  padding: 0 13px;
+  font-size: 12px;
+  font-weight: 950;
+  line-height: 1;
+  transform: translateX(-50%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.mk-mobile-gallery-lightbox__nav {
+  position: fixed;
+  top: 50%;
+  z-index: 4;
+  width: 44px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.18);
+  color: #fff;
+  padding: 0;
+  font-size: 48px;
+  font-weight: 500;
+  line-height: 1;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.72);
+  transform: translateY(-50%);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.mk-mobile-gallery-lightbox__nav:active {
+  transform: translateY(-50%) scale(0.94);
+}
+
+.mk-mobile-gallery-lightbox__nav--prev {
+  inset-inline-end: 10px;
+}
+
+.mk-mobile-gallery-lightbox__nav--next {
+  inset-inline-start: 10px;
+}
+
+.mk-mobile-gallery-lightbox__dots {
+  position: fixed;
+  left: 50%;
+  bottom: calc(22px + env(safe-area-inset-bottom, 0px));
+  z-index: 5;
+  max-width: min(78vw, 320px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  overflow: hidden;
+  transform: translateX(-50%);
+}
+
+.mk-mobile-gallery-lightbox__dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.42);
+  padding: 0;
+  transition:
+    width 160ms ease,
+    background 160ms ease,
+    opacity 160ms ease;
+}
+
+.mk-mobile-gallery-lightbox__dot.is-active {
+  width: 22px;
+  background: #fff;
+}
+
+@keyframes mkMobileGalleryLightboxIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
 /* =========================================================
    Product Info Mobile Card
    ========================================================= */

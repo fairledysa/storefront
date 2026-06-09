@@ -104,6 +104,15 @@ function firstDefined(...values: any[]) {
   return undefined;
 }
 
+function firstText(...values: any[]) {
+  for (const value of values) {
+    const text = s(value);
+    if (text) return text;
+  }
+
+  return "";
+}
+
 function boolValue(value: any, fallback = false) {
   if (value === undefined || value === null || value === "") return fallback;
   if (typeof value === "boolean") return value;
@@ -221,6 +230,44 @@ function optionKind(opt: any): "single" | "multiple" {
   }
 
   return "single";
+}
+
+function optionDisplayType(opt: any): "text" | "color" | "image" {
+  const raw = String(
+    opt?.featureType ||
+      opt?.feature_type ||
+      opt?.displayType ||
+      opt?.display_type ||
+      "",
+  )
+    .trim()
+    .toLowerCase();
+
+  if (raw === "color" || raw === "colour" || raw === "swatch") {
+    return "color";
+  }
+
+  if (raw === "image" || raw === "thumbnail" || raw === "thumb") {
+    return "image";
+  }
+
+  return "text";
+}
+
+function readOptionColor(value: any) {
+  const text = firstText(value?.colorHex, value?.color);
+
+  if (!text) return "";
+
+  return /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(
+    text,
+  )
+    ? text
+    : "";
+}
+
+function readOptionImage(value: any) {
+  return firstText(value?.imageUrl, value?.image_url, value?.image);
 }
 
 function normalizeTagSlug(value: unknown) {
@@ -646,6 +693,7 @@ export default function ProductInfo({
           if (!optionId || !optionName || values.length === 0) return null;
 
           const kind = optionKind(opt);
+          const displayType = optionDisplayType(opt);
           const enhanced =
             kind === "multiple"
               ? productOptions.show_multipleOption
@@ -675,6 +723,9 @@ export default function ProductInfo({
 
                   const active = selectedSet.has(valueId);
                   const disabled = allowed ? !allowed.has(valueId) : false;
+                  const color = displayType === "color" ? readOptionColor(v) : "";
+                  const image = displayType === "image" ? readOptionImage(v) : "";
+                  const visualType = color ? "color" : image ? "image" : "text";
 
                   return (
                     <button
@@ -689,12 +740,32 @@ export default function ProductInfo({
                       }}
                       className={[
                         "mk-pinfo-option__btn",
+                        visualType === "color"
+                          ? "mk-pinfo-option__btn--color"
+                          : "",
+                        visualType === "image"
+                          ? "mk-pinfo-option__btn--image"
+                          : "",
                         active ? "is-active" : "",
                         disabled ? "is-disabled is-soldout" : "",
                       ]
                         .filter(Boolean)
                         .join(" ")}
                     >
+                      {visualType === "color" ? (
+                        <span
+                          className="mk-pinfo-option__swatch"
+                          style={{ backgroundColor: color }}
+                          aria-hidden="true"
+                        />
+                      ) : null}
+
+                      {visualType === "image" ? (
+                        <span className="mk-pinfo-option__image">
+                          <img src={image} alt="" loading="lazy" />
+                        </span>
+                      ) : null}
+
                       <span className="mk-pinfo-option__btnText">{label}</span>
 
                       {disabled ? (
