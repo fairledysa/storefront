@@ -70,6 +70,13 @@ export type CartItemEnriched = CartItemBase & {
   currencyDecimals?: number | null;
   decimal_digits?: number | null;
   decimalDigits?: number | null;
+
+  special_offer_discount?: number | null;
+  specialOfferDiscount?: number | null;
+  special_offer_adjustment?: CartSpecialOfferAdjustment | null;
+  specialOfferAdjustment?: CartSpecialOfferAdjustment | null;
+  special_offer_adjustments?: CartSpecialOfferAdjustment[] | null;
+  specialOfferAdjustments?: CartSpecialOfferAdjustment[] | null;
   
   product?: {
     id: string;
@@ -97,6 +104,16 @@ export type CartItemEnriched = CartItemBase & {
   variant_links?: VariantLink[];
 };
 
+export type CartSpecialOfferAdjustment = {
+  cartItemId: string;
+  productId: string;
+  discount: number;
+  label: string;
+  offerId: string;
+  offerTitle: string;
+  offerType: string;
+};
+
 export type CartSummaryMoney = {
   subtotal: number;
   discount: number;
@@ -116,6 +133,9 @@ export type CartSummaryMoney = {
   currencyDecimals?: number;
   decimal_digits?: number;
   decimalDigits?: number;
+
+  special_offer_line_adjustments?: CartSpecialOfferAdjustment[];
+  specialOfferLineAdjustments?: CartSpecialOfferAdjustment[];
 };
 
 export type CartCoupon = null | {

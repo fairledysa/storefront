@@ -33,6 +33,24 @@ type SaveOptions = {
   submitAfter?: boolean;
 };
 
+type BankTransferReceipt = {
+  url: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+};
+
+type BankTransferPayload = {
+  bankAccountId: string;
+  senderAccountName: string;
+  receiptUrl: string;
+  receiptFilename: string;
+  receiptMimeType: string;
+  receiptSizeBytes: number;
+};
+
+const BANK_RECEIPT_MIMES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+
 function s(x: any) {
   return String(x ?? "").trim();
 }
@@ -68,6 +86,10 @@ function refreshSummary() {
 
 function setSubmitEnabled(enabled: boolean) {
   dispatchCheckoutEvent("checkout:submitEnabled", { enabled });
+}
+
+function setBankTransferPayload(payload: BankTransferPayload | null) {
+  dispatchCheckoutEvent("checkout:bankTransferPayload", { payload });
 }
 
 function requestSubmitOrder() {
@@ -113,6 +135,37 @@ async function fetchPaymentOptionsFresh() {
   return Array.isArray(j?.options) ? (j.options as PaymentOption[]) : [];
 }
 
+async function uploadBankTransferReceipt(file: File) {
+  const form = new FormData();
+  form.append("kind", "product-attachment");
+  form.append("file", file);
+
+  const r = await fetch("/api/uploads/r2/put", {
+    method: "POST",
+    credentials: "same-origin",
+    body: form,
+  });
+
+  const j = await safeJson(r);
+
+  if (!r.ok || !j?.ok) {
+    throw new Error(j?.message || j?.message_ar || j?.error || "تعذر رفع إيصال التحويل.");
+  }
+
+  const url = s(j.publicUrl) || s(j.public_url);
+
+  if (!url) {
+    throw new Error("تم رفع الصورة لكن لم يصل رابط الإيصال.");
+  }
+
+  return {
+    url,
+    filename: s(j.fileName) || file.name,
+    mimeType: s(j.fileType) || file.type,
+    sizeBytes: Number(j.fileSize ?? file.size) || file.size,
+  } satisfies BankTransferReceipt;
+}
+
 export default function PaymentStep({
   isActive,
   isDone,
@@ -130,6 +183,10 @@ export default function PaymentStep({
   const [savingId, setSavingId] = useState("");
   const [submitSaving, setSubmitSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [senderAccountName, setSenderAccountName] = useState("");
+  const [receipt, setReceipt] = useState<BankTransferReceipt | null>(null);
+  const [receiptUploading, setReceiptUploading] = useState(false);
+  const [receiptError, setReceiptError] = useState("");
 
   const mountedRef = useRef(true);
   const loadSeqRef = useRef(0);
@@ -137,6 +194,45 @@ export default function PaymentStep({
   const saveAbortRef = useRef<AbortController | null>(null);
   const lastSyncedRef = useRef<string>(initialSyncedId);
   const lastPatchedRef = useRef("");
+  const receiptInputRef = useRef<HTMLInputElement | null>(null);
+
+  const selectedOption = useMemo(() => {
+    return options.find((m) => m.id === method) ?? null;
+  }, [method, options]);
+
+  const isBankTransferSelected = selectedOption?.type === "bank_transfer";
+  const bankAccountId = s(selectedOption?.bank_details?.id);
+  const bankTransferReady =
+    !isBankTransferSelected ||
+    Boolean(bankAccountId && s(senderAccountName) && receipt?.url);
+
+  const bankTransferPayload = useMemo<BankTransferPayload | null>(() => {
+    if (!isBankTransferSelected || !bankTransferReady || !receipt) return null;
+
+    return {
+      bankAccountId,
+      senderAccountName: s(senderAccountName),
+      receiptUrl: receipt.url,
+      receiptFilename: receipt.filename,
+      receiptMimeType: receipt.mimeType,
+      receiptSizeBytes: receipt.sizeBytes,
+    };
+  }, [
+    bankAccountId,
+    bankTransferReady,
+    isBankTransferSelected,
+    receipt,
+    senderAccountName,
+  ]);
+
+  function canSubmitPaymentOption(option?: PaymentOption | null) {
+    if (!option || option.disabled) return false;
+    if (option.type !== "bank_transfer") return true;
+
+    return Boolean(
+      s(option.bank_details?.id) && s(senderAccountName) && receipt?.url,
+    );
+  }
 
   async function loadOptions() {
     const seq = ++loadSeqRef.current;
@@ -177,7 +273,7 @@ export default function PaymentStep({
         const patchKey = paymentPatchKey(selected);
         lastPatchedRef.current = patchKey;
         patchPaymentSummary(selected);
-        setSubmitEnabled(true);
+        setSubmitEnabled(canSubmitPaymentOption(selected));
       } else {
         lastPatchedRef.current = "";
         clearPaymentSummaryPatch();
@@ -207,7 +303,7 @@ export default function PaymentStep({
 
     if (lastSyncedRef.current === nextId) {
       patchPaymentSummary(row);
-      setSubmitEnabled(true);
+      setSubmitEnabled(canSubmitPaymentOption(row));
       return { ok: true, summary: null } as ConfirmResult;
     }
 
@@ -239,6 +335,49 @@ export default function PaymentStep({
     return j as ConfirmResult;
   }
 
+  async function handleReceiptFile(file: File | null | undefined) {
+    if (!file || receiptUploading || submitSaving) return;
+
+    const mime = s(file.type).toLowerCase();
+
+    if (!BANK_RECEIPT_MIMES.has(mime)) {
+      setReceiptError("صيغة الإيصال غير مدعومة. الصيغ المسموحة: JPG أو PNG أو WEBP.");
+      return;
+    }
+
+    setReceiptUploading(true);
+    setReceiptError("");
+
+    try {
+      const nextReceipt = await uploadBankTransferReceipt(file);
+
+      if (!mountedRef.current) return;
+
+      setReceipt(nextReceipt);
+    } catch (e: any) {
+      if (!mountedRef.current) return;
+      setReceipt(null);
+      setReceiptError(e?.message || "تعذر رفع إيصال التحويل.");
+    } finally {
+      if (mountedRef.current) {
+        setReceiptUploading(false);
+      }
+
+      if (receiptInputRef.current) {
+        receiptInputRef.current.value = "";
+      }
+    }
+  }
+
+  function clearReceipt() {
+    setReceipt(null);
+    setReceiptError("");
+
+    if (receiptInputRef.current) {
+      receiptInputRef.current.value = "";
+    }
+  }
+
   function choosePayment(nextId: string) {
     if (isLocked || !isActive || loading || submitSaving) return;
 
@@ -256,7 +395,7 @@ export default function PaymentStep({
     lastPatchedRef.current = patchKey;
 
     patchPaymentSummary(row);
-    setSubmitEnabled(true);
+    setSubmitEnabled(canSubmitPaymentOption(row));
   }
 
   async function saveSelectedPayment(nextId: string, opts?: SaveOptions) {
@@ -283,7 +422,7 @@ export default function PaymentStep({
     lastPatchedRef.current = patchKey;
 
     patchPaymentSummary(row);
-    setSubmitEnabled(true);
+    setSubmitEnabled(canSubmitPaymentOption(row));
 
     try {
       const result = await persistPaymentMethod(nextId, ac.signal);
@@ -298,7 +437,7 @@ export default function PaymentStep({
       }
 
       await onConfirm(result);
-      setSubmitEnabled(true);
+      setSubmitEnabled(canSubmitPaymentOption(row));
 
       if (opts?.submitAfter) {
         window.setTimeout(() => {
@@ -344,13 +483,19 @@ export default function PaymentStep({
       return;
     }
 
+    if (selected.type === "bank_transfer" && !bankTransferReady) {
+      setErrorMsg("أكمل اسم صاحب الحساب وارفع إيصال التحويل قبل تأكيد الدفع.");
+      setSubmitEnabled(false);
+      return;
+    }
+
     setErrorMsg("");
 
     const patchKey = paymentPatchKey(selected);
     lastPatchedRef.current = patchKey;
 
     patchPaymentSummary(selected);
-    setSubmitEnabled(true);
+    setSubmitEnabled(canSubmitPaymentOption(selected));
 
     if (lastSyncedRef.current === method) {
       requestSubmitOrder();
@@ -394,6 +539,14 @@ export default function PaymentStep({
   }, [isLocked, isActive]);
 
   useEffect(() => {
+    setBankTransferPayload(bankTransferPayload);
+
+    return () => {
+      setBankTransferPayload(null);
+    };
+  }, [bankTransferPayload]);
+
+  useEffect(() => {
     if (isLocked || !isActive || loading) return;
 
     if (!method || !options.length) {
@@ -415,26 +568,32 @@ export default function PaymentStep({
       patchPaymentSummary(selected);
     }
 
-    setSubmitEnabled(true);
-  }, [isLocked, isActive, loading, method, options]);
+    setSubmitEnabled(canSubmitPaymentOption(selected));
+  }, [
+    isLocked,
+    isActive,
+    loading,
+    method,
+    options,
+    receipt?.url,
+    senderAccountName,
+  ]);
 
   const picked = useMemo(() => {
     const id = confirmedId ?? method;
     return options.find((m) => m.id === id);
   }, [confirmedId, method, options]);
 
-  const selectedOption = useMemo(() => {
-    return options.find((m) => m.id === method) ?? null;
-  }, [method, options]);
-
   const submitDisabled =
     isLocked ||
     !isActive ||
     loading ||
     submitSaving ||
+    receiptUploading ||
     !method ||
     !selectedOption ||
-    Boolean(selectedOption.disabled);
+    Boolean(selectedOption.disabled) ||
+    !bankTransferReady;
 
   if (isDone && !isActive) {
     return (
@@ -490,6 +649,90 @@ export default function PaymentStep({
         submitSaving={submitSaving}
         onSelect={(nextId) => choosePayment(nextId)}
       />
+
+      {isBankTransferSelected ? (
+        <div className="co-bank-proof">
+          <div className="co-bank-proof__head">
+            <strong>معلومات بعد التحويل</strong>
+            <p>
+              يجب إرفاق صورة من إيصال التحويل البنكي واسم الحساب الذي قام
+              بالتحويل حتى يتم قبول الطلب.
+            </p>
+          </div>
+
+          <label className="co-bank-proof__field">
+            <span>اسم صاحب الحساب الذي تم التحويل منه *</span>
+            <span>اسم صاحب الحساب المحوّل منه</span>
+            <input
+              value={senderAccountName}
+              onChange={(event) => {
+                setSenderAccountName(event.target.value);
+                setErrorMsg("");
+              }}
+              placeholder="أدخل الاسم"
+              disabled={submitSaving || receiptUploading}
+            />
+          </label>
+
+          <div className="co-bank-proof__upload">
+            <div>
+              <strong>الرجاء إرفاق صورة الإيصال</strong>
+              <p>JPG أو PNG أو WEBP</p>
+            </div>
+
+            <input
+              ref={receiptInputRef}
+              type="file"
+              accept="image/jpeg,image/jpg,image/png,image/webp"
+              onChange={(event) => {
+                void handleReceiptFile(event.target.files?.[0]);
+              }}
+              disabled={submitSaving || receiptUploading}
+            />
+
+            {receipt ? (
+              <div className="co-bank-proof__file">
+                <a href={receipt.url} target="_blank" rel="noreferrer">
+                  <img src={receipt.url} alt="" />
+                </a>
+                <div>
+                  <span>{receipt.filename}</span>
+                  <small>{Math.ceil(receipt.sizeBytes / 1024)} KB</small>
+                </div>
+                <button
+                  type="button"
+                  onClick={clearReceipt}
+                  disabled={submitSaving || receiptUploading}
+                >
+                  حذف
+                </button>
+              </div>
+            ) : null}
+
+            <button
+              type="button"
+              className="co-bank-proof__pick"
+              onClick={() => receiptInputRef.current?.click()}
+              disabled={submitSaving || receiptUploading}
+            >
+              {receiptUploading ? (
+                <>
+                  <Loader2 className="co-spin" size={14} />
+                  جاري الرفع...
+                </>
+              ) : receipt ? (
+                "تغيير الصورة"
+              ) : (
+                "رفع صورة الإيصال"
+              )}
+            </button>
+          </div>
+
+          {receiptError ? (
+            <div className="co-bank-proof__error">{receiptError}</div>
+          ) : null}
+        </div>
+      ) : null}
 
       {errorMsg && options.length > 0 ? (
         <div className="co-field-error">{errorMsg}</div>

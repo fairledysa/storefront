@@ -176,6 +176,13 @@ function isProviderPaymentMethod(method: string) {
   return method.startsWith("provider:");
 }
 
+const BANK_TRANSFER_RECEIPT_MIMES = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+]);
+
 function readProviderCode(method: string) {
   if (!isProviderPaymentMethod(method)) return "";
   return toStr(method.slice("provider:".length)).toLowerCase();
@@ -478,6 +485,106 @@ async function validateBankTransferPayment(args: {
 
   return {
     ok: true as const,
+  };
+}
+
+async function validateBankTransferProof(args: {
+  sb: any;
+  store_id: string;
+  value: any;
+}) {
+  const proof = args.value && typeof args.value === "object" ? args.value : {};
+
+  const bankAccountId = toStr(proof.bankAccountId);
+  const senderAccountName = toStr(proof.senderAccountName);
+  const receiptUrl = toStr(proof.receiptUrl);
+  const receiptFilename = toStr(proof.receiptFilename);
+  const receiptMimeType = toStr(proof.receiptMimeType).toLowerCase();
+  const receiptSizeBytes = Math.max(0, Math.floor(n(proof.receiptSizeBytes)));
+
+  if (!bankAccountId || !isUuid(bankAccountId)) {
+    return {
+      ok: false as const,
+      error: "BANK_TRANSFER_ACCOUNT_REQUIRED",
+      message_ar: "اختر حساب التحويل البنكي قبل تأكيد الطلب.",
+      status: 400,
+    };
+  }
+
+  if (!senderAccountName) {
+    return {
+      ok: false as const,
+      error: "BANK_TRANSFER_SENDER_REQUIRED",
+      message_ar: "أدخل اسم صاحب الحساب الذي تم التحويل منه.",
+      status: 400,
+    };
+  }
+
+  if (!receiptUrl) {
+    return {
+      ok: false as const,
+      error: "BANK_TRANSFER_RECEIPT_REQUIRED",
+      message_ar: "ارفع صورة إيصال التحويل قبل تأكيد الطلب.",
+      status: 400,
+    };
+  }
+
+  if (!BANK_TRANSFER_RECEIPT_MIMES.has(receiptMimeType)) {
+    return {
+      ok: false as const,
+      error: "BANK_TRANSFER_RECEIPT_INVALID_TYPE",
+      message_ar: "صيغة إيصال التحويل غير مدعومة. الصيغ المسموحة: JPG أو PNG أو WEBP.",
+      status: 400,
+    };
+  }
+
+  if (receiptSizeBytes <= 0 || receiptSizeBytes > 10 * 1024 * 1024) {
+    return {
+      ok: false as const,
+      error: "BANK_TRANSFER_RECEIPT_INVALID_SIZE",
+      message_ar: "حجم إيصال التحويل غير صحيح أو يتجاوز الحد المسموح.",
+      status: 400,
+    };
+  }
+
+  const bankR = await args.sb
+    .from("store_bank_accounts")
+    .select("id,status")
+    .eq("store_id", args.store_id)
+    .eq("id", bankAccountId)
+    .eq("status", "active")
+    .limit(1)
+    .maybeSingle();
+
+  if (bankR.error) {
+    return {
+      ok: false as const,
+      error: "BANK_TRANSFER_ACCOUNT_CHECK_FAILED",
+      message_ar: "تعذر التحقق من حساب التحويل البنكي.",
+      status: 500,
+      debug: bankR.error.message,
+    };
+  }
+
+  if (!bankR.data?.id) {
+    return {
+      ok: false as const,
+      error: "BANK_TRANSFER_ACCOUNT_NOT_AVAILABLE",
+      message_ar: "حساب التحويل البنكي المختار غير متاح.",
+      status: 400,
+    };
+  }
+
+  return {
+    ok: true as const,
+    proof: {
+      bank_account_id: bankAccountId,
+      sender_account_name: senderAccountName,
+      receipt_url: receiptUrl,
+      receipt_filename: receiptFilename || "receipt",
+      receipt_mime_type: receiptMimeType,
+      receipt_size_bytes: receiptSizeBytes,
+    },
   };
 }
 
@@ -1495,6 +1602,44 @@ function buildCheckoutFinancialSnapshot(summary: any) {
       orderOptionsFee + orderOptionsTax,
   );
 
+  const appliedOffers = Array.isArray(summary?.appliedSpecialOffers)
+    ? summary.appliedSpecialOffers
+    : Array.isArray(summary?.applied_special_offers)
+      ? summary.applied_special_offers
+      : [];
+
+  const messages = Array.isArray(summary?.specialOfferMessages)
+    ? summary.specialOfferMessages
+    : Array.isArray(summary?.special_offer_messages)
+      ? summary.special_offer_messages
+      : [];
+
+  const lineAdjustments = Array.isArray(summary?.lineAdjustments)
+    ? summary.lineAdjustments
+    : Array.isArray(summary?.specialOfferLineAdjustments)
+      ? summary.specialOfferLineAdjustments
+      : Array.isArray(summary?.special_offer_line_adjustments)
+        ? summary.special_offer_line_adjustments
+        : [];
+
+  const specialOfferDiscount = round2(
+    n(
+      summary?.specialOfferDiscount ??
+        summary?.specialOffersDiscount ??
+        summary?.special_offer_discount ??
+        summary?.special_offers_discount,
+    ),
+  );
+
+  const specialOffersSnapshot = {
+    appliedOffers,
+    applied_offers: appliedOffers,
+    lineAdjustments,
+    line_adjustments: lineAdjustments,
+    discount: specialOfferDiscount,
+    messages,
+  };
+
   return {
     currency: toStr(summary?.currency),
     currency_symbol: toStr(
@@ -1556,6 +1701,13 @@ function buildCheckoutFinancialSnapshot(summary: any) {
 
     payment_method: toStr(summary?.payment_method) || null,
     coupon: summary?.coupon ?? null,
+
+    special_offers: specialOffersSnapshot,
+    specialOffers: specialOffersSnapshot,
+    special_offer_discount: specialOfferDiscount,
+    specialOfferDiscount: specialOfferDiscount,
+    special_offers_discount: specialOfferDiscount,
+    specialOffersDiscount: specialOfferDiscount,
   };
 }
 
@@ -1612,6 +1764,13 @@ function enrichShippingSnapshotWithSummary(args: {
     subtotal: checkout.subtotal,
     discount_amount: checkout.discount_amount,
     total_amount: checkout.total_amount,
+
+    special_offers: checkout.special_offers,
+    specialOffers: checkout.specialOffers,
+    special_offer_discount: checkout.special_offer_discount,
+    specialOfferDiscount: checkout.specialOfferDiscount,
+    special_offers_discount: checkout.special_offers_discount,
+    specialOffersDiscount: checkout.specialOffersDiscount,
   };
 }
 
@@ -1994,6 +2153,30 @@ export async function POST(req: Request) {
     );
   }
 
+  let bankTransferProof: any = null;
+
+  if (normalizePaymentMethodId(cart?.payment_method) === "bank_transfer") {
+    const proofCheck = await validateBankTransferProof({
+      sb,
+      store_id,
+      value: body?.bankTransfer,
+    });
+
+    if (!proofCheck.ok) {
+      return paymentValidationError({
+        error: proofCheck.error,
+        message_ar: proofCheck.message_ar,
+        status: proofCheck.status,
+        extra:
+          "debug" in proofCheck && proofCheck.debug
+            ? { debug: proofCheck.debug }
+            : undefined,
+      });
+    }
+
+    bankTransferProof = proofCheck.proof;
+  }
+
   const ccR = await sb
     .from("cart_coupons")
     .select("coupon_id")
@@ -2259,6 +2442,40 @@ export async function POST(req: Request) {
     );
   }
 
+  if (bankTransferProof) {
+    const proofIns = await sb.from("order_bank_transfer_proofs").insert({
+      store_id,
+      order_id: order.id,
+      bank_account_id: bankTransferProof.bank_account_id,
+      sender_account_name: bankTransferProof.sender_account_name,
+      receipt_url: bankTransferProof.receipt_url,
+      receipt_filename: bankTransferProof.receipt_filename,
+      receipt_mime_type: bankTransferProof.receipt_mime_type,
+      receipt_size_bytes: bankTransferProof.receipt_size_bytes,
+      status: "pending_review",
+    });
+
+    if (proofIns.error) {
+      await sb.from("order_option_answers").delete().eq("order_id", order.id);
+      await sb.from("order_items").delete().eq("order_id", order.id);
+      await sb
+        .from("orders")
+        .delete()
+        .eq("id", order.id)
+        .eq("store_id", store_id);
+
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "BANK_TRANSFER_PROOF_INSERT_FAILED",
+          message_ar: "تعذر حفظ إيصال التحويل البنكي. حاول مرة أخرى.",
+          debug: proofIns.error.message,
+        },
+        { status: 500 },
+      );
+    }
+  }
+
   const decR = await sb.rpc("checkout_decrement_stock", {
     p_order_id: order.id,
     p_store_id: store_id,
@@ -2273,6 +2490,7 @@ export async function POST(req: Request) {
 
     const stockIssue = await buildStockIssuePayload(sb, debugMsg);
 
+    await sb.from("order_bank_transfer_proofs").delete().eq("order_id", order.id);
     await sb.from("order_option_answers").delete().eq("order_id", order.id);
     await sb.from("order_items").delete().eq("order_id", order.id);
     await sb.from("orders").delete().eq("id", order.id).eq("store_id", store_id);

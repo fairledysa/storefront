@@ -2461,6 +2461,13 @@ export default async function Page(props: PageProps) {
         ? checkoutSnapshot
         : shippingSnapshot;
 
+    const specialOffersSnapshot = safeRecord(
+      checkoutSnapshot.special_offers ??
+        checkoutSnapshot.specialOffers ??
+        shippingSnapshot.special_offers ??
+        shippingSnapshot.specialOffers,
+    );
+
     const orderOptionsR = await ordersDb
       .from("order_option_answers")
       .select(
@@ -2784,8 +2791,70 @@ export default async function Page(props: PageProps) {
       return sku ? `SKU: ${sku}` : "";
     }
 
+    function normalizeSpecialOfferAdjustment(adjustment: any) {
+      const discount = moneyRound(adjustment?.discount);
+      if (discount <= 0) return null;
+
+      return {
+        cartItemId: String(
+          adjustment?.cartItemId ?? adjustment?.cart_item_id ?? "",
+        ).trim(),
+        productId: String(
+          adjustment?.productId ?? adjustment?.product_id ?? "",
+        ).trim(),
+        discount,
+        label:
+          String(adjustment?.label ?? "").trim() || "هدية العرض",
+        offerId: String(adjustment?.offerId ?? adjustment?.offer_id ?? "").trim(),
+        offerTitle: String(
+          adjustment?.offerTitle ?? adjustment?.offer_title ?? "",
+        ).trim(),
+        offerType: String(
+          adjustment?.offerType ?? adjustment?.offer_type ?? "",
+        ).trim(),
+      };
+    }
+
+    const specialOfferLineAdjustments = (
+      Array.isArray(specialOffersSnapshot.lineAdjustments)
+        ? specialOffersSnapshot.lineAdjustments
+        : Array.isArray(specialOffersSnapshot.line_adjustments)
+          ? specialOffersSnapshot.line_adjustments
+          : []
+    )
+      .map((adjustment: any) => normalizeSpecialOfferAdjustment(adjustment))
+      .filter(Boolean);
+
+    const specialOfferDiscount = moneyRound(
+      firstSnapshotValue(
+        specialOffersSnapshot,
+        ["discount", "specialOfferDiscount", "special_offer_discount"],
+        0,
+      ),
+    );
+
+    const specialOfferAppliedOffers = Array.isArray(
+      specialOffersSnapshot.appliedOffers,
+    )
+      ? specialOffersSnapshot.appliedOffers
+      : Array.isArray(specialOffersSnapshot.applied_offers)
+        ? specialOffersSnapshot.applied_offers
+        : [];
+
+    const specialOfferMessages = (
+      Array.isArray(specialOffersSnapshot.messages)
+        ? specialOffersSnapshot.messages
+        : []
+    )
+      .map((message: any) => String(message ?? "").trim())
+      .filter(Boolean);
+
     const thankYouItems = orderItems.map((item: any) => {
       const productId = String(item?.product_id ?? "").trim();
+      const adjustment =
+        specialOfferLineAdjustments.find(
+          (row: any) => String(row?.productId ?? "").trim() === productId,
+        ) ?? null;
 
       return {
         id: String(item?.id ?? ""),
@@ -2794,8 +2863,19 @@ export default async function Page(props: PageProps) {
         qty: Number(item?.qty ?? 1),
         price: moneyValue(item?.unit_price),
         imageUrl: imageByProduct.get(productId) ?? null,
+        specialOfferAdjustment: adjustment,
+        special_offer_adjustment: adjustment,
       };
     });
+
+    const specialOffers = {
+      appliedOffers: specialOfferAppliedOffers,
+      applied_offers: specialOfferAppliedOffers,
+      lineAdjustments: specialOfferLineAdjustments,
+      line_adjustments: specialOfferLineAdjustments,
+      discount: specialOfferDiscount,
+      messages: specialOfferMessages,
+    };
 
     return await renderStoreRoute({
       store: ctx.store,
@@ -2851,6 +2931,9 @@ export default async function Page(props: PageProps) {
         statusDescription: statusDescription(order),
 
         items: thankYouItems,
+
+        specialOffers,
+        special_offers: specialOffers,
       },
     });
   }

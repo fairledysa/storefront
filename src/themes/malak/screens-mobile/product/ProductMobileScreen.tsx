@@ -13,6 +13,7 @@ import MobileStickyAddToCart from "./_components/MobileStickyAddToCart";
 import {
   toProductDetailVM,
   type ProductDetailVM,
+  type ProductSpecialOfferVM,
 } from "@/data/viewmodels/product.vm";
 import type { SeoUrlMode } from "@/data/store/settings";
 import { parseStoreOptions } from "@/lib/store-options";
@@ -199,6 +200,24 @@ function firstText(...values: any[]) {
   }
 
   return "";
+}
+
+const SPECIAL_OFFER_TYPE_LABELS: Record<string, string> = {
+  buy_x_get_y: "اشترِ واحصل",
+  fixed_amount: "خصم ثابت",
+  percentage: "خصم نسبة",
+  discount_table: "جدول خصومات",
+  fixed_price: "سعر خاص",
+  category_offer: "عرض فئات",
+};
+
+function specialOfferTypeLabel(value: any) {
+  const key = text(value);
+  return SPECIAL_OFFER_TYPE_LABELS[key] || "عرض خاص";
+}
+
+function normalizeOfferKey(value: any) {
+  return text(value).replace(/\s+/g, " ").toLowerCase();
 }
 
 function clampDecimals(value: any) {
@@ -1919,6 +1938,97 @@ const productBackHref = useMemo(() => {
 
   const promotionTitle = text(productVm.promotionTitle);
 
+  const specialOffers = useMemo<ProductSpecialOfferVM[]>(() => {
+    return Array.isArray(productVm.specialOffers) ? productVm.specialOffers : [];
+  }, [productVm.specialOffers]);
+
+  const offerPills = useMemo(() => {
+    const seen = new Set<string>();
+    const out: Array<{
+      key: string;
+      label: string;
+      badge: string | null;
+      title: string;
+      special: boolean;
+    }> = [];
+
+    const push = (item: {
+      key: string;
+      label: string;
+      badge?: string | null;
+      title?: string;
+      special?: boolean;
+    }) => {
+      const label = text(item.label);
+      if (!label) return;
+
+      const dedupeKey = normalizeOfferKey(label);
+      if (seen.has(dedupeKey)) return;
+      seen.add(dedupeKey);
+
+      out.push({
+        key: item.key || dedupeKey,
+        label,
+        badge: item.badge ?? null,
+        title: text(item.title) || label,
+        special: Boolean(item.special),
+      });
+    };
+
+    for (const offer of specialOffers) {
+      const offerAny: any = offer ?? {};
+      const label = firstText(
+        offerAny.summary,
+        offerAny.message,
+        offerAny.title,
+        offerAny.name,
+      );
+
+      push({
+        key: text(offerAny.id) || `special-${out.length}`,
+        label,
+        badge: specialOfferTypeLabel(offerAny.offerType ?? offerAny.offer_type),
+        title: firstText(offerAny.title, offerAny.message, offerAny.summary),
+        special: true,
+      });
+    }
+
+    if (promotionTitle) {
+      push({
+        key: "promotion-title",
+        label: promotionTitle,
+        badge: null,
+        title: promotionTitle,
+      });
+    }
+
+    if (hasDiscount && compareAtPrice && finalPrice) {
+      const saving = formatMoney(
+        compareAtPrice - finalPrice,
+        currencySymbol,
+        currencyDecimals,
+      );
+
+      if (saving) {
+        push({
+          key: "discount-saving",
+          label: `وفر ${saving}`,
+          badge: null,
+        });
+      }
+    }
+
+    return out;
+  }, [
+    specialOffers,
+    promotionTitle,
+    hasDiscount,
+    compareAtPrice,
+    finalPrice,
+    currencySymbol,
+    currencyDecimals,
+  ]);
+
   const descriptionHtml = String(productVm.descriptionHtml ?? "");
   const descriptionText = String(product?.description ?? "");
 
@@ -2079,27 +2189,30 @@ const productBackHref = useMemo(() => {
           sizeGuides={productSizeGuides}
         />
 
-        {productOptions.mini_offers_box && (promotionTitle || hasDiscount) ? (
+        {productOptions.mini_offers_box && offerPills.length ? (
           <div className="mk-mproduct-offers">
             <div className="mk-mproduct-offers__title">العروض الخاصة</div>
 
-            <div className="mk-mproduct-offers__items">
-              {promotionTitle ? (
-                <span className="mk-mproduct-offers__item">
-                  {promotionTitle}
+            <div className="mk-mproduct-offers__list">
+              {offerPills.map((offer) => (
+                <span
+                  key={offer.key}
+                  className={[
+                    "mk-mproduct-offers__pill",
+                    offer.special ? "mk-mproduct-offers__pill--special" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  title={offer.title}
+                >
+                  {offer.badge ? (
+                    <span className="mk-mproduct-offers__badge">
+                      {offer.badge}
+                    </span>
+                  ) : null}
+                  <span>{offer.label}</span>
                 </span>
-              ) : null}
-
-              {hasDiscount && compareAtPrice && finalPrice ? (
-                <span className="mk-mproduct-offers__item">
-                  وفر{" "}
-                  {formatMoney(
-                    compareAtPrice - finalPrice,
-                    currencySymbol,
-                    currencyDecimals,
-                  )}
-                </span>
-              ) : null}
+              ))}
             </div>
           </div>
         ) : null}

@@ -133,6 +133,7 @@ type PaymentOption = {
   disabled_reason?: string | null;
   disabled_help?: PaymentDisabledHelp;
   bank_details?: {
+    id?: string;
     bank_name: string;
     account_holder: string;
     iban: string;
@@ -840,6 +841,7 @@ export async function GET() {
             iban !== "غير محدد" ? `${iban.slice(0, 6)}…${iban.slice(-4)}` : ""
           }`.trim(),
         bank_details: {
+          id: s(primary?.id),
           bank_name: bankName,
           account_holder: holder,
           iban,

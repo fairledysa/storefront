@@ -27,6 +27,8 @@ type OrderItem = {
   qty?: number | string;
   price?: number | string;
   imageUrl?: string | null;
+  specialOfferAdjustment?: any;
+  special_offer_adjustment?: any;
 };
 
 type ThankYouData = {
@@ -91,6 +93,8 @@ type ThankYouData = {
   statusDescription?: string | null;
 
   items?: OrderItem[];
+  specialOffers?: any;
+  special_offers?: any;
 
   bootstrap?: MalakBootstrap | null;
   theme?: {
@@ -396,6 +400,7 @@ function ProductRow({
   const lineTotal = unitPrice * qty;
   const title = s(item.title) || "منتج";
   const imageUrl = s(item.imageUrl);
+  const specialOfferAdjustment = readSpecialOfferAdjustment(item);
 
   return (
     <div className="mk-mthank-product">
@@ -413,10 +418,127 @@ function ProductRow({
         {s(item.subtitle) ? <span>{item.subtitle}</span> : null}
 
         <em>{qty} قطعة</em>
+
+        {specialOfferAdjustment ? (
+          <small className="mk-mthank-product__gift">
+            {specialOfferAdjustment.label}
+          </small>
+        ) : null}
       </div>
 
       <div className="mk-mthank-product__price" dir="ltr">
         {formatMoney(currency, lineTotal, currencyDecimals)}
+      </div>
+    </div>
+  );
+}
+
+function readSpecialOfferAdjustment(item: OrderItem) {
+  const source = item.specialOfferAdjustment ?? item.special_offer_adjustment;
+  if (!source || typeof source !== "object") return null;
+
+  const discount = n(source.discount);
+  if (!Number.isFinite(discount) || discount <= 0) return null;
+
+  return {
+    label: s(source.label) || "هدية العرض",
+    offerTitle: s(source.offerTitle ?? source.offer_title),
+    productName: s(item.title),
+    discount,
+  };
+}
+
+function readThankYouSpecialOffers(data: ThankYouData, items: OrderItem[]) {
+  const source =
+    data.specialOffers && typeof data.specialOffers === "object"
+      ? data.specialOffers
+      : data.special_offers && typeof data.special_offers === "object"
+        ? data.special_offers
+        : {};
+  const discount = n(source.discount);
+  const appliedOffers = Array.isArray(source.appliedOffers)
+    ? source.appliedOffers
+    : Array.isArray(source.applied_offers)
+      ? source.applied_offers
+      : [];
+  const messages = Array.isArray(source.messages)
+    ? source.messages.map(s).filter(Boolean)
+    : [];
+  const lineAdjustments = Array.isArray(source.lineAdjustments)
+    ? source.lineAdjustments
+    : Array.isArray(source.line_adjustments)
+      ? source.line_adjustments
+      : [];
+
+  if (discount <= 0 && !appliedOffers.length && !messages.length) return null;
+
+  const itemByProductId = new Map<string, OrderItem>();
+  for (const item of items) {
+    const adjustmentSource =
+      item.specialOfferAdjustment ?? item.special_offer_adjustment;
+    const productId = s(
+      adjustmentSource?.productId ?? adjustmentSource?.product_id,
+    );
+    if (productId) itemByProductId.set(productId, item);
+  }
+
+  return {
+    discount,
+    titles: Array.from(
+      new Set([
+        ...appliedOffers
+          .map((offer: any) => s(offer?.title ?? offer?.message))
+          .filter(Boolean),
+        ...messages,
+      ]),
+    ),
+    gifts: lineAdjustments
+      .filter((row: any) => n(row?.discount) > 0)
+      .map((row: any) => {
+        const productId = s(row?.productId ?? row?.product_id);
+        return {
+          productName: s(itemByProductId.get(productId)?.title),
+          offerTitle: s(row?.offerTitle ?? row?.offer_title),
+        };
+      })
+      .filter((row: any) => row.productName || row.offerTitle),
+  };
+}
+
+function SpecialOffersSection({
+  data,
+  items,
+  money,
+}: {
+  data: ThankYouData;
+  items: OrderItem[];
+  money: (amount: number) => string;
+}) {
+  const specialOffers = readThankYouSpecialOffers(data, items);
+
+  if (!specialOffers) return null;
+
+  return (
+    <div className="mk-mthank-special">
+      <div className="mk-mthank-special__head">
+        <strong>العروض الخاصة</strong>
+        {specialOffers.discount > 0 ? (
+          <span dir="ltr">- {money(specialOffers.discount)}</span>
+        ) : null}
+      </div>
+
+      <div className="mk-mthank-special__list">
+        {specialOffers.titles.map((title) => (
+          <div key={title}>تم تطبيق عرض: {title}</div>
+        ))}
+
+        {specialOffers.gifts.map((gift: any, index: number) => (
+          <div key={`${gift.productName}-${gift.offerTitle}-${index}`}>
+            {gift.productName
+              ? `هدية العرض: ${gift.productName}`
+              : `هدية العرض بسبب: ${gift.offerTitle}`}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -681,6 +803,8 @@ export default function ThankYouMobileScreen(props: Props) {
         )}
 
         <div className="mk-mthank-moneyBox">
+          <SpecialOffersSection data={data} items={items} money={money} />
+
           <MoneyRow label="مجموع المنتجات" value={money(subtotal)} />
           <MoneyRow label="الشحن" value={money(shippingAmount)} />
 

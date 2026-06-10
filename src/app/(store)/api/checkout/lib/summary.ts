@@ -7,6 +7,7 @@ import { getOrdersDb } from "@/data/db/orders-db.server";
 import { getStoreDb } from "@/data/db/store-db.server";
 import { getStoreCurrency } from "../../_cart/cart.server";
 import { loadFreeShippingEvaluator } from "./free-shipping";
+import { calculateCartSpecialOffers } from "./special-offers";
 import {
   loadCartOrderOptionsSummary,
   type CartOrderOptionSummaryLine,
@@ -1120,6 +1121,53 @@ export type CartSummaryOut = {
   pricesIncludeTax: boolean;
 
   coupon: null | { code: string; discount: number };
+  coupon_discount: number;
+  couponDiscount: number;
+  special_offers_discount: number;
+  specialOffersDiscount: number;
+  applied_special_offers: Array<{
+    id: string;
+    title: string;
+    offer_type: string;
+    discount: number;
+    message: string | null;
+  }>;
+  appliedSpecialOffers: Array<{
+    id: string;
+    title: string;
+    offer_type: string;
+    discount: number;
+    message: string | null;
+  }>;
+  special_offer_messages: string[];
+  specialOfferMessages: string[];
+  special_offer_line_adjustments: Array<{
+    cartItemId: string;
+    productId: string;
+    discount: number;
+    label: string;
+    offerId: string;
+    offerTitle: string;
+    offerType: string;
+  }>;
+  specialOfferLineAdjustments: Array<{
+    cartItemId: string;
+    productId: string;
+    discount: number;
+    label: string;
+    offerId: string;
+    offerTitle: string;
+    offerType: string;
+  }>;
+  lineAdjustments: Array<{
+    cartItemId: string;
+    productId: string;
+    discount: number;
+    label: string;
+    offerId: string;
+    offerTitle: string;
+    offerType: string;
+  }>;
   payment_method: string | null;
 };
 
@@ -1223,7 +1271,7 @@ export async function buildCartSummary(args: {
       : await Promise.all([
           storeDb
             .from("products")
-            .select("id,name,require_shipping")
+            .select("id,name,require_shipping,brand_id")
             .in("id", productIds)
             .eq("store_id", args.store_id),
 
@@ -1567,6 +1615,36 @@ export async function buildCartSummary(args: {
     }
   }
 
+  const specialOffersResult = await calculateCartSpecialOffers({
+    sb: storeDb,
+    storeId: args.store_id,
+    items: items.map((item) => ({
+      id: item.id,
+      product_id: item.product_id,
+      variant_id: item.variant_id,
+      qty: item.qty,
+      unit_price: item.unit_price,
+    })),
+    subtotal,
+    couponApplied: Boolean(couponOut),
+    countryId: country_id,
+    customerId: customer_id,
+    convertStoreAmountToCartCurrency: (amount) =>
+      round2(
+        convertMoney({
+          amount,
+          sourceCode: storeCurrencyCode,
+          targetCode: currencyInfo.code,
+          runtime: currencyRuntime,
+        }),
+      ),
+  });
+
+  const couponDiscount = round2(discount);
+  const specialOffersDiscount = round2(specialOffersResult.discount);
+
+  discount = round2(Math.min(subtotal, couponDiscount + specialOffersDiscount));
+
   const shipping_rate_id = s(cartR.data.shipping_id) || "";
   const payment_method = s(cartR.data.payment_method) || null;
 
@@ -1836,6 +1914,17 @@ export async function buildCartSummary(args: {
     pricesIncludeTax: checkoutTax.pricesIncludeTax,
 
     coupon: couponOut,
+    coupon_discount: couponDiscount,
+    couponDiscount,
+    special_offers_discount: specialOffersDiscount,
+    specialOffersDiscount,
+    applied_special_offers: specialOffersResult.appliedOffers,
+    appliedSpecialOffers: specialOffersResult.appliedOffers,
+    special_offer_messages: specialOffersResult.messages,
+    specialOfferMessages: specialOffersResult.messages,
+    special_offer_line_adjustments: specialOffersResult.lineAdjustments,
+    specialOfferLineAdjustments: specialOffersResult.lineAdjustments,
+    lineAdjustments: specialOffersResult.lineAdjustments,
     payment_method,
   };
 }

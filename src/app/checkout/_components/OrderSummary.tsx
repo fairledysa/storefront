@@ -27,6 +27,31 @@ type SummaryItem = {
   image_url: string | null;
 };
 
+type AppliedSpecialOffer = {
+  id?: string;
+  title?: string;
+  offer_type?: string;
+  offerType?: string;
+  discount?: number;
+  message?: string | null;
+};
+
+type SpecialOfferLineAdjustment = {
+  cartItemId?: string;
+  productId?: string;
+  discount?: number;
+  label?: string;
+  offerId?: string;
+  offerTitle?: string;
+  offerType?: string;
+};
+
+type SummaryItemOfferBadge = {
+  discount: number;
+  title: string;
+  label: string;
+};
+
 type OrderOptionSummaryLine = {
   option_id?: string;
   optionId?: string;
@@ -57,6 +82,17 @@ type Summary = {
   items?: SummaryItem[];
   subtotal: number;
   discount: number;
+  coupon_discount?: number;
+  couponDiscount?: number;
+  special_offers_discount?: number;
+  specialOffersDiscount?: number;
+  applied_special_offers?: AppliedSpecialOffer[];
+  appliedSpecialOffers?: AppliedSpecialOffer[];
+  special_offer_messages?: string[];
+  specialOfferMessages?: string[];
+  special_offer_line_adjustments?: SpecialOfferLineAdjustment[];
+  specialOfferLineAdjustments?: SpecialOfferLineAdjustment[];
+  lineAdjustments?: SpecialOfferLineAdjustment[];
   shipping: number;
   payment_fee?: number;
   payment_method?: string | null;
@@ -116,6 +152,15 @@ type PrepareOptions = {
 };
 
 type ActionLock = "coupon" | "submit" | null;
+
+type BankTransferPayload = {
+  bankAccountId: string;
+  senderAccountName: string;
+  receiptUrl: string;
+  receiptFilename: string;
+  receiptMimeType: string;
+  receiptSizeBytes: number;
+};
 
 type MoneyFormatInfo = {
   code: string;
@@ -374,6 +419,137 @@ function readOrderOptions(summary: Partial<Summary> | null | undefined) {
   return [];
 }
 
+function readCouponDiscount(summary: Partial<Summary> | null | undefined) {
+  return n(summary?.coupon_discount ?? summary?.couponDiscount);
+}
+
+function readSpecialOffersDiscount(summary: Partial<Summary> | null | undefined) {
+  return n(summary?.special_offers_discount ?? summary?.specialOffersDiscount);
+}
+
+function readAppliedSpecialOffers(
+  summary: Partial<Summary> | null | undefined,
+) {
+  const snake = summary?.applied_special_offers;
+  const camel = summary?.appliedSpecialOffers;
+
+  if (Array.isArray(snake)) return snake;
+  if (Array.isArray(camel)) return camel;
+
+  return [];
+}
+
+function readSpecialOfferMessages(
+  summary: Partial<Summary> | null | undefined,
+) {
+  const snake = summary?.special_offer_messages;
+  const camel = summary?.specialOfferMessages;
+
+  if (Array.isArray(snake)) return snake.map(s).filter(Boolean);
+  if (Array.isArray(camel)) return camel.map(s).filter(Boolean);
+
+  return [];
+}
+
+function readSpecialOfferLineAdjustments(
+  summary: Partial<Summary> | null | undefined,
+) {
+  const direct = summary?.lineAdjustments;
+  const snake = summary?.special_offer_line_adjustments;
+  const camel = summary?.specialOfferLineAdjustments;
+
+  if (Array.isArray(direct)) return direct;
+  if (Array.isArray(snake)) return snake;
+  if (Array.isArray(camel)) return camel;
+
+  return [];
+}
+
+function buildSpecialOfferDetails(summary: Summary | null) {
+  if (!summary) return [];
+
+  const details: string[] = [];
+  const seen = new Set<string>();
+
+  const add = (value: string) => {
+    const text = s(value);
+    if (!text) return;
+    const key = text.replace(/\s+/g, " ").toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    details.push(text);
+  };
+
+  for (const offer of readAppliedSpecialOffers(summary)) {
+    const title = s(offer?.title) || s(offer?.message);
+    if (title) add(`تم تطبيق عرض: ${title}`);
+  }
+
+  for (const message of readSpecialOfferMessages(summary)) {
+    add(`تم تطبيق عرض: ${message}`);
+  }
+
+  const itemById = new Map<string, SummaryItem>();
+  for (const item of Array.isArray(summary.items) ? summary.items : []) {
+    itemById.set(s(item.id), item);
+  }
+
+  for (const adjustment of readSpecialOfferLineAdjustments(summary)) {
+    if (n(adjustment?.discount) <= 0) continue;
+
+    const item = itemById.get(s(adjustment?.cartItemId));
+    const productName = s(item?.title);
+    const offerTitle = s(adjustment?.offerTitle);
+
+    if (productName) {
+      add(`هدية العرض: ${productName}`);
+    } else if (offerTitle) {
+      add(`هدية العرض بسبب: ${offerTitle}`);
+    }
+  }
+
+  return details;
+}
+
+function buildSpecialOfferItemBadges(summary: Summary | null) {
+  const badges = new Map<string, SummaryItemOfferBadge>();
+
+  if (!summary || !Array.isArray(summary.items)) return badges;
+
+  const adjustments = readSpecialOfferLineAdjustments(summary).filter(
+    (adjustment) => n(adjustment?.discount) > 0,
+  );
+
+  for (const item of summary.items) {
+    const itemId = s(item.id);
+    const productId = s(item.product_id);
+    const matched = adjustments.filter((adjustment) => {
+      const adjustmentCartItemId = s(adjustment?.cartItemId);
+      const adjustmentProductId = s(adjustment?.productId);
+
+      return (
+        adjustmentCartItemId === itemId ||
+        (!adjustmentCartItemId && adjustmentProductId === productId)
+      );
+    });
+
+    if (!itemId || !matched.length) continue;
+
+    const first = matched[0];
+
+    badges.set(itemId, {
+      discount: matched.reduce(
+        (sum, adjustment) => sum + n(adjustment?.discount),
+        0,
+      ),
+      title: s(first?.offerTitle),
+      label: s(first?.label) || "هدية العرض",
+    });
+  }
+
+  return badges;
+}
+
 function applyPatch(base: Summary, patch: Partial<Summary>): Summary {
   const next: Summary = { ...base, ...patch };
 
@@ -465,6 +641,8 @@ export default function OrderSummary({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [stockIssue, setStockIssue] = useState<StockIssue | null>(null);
   const [canSubmit, setCanSubmit] = useState(false);
+  const [bankTransferPayload, setBankTransferPayload] =
+    useState<BankTransferPayload | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
   const seqRef = useRef(0);
@@ -554,6 +732,18 @@ export default function OrderSummary({
   const paymentFee = hasTotals ? n(summary!.payment_fee) : null;
   const orderOptionsFee = hasTotals ? readOrderOptionsFee(summary!) : null;
   const discount = hasTotals ? summary!.discount : null;
+  const couponDiscount = hasTotals ? readCouponDiscount(summary!) : 0;
+  const specialOffersDiscount = hasTotals
+    ? readSpecialOffersDiscount(summary!)
+    : 0;
+  const specialOfferDetails = useMemo(
+    () => buildSpecialOfferDetails(summary),
+    [summary],
+  );
+  const specialOfferItemBadges = useMemo(
+    () => buildSpecialOfferItemBadges(summary),
+    [summary],
+  );
   const total = hasTotals ? summary!.total : null;
   const hasCouponApplied = Boolean(summary?.coupon?.code);
 
@@ -704,6 +894,11 @@ export default function OrderSummary({
       setCanSubmit(Boolean(e?.detail?.enabled));
     };
 
+    const onBankTransferPayload = (evt: Event) => {
+      const e = evt as CustomEvent<{ payload?: BankTransferPayload | null }>;
+      setBankTransferPayload(e?.detail?.payload ?? null);
+    };
+
     window.addEventListener("checkout:refresh", onRefresh as EventListener);
     window.addEventListener(
       "checkout:summaryPatch",
@@ -712,6 +907,10 @@ export default function OrderSummary({
     window.addEventListener(
       "checkout:submitEnabled",
       onSubmitEnabled as EventListener,
+    );
+    window.addEventListener(
+      "checkout:bankTransferPayload",
+      onBankTransferPayload as EventListener,
     );
 
     return () => {
@@ -725,6 +924,10 @@ export default function OrderSummary({
       window.removeEventListener(
         "checkout:submitEnabled",
         onSubmitEnabled as EventListener,
+      );
+      window.removeEventListener(
+        "checkout:bankTransferPayload",
+        onBankTransferPayload as EventListener,
       );
 
       clearQueuedPrepare();
@@ -905,7 +1108,12 @@ export default function OrderSummary({
         headers: { "Content-Type": "application/json" },
         cache: "no-store",
         credentials: "same-origin",
-        body: JSON.stringify({}),
+        body: JSON.stringify({
+          payment_method: summary?.payment_method ?? null,
+          ...(bankTransferPayload
+            ? { bankTransfer: bankTransferPayload }
+            : {}),
+        }),
       });
 
       const j = (await r.json().catch(() => ({}))) as ApiErrorResponse;
@@ -983,6 +1191,24 @@ export default function OrderSummary({
     return "تأكيد الدفع";
   }, [submitBusy, couponBusy, hasCouponApplied, isInitialLoading, hasTotals]);
 
+  const submitDisabledHint = useMemo(() => {
+    if (submitBusy || couponBusy || loading || !hasTotals || canSubmit) {
+      return "";
+    }
+
+    if (errorMsg && isIncompleteNotice) return errorMsg;
+
+    return "يرجى اختيار عنوان الشحن وطريقة الدفع للمتابعة";
+  }, [
+    canSubmit,
+    couponBusy,
+    errorMsg,
+    hasTotals,
+    isIncompleteNotice,
+    loading,
+    submitBusy,
+  ]);
+
   return (
     <>
       {submitBusy ? <SubmitFreezeOverlay /> : null}
@@ -1022,6 +1248,10 @@ export default function OrderSummary({
               ) : (
                 <strong dir="ltr">{formatMoney(money, total)}</strong>
               )}
+
+              {submitDisabledHint ? (
+                <div className="co-submit-hint">{submitDisabledHint}</div>
+              ) : null}
 
               <button
                 type="button"
@@ -1146,6 +1376,7 @@ export default function OrderSummary({
                         key={item.id}
                         item={item}
                         money={money}
+                        offerBadge={specialOfferItemBadges.get(s(item.id))}
                       />
                     ))}
                   </div>
@@ -1178,7 +1409,39 @@ export default function OrderSummary({
                     />
                   ) : null}
 
-                  {!showSkeleton && discount != null && discount > 0 ? (
+                  {!showSkeleton && couponDiscount > 0 ? (
+                    <div className="co-total-row is-discount">
+                      <span>كوبون الخصم</span>
+                      <strong dir="ltr">
+                        - {formatMoney(money, couponDiscount)}
+                      </strong>
+                    </div>
+                  ) : null}
+
+                  {!showSkeleton && specialOffersDiscount > 0 ? (
+                    <div className="co-special-offers-block">
+                      <div className="co-total-row is-discount co-total-row--special-offer">
+                        <span>العروض الخاصة</span>
+                        <strong dir="ltr">
+                          - {formatMoney(money, specialOffersDiscount)}
+                        </strong>
+                      </div>
+
+                      {specialOfferDetails.length > 0 ? (
+                        <div className="co-special-offers-details">
+                          {specialOfferDetails.slice(0, 4).map((detail) => (
+                            <div key={detail}>{detail}</div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {!showSkeleton &&
+                  discount != null &&
+                  discount > 0 &&
+                  couponDiscount <= 0 &&
+                  specialOffersDiscount <= 0 ? (
                     <div className="co-total-row is-discount">
                       <span>الخصم</span>
                       <strong dir="ltr">
@@ -1293,6 +1556,12 @@ export default function OrderSummary({
                 </div>
               </section>
 
+              {submitDisabledHint ? (
+                <div className="co-submit-hint co-submit-hint--drawer">
+                  {submitDisabledHint}
+                </div>
+              ) : null}
+
               <button
                 type="button"
                 className={[
@@ -1330,9 +1599,11 @@ export default function OrderSummary({
 const SummaryItemRow = memo(function SummaryItemRow({
   item,
   money,
+  offerBadge,
 }: {
   item: SummaryItem;
   money: MoneyFormatInfo;
+  offerBadge?: SummaryItemOfferBadge;
 }) {
   const qty = Math.max(1, Math.floor(n(item.qty) || 1));
   const lineTotal = round2(n(item.unit_price) * qty);
@@ -1356,6 +1627,18 @@ const SummaryItemRow = memo(function SummaryItemRow({
 
       <div className="co-summary-item__info">
         <strong>{item.title}</strong>
+        {offerBadge ? (
+          <div className="co-summary-item__offer">
+            <span className="co-summary-item__offer-badge">
+              {offerBadge.label}
+            </span>
+            {offerBadge.title ? (
+              <span className="co-summary-item__offer-title">
+                بسبب عرض: {offerBadge.title}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
         <p>الكمية: {qty}</p>
       </div>
 

@@ -1823,6 +1823,330 @@ function enrichProductFull(args: {
   return fn();
 }
 
+
+/* ------------------------- special offers loader ------------------------ */
+
+type ProductSpecialOfferRow = {
+  id: string;
+  title: string | null;
+  description: string | null;
+  status: string | null;
+  offer_type: string | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  channels: any;
+  targets: any;
+  conditions: any;
+  rewards: any;
+  apply_with_coupon: boolean | null;
+  message: string | null;
+  priority: number | null;
+};
+
+function safeObject(value: any) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value
+    : {};
+}
+
+function readIdArray(value: any): string[] {
+  if (!Array.isArray(value)) return [];
+
+  return Array.from(new Set(value.map((item) => s(item)).filter(Boolean)));
+}
+
+function intersects(a: string[], b: string[]) {
+  if (!a.length || !b.length) return false;
+  const set = new Set(a);
+  return b.some((item) => set.has(item));
+}
+
+function isOfferCurrentlyActive(offer: ProductSpecialOfferRow) {
+  if (s(offer.status).toLowerCase() !== "active") return false;
+
+  const now = Date.now();
+  const startsAt = offer.starts_at ? new Date(offer.starts_at).getTime() : null;
+  const endsAt = offer.ends_at ? new Date(offer.ends_at).getTime() : null;
+
+  if (startsAt !== null && Number.isFinite(startsAt) && startsAt > now) {
+    return false;
+  }
+
+  if (endsAt !== null && Number.isFinite(endsAt) && endsAt < now) {
+    return false;
+  }
+
+  return true;
+}
+
+function offerChannelAllowsStorefront(channelsValue: any) {
+  if (!Array.isArray(channelsValue) || channelsValue.length === 0) return true;
+
+  const channels = channelsValue.map((item) => s(item).toLowerCase()).filter(Boolean);
+  if (!channels.length) return true;
+
+  return channels.some((channel) =>
+    ["all", "both", "web", "website", "store", "storefront"].includes(channel),
+  );
+}
+
+function productOfferContext(product: any) {
+  const categoryIds = Array.isArray(product?.seo?.categories)
+    ? product.seo.categories.map((item: any) => s(item?.id)).filter(Boolean)
+    : Array.isArray(product?.categories)
+      ? product.categories.map((item: any) => s(item?.id ?? item)).filter(Boolean)
+      : [];
+
+  const tagIds = Array.isArray(product?.tags)
+    ? product.tags.map((item: any) => s(item?.id ?? item)).filter(Boolean)
+    : [];
+
+  return {
+    productId: s(product?.id),
+    brandId: s(product?.brand?.id ?? product?.brand_id),
+    categoryIds,
+    tagIds,
+  };
+}
+
+function scopeMatchesProduct(args: {
+  product: ReturnType<typeof productOfferContext>;
+  source: any;
+  modeKey?: string;
+  productIdsKey?: string;
+  categoryIdsKey?: string;
+  brandIdsKey?: string;
+  tagIdsKey?: string;
+}) {
+  const source = safeObject(args.source);
+  const product = args.product;
+  const mode = s(args.modeKey ? source[args.modeKey] : "").toLowerCase();
+
+  const productIds = readIdArray(source[args.productIdsKey || "productIds"]);
+  const categoryIds = readIdArray(source[args.categoryIdsKey || "categoryIds"]);
+  const brandIds = readIdArray(source[args.brandIdsKey || "brandIds"]);
+  const tagIds = readIdArray(source[args.tagIdsKey || "tagIds"]);
+
+  const hasExplicitScope =
+    productIds.length > 0 || categoryIds.length > 0 || brandIds.length > 0 || tagIds.length > 0;
+
+  if (!hasExplicitScope) {
+    return !mode || mode === "all" || mode === "targets" || mode === "same";
+  }
+
+  if (productIds.length && product.productId && productIds.includes(product.productId)) {
+    return true;
+  }
+
+  if (categoryIds.length && intersects(categoryIds, product.categoryIds)) {
+    return true;
+  }
+
+  if (brandIds.length && product.brandId && brandIds.includes(product.brandId)) {
+    return true;
+  }
+
+  if (tagIds.length && intersects(tagIds, product.tagIds)) {
+    return true;
+  }
+
+  return false;
+}
+
+function targetsMatchProduct(targetsValue: any, product: ReturnType<typeof productOfferContext>) {
+  const targets = safeObject(targetsValue);
+
+  const productIds = readIdArray(targets.productIds);
+  const categoryIds = readIdArray(targets.categoryIds);
+  const brandIds = readIdArray(targets.brandIds);
+  const tagIds = readIdArray(targets.tagIds);
+
+  const productMode = s(targets.productsMode).toLowerCase();
+  const categoryMode = s(targets.categoriesMode).toLowerCase();
+  const brandMode = s(targets.brandsMode).toLowerCase();
+  const tagMode = s(targets.tagsMode).toLowerCase();
+
+  const hasSelectedScope =
+    productMode === "selected" ||
+    categoryMode === "selected" ||
+    brandMode === "selected" ||
+    tagMode === "selected" ||
+    productIds.length > 0 ||
+    categoryIds.length > 0 ||
+    brandIds.length > 0 ||
+    tagIds.length > 0;
+
+  if (!hasSelectedScope) return true;
+
+  if (productIds.length && product.productId && productIds.includes(product.productId)) {
+    return true;
+  }
+
+  if (categoryIds.length && intersects(categoryIds, product.categoryIds)) {
+    return true;
+  }
+
+  if (brandIds.length && product.brandId && brandIds.includes(product.brandId)) {
+    return true;
+  }
+
+  if (tagIds.length && intersects(tagIds, product.tagIds)) {
+    return true;
+  }
+
+  return false;
+}
+
+function specialOfferMatchesProduct(offer: ProductSpecialOfferRow, product: any) {
+  if (!isOfferCurrentlyActive(offer)) return false;
+  if (!offerChannelAllowsStorefront(offer.channels)) return false;
+
+  const ctx = productOfferContext(product);
+  if (!ctx.productId) return false;
+
+  const targets = safeObject(offer.targets);
+  const conditions = safeObject(offer.conditions);
+  const rewards = safeObject(offer.rewards);
+
+  if (targetsMatchProduct(targets, ctx)) return true;
+
+  if (s(offer.offer_type) === "buy_x_get_y") {
+    const buyScope = s(conditions.buyScope).toLowerCase();
+    const getScope = s(rewards.getScope).toLowerCase();
+
+    if (buyScope === "targets" && targetsMatchProduct(targets, ctx)) return true;
+
+    if (
+      scopeMatchesProduct({
+        product: ctx,
+        source: conditions,
+        modeKey: "buyScope",
+        productIdsKey: "buyProductIds",
+        categoryIdsKey: "buyCategoryIds",
+        brandIdsKey: "buyBrandIds",
+        tagIdsKey: "buyTagIds",
+      })
+    ) {
+      return true;
+    }
+
+    if (getScope === "same" && targetsMatchProduct(targets, ctx)) return true;
+
+    if (
+      scopeMatchesProduct({
+        product: ctx,
+        source: rewards,
+        modeKey: "getScope",
+        productIdsKey: "getProductIds",
+        categoryIdsKey: "getCategoryIds",
+        brandIdsKey: "getBrandIds",
+        tagIdsKey: "getTagIds",
+      })
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function formatSpecialOfferSummary(offer: ProductSpecialOfferRow) {
+  const message = firstText(offer.message);
+  if (message) return message;
+
+  const conditions = safeObject(offer.conditions);
+  const rewards = safeObject(offer.rewards);
+  const type = s(offer.offer_type);
+
+  if (type === "buy_x_get_y") {
+    const buyQuantity = Math.max(1, Math.floor(Number(conditions.buyQuantity ?? 1) || 1));
+    const getQuantity = Math.max(1, Math.floor(Number(rewards.getQuantity ?? 1) || 1));
+    const rewardType = s(rewards.rewardType).toLowerCase();
+    const discountType = s(rewards.discountType).toLowerCase();
+    const discountValue = Number(rewards.discountValue ?? 0);
+
+    if (rewardType === "free" || discountValue >= 100) {
+      return `اشترِ ${buyQuantity} واحصل على ${getQuantity} مجانًا`;
+    }
+
+    if (discountType === "percentage" && discountValue > 0) {
+      return `اشترِ ${buyQuantity} واحصل على ${getQuantity} بخصم ${discountValue}%`;
+    }
+
+    if (discountValue > 0) {
+      return `اشترِ ${buyQuantity} واحصل على ${getQuantity} بخصم ${discountValue}`;
+    }
+
+    return `اشترِ ${buyQuantity} واحصل على ${getQuantity}`;
+  }
+
+  if (type === "percentage") {
+    const discountValue = Number(rewards.discountValue ?? 0);
+    return discountValue > 0 ? `خصم ${discountValue}% على هذا المنتج` : "خصم خاص على هذا المنتج";
+  }
+
+  if (type === "fixed_amount") {
+    const discountValue = Number(rewards.discountValue ?? 0);
+    return discountValue > 0 ? `خصم ${discountValue} على هذا المنتج` : "خصم بقيمة ثابتة";
+  }
+
+  if (type === "fixed_price") {
+    const fixedPrice = Number(rewards.fixedPrice ?? 0);
+    return fixedPrice > 0 ? `سعر خاص ${fixedPrice}` : "سعر خاص لهذا المنتج";
+  }
+
+  if (type === "discount_table") return "خصومات متدرجة حسب الكمية";
+  if (type === "category_offer") return "عرض خاص على التصنيف";
+
+  return firstText(offer.title, "عرض خاص");
+}
+
+async function loadProductSpecialOffers(args: { store_id: string; product: any }) {
+  const storeId = s(args.store_id);
+  const product = args.product;
+
+  if (!storeId || !s(product?.id)) return [];
+
+  try {
+    const sb = await getStoreDb(storeId);
+
+    const { data, error } = await sb
+      .from("store_special_offers")
+      .select(
+        "id,title,description,status,offer_type,starts_at,ends_at,channels,targets,conditions,rewards,apply_with_coupon,message,priority,created_at",
+      )
+      .eq("store_id", storeId)
+      .eq("status", "active")
+      .order("priority", { ascending: true })
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    if (error || !Array.isArray(data)) return [];
+
+    return (data as ProductSpecialOfferRow[])
+      .filter((offer) => specialOfferMatchesProduct(offer, product))
+      .slice(0, 4)
+      .map((offer) => ({
+        id: s(offer.id),
+        title: firstText(offer.title, "عرض خاص"),
+        description: firstText(offer.description) || null,
+        offerType: s(offer.offer_type),
+        offer_type: s(offer.offer_type),
+        message: firstText(offer.message) || null,
+        summary: formatSpecialOfferSummary(offer),
+        startsAt: firstText(offer.starts_at) || null,
+        starts_at: firstText(offer.starts_at) || null,
+        endsAt: firstText(offer.ends_at) || null,
+        ends_at: firstText(offer.ends_at) || null,
+        priority: Number.isFinite(Number(offer.priority)) ? Number(offer.priority) : 100,
+        applyWithCoupon: Boolean(offer.apply_with_coupon),
+        apply_with_coupon: Boolean(offer.apply_with_coupon),
+      }));
+  } catch {
+    return [];
+  }
+}
+
 /* ------------------------- loaders ------------------------ */
 
 async function loadProductPageByPublicNoRaw(args: {
@@ -1849,9 +2173,20 @@ async function loadProductPageByPublicNoRaw(args: {
     loadStoreSizeGuides(args.store_id),
   ]);
 
-  const recommendations = await loadRecommendedProducts({
+  const specialOffers = await loadProductSpecialOffers({
     store_id: args.store_id,
     product: fullProduct,
+  });
+
+  const productWithSpecialOffers = {
+    ...fullProduct,
+    specialOffers,
+    special_offers: specialOffers,
+  };
+
+  const recommendations = await loadRecommendedProducts({
+    store_id: args.store_id,
+    product: productWithSpecialOffers,
     rawOptions: options,
     limit: 8,
   });
@@ -1863,7 +2198,7 @@ async function loadProductPageByPublicNoRaw(args: {
   });
 
   return {
-    product: fullProduct,
+    product: productWithSpecialOffers,
     options,
     recommendations: recommendationsWithCurrency,
     sizeGuides,
@@ -1964,9 +2299,20 @@ async function loadProductPageByShortCodeRaw(args: {
     loadStoreSizeGuides(args.store_id),
   ]);
 
-  const recommendations = await loadRecommendedProducts({
+  const specialOffers = await loadProductSpecialOffers({
     store_id: args.store_id,
     product: fullProduct,
+  });
+
+  const productWithSpecialOffers = {
+    ...fullProduct,
+    specialOffers,
+    special_offers: specialOffers,
+  };
+
+  const recommendations = await loadRecommendedProducts({
+    store_id: args.store_id,
+    product: productWithSpecialOffers,
     rawOptions: options,
     limit: 8,
   });
@@ -1978,7 +2324,7 @@ async function loadProductPageByShortCodeRaw(args: {
   });
 
   return {
-    product: fullProduct,
+    product: productWithSpecialOffers,
     options,
     recommendations: recommendationsWithCurrency,
     sizeGuides,

@@ -1018,6 +1018,208 @@
   background: #fff;
 }
 
+.co-bank-proof {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: 14px;
+  margin-top: 12px;
+  border: 1px solid #e3e7ee;
+  border-radius: 12px;
+  background: #fff;
+  padding: 16px;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.035);
+}
+
+.co-bank-proof__head {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 4px;
+}
+
+.co-bank-proof__head strong {
+  color: #111827;
+  font-size: 15px;
+  font-weight: 950;
+  line-height: 1.4;
+}
+
+.co-bank-proof__head p {
+  max-width: 640px;
+  margin: 0;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.8;
+}
+
+.co-bank-proof__field {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  order: 3;
+}
+
+.co-bank-proof__field span,
+.co-bank-proof__upload strong {
+  color: #111827;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.co-bank-proof__field span + span {
+  display: none;
+}
+
+.co-bank-proof__field input {
+  width: 100%;
+  height: 50px;
+  border: 1px solid #d8dde5;
+  border-radius: 10px;
+  background: #fff;
+  padding-inline: 14px;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 850;
+  outline: none;
+}
+
+.co-bank-proof__field input:focus {
+  border-color: rgba(17, 24, 39, 0.58);
+  box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.05);
+}
+
+.co-bank-proof__upload {
+  display: grid;
+  order: 2;
+  gap: 10px;
+  min-height: 172px;
+  border: 1px dashed #b9c2cf;
+  border-radius: 12px;
+  background: #fafafa;
+  padding: 14px;
+}
+
+.co-bank-proof__upload::before {
+  content: "↥";
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  justify-self: center;
+  border-radius: 999px;
+  background: #fff;
+  color: #374151;
+  font-size: 22px;
+  font-weight: 900;
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.06);
+}
+
+.co-bank-proof__upload > div:first-of-type {
+  display: grid;
+  gap: 4px;
+  text-align: center;
+}
+
+.co-bank-proof__upload p {
+  margin: 3px 0 0;
+  color: #6b7280;
+  font-size: 11.5px;
+  font-weight: 750;
+  line-height: 1.6;
+}
+
+.co-bank-proof__upload input[type="file"] {
+  display: none;
+}
+
+.co-bank-proof__pick,
+.co-bank-proof__remove,
+.co-bank-proof__file button {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid #d8dde5;
+  border-radius: 999px;
+  background: #f9fafb;
+  color: #374151;
+  padding-inline: 12px;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.co-bank-proof__pick {
+  justify-self: center;
+  width: fit-content;
+}
+
+.co-bank-proof__remove,
+.co-bank-proof__file button {
+  background: #fff;
+  color: #9f1239;
+}
+
+.co-bank-proof__pick:disabled,
+.co-bank-proof__remove:disabled,
+.co-bank-proof__file button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.co-bank-proof__file {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid #e3e7ee;
+  border-radius: 10px;
+  background: #fff;
+  padding: 9px;
+}
+
+.co-bank-proof__file img {
+  width: 64px;
+  height: 64px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.co-bank-proof__file span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: #111827;
+  font-size: 12px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.co-bank-proof__file + .co-bank-proof__pick {
+  margin-top: 0;
+}
+
+.co-bank-proof__file small {
+  display: block;
+  margin-top: 2px;
+  color: #6b7280;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.co-bank-proof__error {
+  border: 1px solid rgba(220, 38, 38, 0.14);
+  border-radius: 6px;
+  background: #fff1f2;
+  color: #b91c1c;
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.6;
+}
+
 .co-payment-final-btn {
   width: 100%;
   min-height: 54px;
@@ -1425,6 +1627,50 @@
   .co-payment-note p {
     font-size: 12px;
     line-height: 1.7;
+  }
+
+  .co-bank-proof {
+    grid-template-columns: 1fr;
+    gap: 9px;
+    padding: 10px;
+  }
+
+  .co-bank-proof__head strong {
+    font-size: 14px;
+  }
+
+  .co-bank-proof__head p {
+    font-size: 11.5px;
+    line-height: 1.7;
+  }
+
+  .co-bank-proof__field {
+    order: 2;
+  }
+
+  .co-bank-proof__field input {
+    height: 46px;
+    font-size: 13px;
+  }
+
+  .co-bank-proof__upload {
+    order: 3;
+    min-height: 158px;
+    padding: 12px;
+  }
+
+  .co-bank-proof__file {
+    grid-template-columns: 54px minmax(0, 1fr);
+  }
+
+  .co-bank-proof__file img {
+    width: 54px;
+    height: 54px;
+  }
+
+  .co-bank-proof__file button {
+    grid-column: 1 / -1;
+    width: 100%;
   }
 
   .co-payment-final-btn {

@@ -28,6 +28,8 @@ type OrderItem = {
   qty?: number | string;
   price?: number | string;
   imageUrl?: string | null;
+  specialOfferAdjustment?: any;
+  special_offer_adjustment?: any;
 };
 
 type OrderOptionChoice = {
@@ -149,6 +151,8 @@ type ThankYouData = {
   statusDescription?: string | null;
 
   items?: OrderItem[];
+  specialOffers?: any;
+  special_offers?: any;
 
   bootstrap?: MalakBootstrap | null;
   theme?: {
@@ -629,6 +633,7 @@ function OrderItemRow({
   const qty = Math.max(1, Math.floor(n(item.qty || 1)));
   const unitPrice = n(item.price || 0);
   const lineTotal = unitPrice * qty;
+  const specialOfferAdjustment = readSpecialOfferAdjustment(item);
 
   return (
     <div className="flex items-center gap-4 border-b border-zinc-200 py-4 last:border-b-0">
@@ -653,6 +658,12 @@ function OrderItemRow({
             {item.subtitle}
           </div>
         ) : null}
+
+        {specialOfferAdjustment ? (
+          <div className="mt-2 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-black text-emerald-700">
+            {specialOfferAdjustment.label}
+          </div>
+        ) : null}
       </div>
 
       <div className="grid h-[74px] w-[74px] shrink-0 place-items-center overflow-hidden rounded-2xl bg-zinc-50">
@@ -666,6 +677,108 @@ function OrderItemRow({
         ) : (
           <ShoppingBag className="h-6 w-6 text-zinc-400" />
         )}
+      </div>
+    </div>
+  );
+}
+
+function readSpecialOfferAdjustment(item: OrderItem) {
+  const source = item.specialOfferAdjustment ?? item.special_offer_adjustment;
+  if (!source || typeof source !== "object") return null;
+
+  const discount = round2(source.discount);
+  if (discount <= 0) return null;
+
+  return {
+    label: s(source.label) || "هدية العرض",
+    offerTitle: s(source.offerTitle ?? source.offer_title),
+    productName: s(item.title),
+    discount,
+  };
+}
+
+function readThankYouSpecialOffers(data: ThankYouData, items: OrderItem[]) {
+  const source = safeObject(data.specialOffers ?? data.special_offers);
+  const discount = round2(source.discount);
+
+  const appliedOffers = safeArray(
+    source.appliedOffers ?? source.applied_offers,
+  );
+  const messages = safeArray(source.messages).map(s).filter(Boolean);
+  const lineAdjustments = safeArray(
+    source.lineAdjustments ?? source.line_adjustments,
+  );
+
+  if (discount <= 0 && !appliedOffers.length && !messages.length) return null;
+
+  const itemByProductId = new Map<string, OrderItem>();
+  for (const item of items) {
+    const adjustmentSource =
+      item.specialOfferAdjustment ?? item.special_offer_adjustment;
+    const productId = s(
+      adjustmentSource?.productId ?? adjustmentSource?.product_id,
+    );
+    if (productId) itemByProductId.set(productId, item);
+  }
+
+  return {
+    discount,
+    appliedOffers,
+    messages,
+    gifts: lineAdjustments
+      .filter((row: any) => round2(row?.discount) > 0)
+      .map((row: any) => {
+        const productId = s(row?.productId ?? row?.product_id);
+        const productName = s(itemByProductId.get(productId)?.title);
+
+        return {
+          productName,
+          offerTitle: s(row?.offerTitle ?? row?.offer_title),
+        };
+      })
+      .filter((row: any) => row.productName || row.offerTitle),
+  };
+}
+
+function SpecialOffersBlock({
+  data,
+  items,
+  money,
+}: {
+  data: ThankYouData;
+  items: OrderItem[];
+  money: (amount: number) => string;
+}) {
+  const specialOffers = readThankYouSpecialOffers(data, items);
+
+  if (!specialOffers) return null;
+
+  const offerTitles = specialOffers.appliedOffers
+    .map((offer: any) => s(offer?.title ?? offer?.message))
+    .filter(Boolean);
+  const titles = Array.from(new Set([...offerTitles, ...specialOffers.messages]));
+
+  return (
+    <div className="mk-thank-special">
+      <div className="mk-thank-special__head">
+        <strong>العروض الخاصة</strong>
+        {specialOffers.discount > 0 ? (
+          <span dir="ltr">- {money(specialOffers.discount)}</span>
+        ) : null}
+      </div>
+
+      <div className="mk-thank-special__list">
+        {titles.map((title) => (
+          <div key={title}>تم تطبيق عرض: {title}</div>
+        ))}
+
+        {specialOffers.gifts.map((gift: any, index: number) => (
+          <div key={`${gift.productName}-${gift.offerTitle}-${index}`}>
+            {gift.productName
+              ? `هدية العرض: ${gift.productName}`
+              : `هدية العرض بسبب: ${gift.offerTitle}`}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1179,6 +1292,8 @@ export default function ThankYouScreen(props: AnyProps) {
                   </div>
                 </div>
               ) : null}
+
+              <SpecialOffersBlock data={data} items={items} money={money} />
 
               <div
                 className={

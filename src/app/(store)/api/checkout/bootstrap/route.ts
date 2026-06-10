@@ -171,6 +171,17 @@ function emptySummary(currencyInfo: any) {
     pricesIncludeTax: false,
 
     coupon: null,
+    coupon_discount: 0,
+    couponDiscount: 0,
+    special_offers_discount: 0,
+    specialOffersDiscount: 0,
+    applied_special_offers: [],
+    appliedSpecialOffers: [],
+    special_offer_messages: [],
+    specialOfferMessages: [],
+    special_offer_line_adjustments: [],
+    specialOfferLineAdjustments: [],
+    lineAdjustments: [],
     payment_method: null,
   };
 }

@@ -1,5 +1,43 @@
 /* FILE: apps/storefront/src/themes/malak/styles/screens-desktop/thankyou.css */
 
+.mk-thank-special {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+  border: 1px solid rgba(4, 120, 87, 0.14);
+  border-radius: 16px;
+  background: rgba(236, 253, 245, 0.48);
+  padding: 12px 14px;
+}
+
+.mk-thank-special__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mk-thank-special__head strong {
+  color: #064e3b;
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.mk-thank-special__head span {
+  color: #047857;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.mk-thank-special__list {
+  display: grid;
+  gap: 4px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.6;
+}
+
 .mk-dthank {
   min-height: 78vh;
   display: flex;

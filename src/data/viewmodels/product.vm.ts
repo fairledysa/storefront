@@ -104,6 +104,23 @@ export type ProductCardVariantVM = Record<string, any> & {
   optionValueIds?: string[];
 };
 
+export type ProductSpecialOfferVM = {
+  id: string;
+  title: string;
+  description: string | null;
+  offerType: string;
+  offer_type: string;
+  message: string | null;
+  summary: string;
+  startsAt: string | null;
+  starts_at: string | null;
+  endsAt: string | null;
+  ends_at: string | null;
+  priority: number;
+  applyWithCoupon: boolean;
+  apply_with_coupon: boolean;
+};
+
 export type ProductCardVM = {
   id: string;
   publicNo: number | null;
@@ -176,6 +193,8 @@ export type ProductCardVM = {
 
   options: ProductCardOptionVM[];
   variants: ProductCardVariantVM[];
+  specialOffers: ProductSpecialOfferVM[];
+  special_offers: ProductSpecialOfferVM[];
 
   raw: any;
 };
@@ -1983,6 +2002,52 @@ function normalizeTags(product: any): ProductDetailVM["tags"] {
     );
 }
 
+
+function normalizeSpecialOffers(product: any): ProductSpecialOfferVM[] {
+  const source = Array.isArray(product?.specialOffers)
+    ? product.specialOffers
+    : Array.isArray(product?.special_offers)
+      ? product.special_offers
+      : [];
+
+  return source
+    .map((offer: any) => {
+      const id = s(offer?.id);
+      const summary = firstText(offer?.summary, offer?.message, offer?.title);
+      if (!id || !summary) return null;
+
+      const offerType = firstText(offer?.offerType, offer?.offer_type);
+      const title = firstText(offer?.title, summary);
+      const description = firstText(offer?.description) || null;
+      const message = firstText(offer?.message) || null;
+      const startsAt = firstText(offer?.startsAt, offer?.starts_at) || null;
+      const endsAt = firstText(offer?.endsAt, offer?.ends_at) || null;
+      const priorityRaw = Number(offer?.priority ?? 100);
+      const applyWithCoupon = readBool(
+        firstDefined(offer?.applyWithCoupon, offer?.apply_with_coupon),
+        false,
+      );
+
+      return {
+        id,
+        title,
+        description,
+        offerType,
+        offer_type: offerType,
+        message,
+        summary,
+        startsAt,
+        starts_at: startsAt,
+        endsAt,
+        ends_at: endsAt,
+        priority: Number.isFinite(priorityRaw) ? priorityRaw : 100,
+        applyWithCoupon,
+        apply_with_coupon: applyWithCoupon,
+      };
+    })
+    .filter(Boolean) as ProductSpecialOfferVM[];
+}
+
 export function toProductCardVM(args: {
   storeSlug: string;
   product: any;
@@ -2117,6 +2182,8 @@ const stock = readStock(product, variants);
 
     options,
     variants,
+    specialOffers: normalizeSpecialOffers(product),
+    special_offers: normalizeSpecialOffers(product),
 
     raw: product,
   };

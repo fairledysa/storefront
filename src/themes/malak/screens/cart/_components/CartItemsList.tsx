@@ -162,6 +162,34 @@ function readStockLimit(item: CartItemEnriched) {
   };
 }
 
+function readSpecialOfferAdjustment(item: CartItemEnriched) {
+  const itemAny: any = item ?? {};
+  const direct = itemAny.specialOfferAdjustment ?? itemAny.special_offer_adjustment;
+  const list = Array.isArray(itemAny.specialOfferAdjustments)
+    ? itemAny.specialOfferAdjustments
+    : Array.isArray(itemAny.special_offer_adjustments)
+      ? itemAny.special_offer_adjustments
+      : [];
+
+  const source = direct && typeof direct === "object" ? direct : list[0];
+  if (!source || typeof source !== "object") return null;
+
+  const discount = Number(
+    source.discount ??
+      itemAny.specialOfferDiscount ??
+      itemAny.special_offer_discount ??
+      0,
+  );
+
+  if (!Number.isFinite(discount) || discount <= 0) return null;
+
+  return {
+    label: s(source.label) || "هدية العرض",
+    offerTitle: s(source.offerTitle ?? source.offer_title),
+    discount,
+  };
+}
+
 function buildProductHref(item: CartItemEnriched) {
   const product: any = item.product ?? {};
 
@@ -351,6 +379,7 @@ const CartItemRow = memo(function CartItemRow({
     const selectedPairs = buildSelectedOptionsLabel(item);
     const customerNote = readSpecialSelectedOption(item, "ملاحظة");
     const attachments = readAttachments(item);
+    const specialOfferAdjustment = readSpecialOfferAdjustment(item);
 
     const hasVariantOptions =
       Array.isArray(item.options) && item.options.length > 0;
@@ -388,6 +417,7 @@ const CartItemRow = memo(function CartItemRow({
       selectedPairs,
       customerNote,
       attachments,
+      specialOfferAdjustment,
       hasEditableOptions,
       stockLimit,
       plusDisabled,
@@ -455,18 +485,32 @@ const CartItemRow = memo(function CartItemRow({
       <div className="mk-dcart-item__body mk-dcart-item__bodyPro">
         <div className="mk-dcart-item__contentPro">
           <div className="mk-dcart-item__main mk-dcart-item__mainPro">
-            <a
-              href={view.productHref}
-              className="mk-dcart-item__title mk-dcart-item__titleLink"
-              title={view.title}
-            >
-              {view.title}
-            </a>
+            <div className="mk-dcart-item__titleRowInline">
+              <a
+                href={view.productHref}
+                className="mk-dcart-item__title mk-dcart-item__titleLink"
+                title={view.title}
+              >
+                {view.title}
+              </a>
+
+              {view.specialOfferAdjustment ? (
+                <span className="mk-dcart-offerGiftBadge">
+                  {view.specialOfferAdjustment.label}
+                </span>
+              ) : null}
+            </div>
 
             <div className="mk-dcart-item__micro">
               <span>داخل السلة</span>
               {view.hasEditableOptions ? <span>قابل للتعديل</span> : null}
             </div>
+
+            {view.specialOfferAdjustment?.offerTitle ? (
+              <div className="mk-dcart-offerGiftNote">
+                بسبب عرض: {view.specialOfferAdjustment.offerTitle}
+              </div>
+            ) : null}
 
             {view.selectedPairs.length ? (
               <div className="mk-dcart-options">

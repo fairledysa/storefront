@@ -11,6 +11,7 @@ import { controlDb } from "@/data/db/control-db.server";
 import { getOrdersDb } from "@/data/db/orders-db.server";
 import { getStoreDb } from "@/data/db/store-db.server";
 import { loadFreeShippingEvaluator } from "../checkout/lib/free-shipping";
+import { calculateCartSpecialOffers } from "../checkout/lib/special-offers";
 import {
   buildLineKey,
   cartSessionCookie,
@@ -2411,6 +2412,79 @@ await writeCartTracking({
       ]).catch(() => undefined);
     }
 
+    const specialOffersResult = await calculateCartSpecialOffers({
+      sb: storeDb,
+      storeId: store_id,
+      items: enriched.map((item: any) => ({
+        id: String(item?.id ?? ""),
+        product_id: String(item?.product_id ?? item?.product?.id ?? ""),
+        variant_id: item?.variant_id ? String(item.variant_id) : null,
+        qty: Math.max(1, Math.floor(toNumber(item?.qty))),
+        unit_price: Math.max(
+          0,
+          toNumber(item?.unit_price_before_tax ?? item?.unitPriceBeforeTax),
+        ),
+      })),
+      subtotal,
+      couponApplied: Boolean(coupon),
+      convertStoreAmountToCartCurrency: (amount) =>
+        round2(
+          convertMoney({
+            amount,
+            sourceCode: storeBaseCurrencyCode,
+            targetCode: currencyInfo.code,
+            runtime: currencyRuntime,
+          }),
+        ),
+    });
+
+    const specialOffersDiscount = round2(specialOffersResult.discount);
+    const totalDiscount = round2(
+      Math.min(subtotal, discountFromCoupon + specialOffersDiscount),
+    );
+
+    const specialOfferAdjustmentsByItem = new Map<string, any[]>();
+
+    for (const adjustment of specialOffersResult.lineAdjustments ?? []) {
+      const cartItemId = String(adjustment?.cartItemId ?? "").trim();
+      if (!cartItemId) continue;
+
+      if (!specialOfferAdjustmentsByItem.has(cartItemId)) {
+        specialOfferAdjustmentsByItem.set(cartItemId, []);
+      }
+
+      specialOfferAdjustmentsByItem.get(cartItemId)!.push(adjustment);
+    }
+
+    const enrichedWithSpecialOffers = enriched.map((item: any) => {
+      const cartItemId = String(item?.id ?? "").trim();
+      const adjustments = specialOfferAdjustmentsByItem.get(cartItemId) ?? [];
+
+      if (!adjustments.length) return item;
+
+      const specialOfferDiscount = round2(
+        adjustments.reduce(
+          (sum, adjustment) => sum + Math.max(0, toNumber(adjustment?.discount)),
+          0,
+        ),
+      );
+
+      const primaryAdjustment = {
+        ...adjustments[0],
+        discount: specialOfferDiscount,
+      };
+
+      return {
+        ...item,
+        special_offer_adjustments: adjustments,
+        specialOfferAdjustments: adjustments,
+        special_offer_adjustment: primaryAdjustment,
+        specialOfferAdjustment: primaryAdjustment,
+        special_offer_discount: specialOfferDiscount,
+        specialOfferDiscount,
+      };
+    });
+
     const freeShippingProductIds: string[] = Array.from(
       new Set<string>(
         enriched
@@ -2446,10 +2520,18 @@ await writeCartTracking({
 
     const summary = {
       subtotal,
-      discount: discountFromCoupon,
+      discount: totalDiscount,
+      coupon_discount: discountFromCoupon,
+      couponDiscount: discountFromCoupon,
+      special_offers_discount: specialOffersDiscount,
+      specialOffersDiscount,
+      applied_special_offers: specialOffersResult.appliedOffers,
+      appliedSpecialOffers: specialOffersResult.appliedOffers,
+      special_offer_line_adjustments: specialOffersResult.lineAdjustments,
+      specialOfferLineAdjustments: specialOffersResult.lineAdjustments,
       tax: taxTotal,
       shipping: 0,
-      total: Math.max(0, subtotal + taxTotal - discountFromCoupon),
+      total: Math.max(0, subtotal + taxTotal - totalDiscount),
 
       free_shipping: freeShippingApplied,
       freeShipping: freeShippingApplied,
@@ -2499,9 +2581,10 @@ await writeCartTracking({
       payload: {
         data: {
           cart,
-          items: enriched,
+          items: enrichedWithSpecialOffers,
           summary,
           coupon,
+          lineAdjustments: specialOffersResult.lineAdjustments,
           currency_info: currencyInfo,
         },
       },

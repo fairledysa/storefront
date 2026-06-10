@@ -2849,6 +2849,70 @@ body:has(.mk-mcart) a[href*="whatsapp"] {
   align-content: center !important;
 }
 
+.mk-mobile-shell[data-mk-route="cart"] .mk-mcart-card__titleStack {
+  min-width: 0 !important;
+  display: grid !important;
+  gap: 5px !important;
+  align-content: start !important;
+}
+
+.mk-mobile-shell[data-mk-route="cart"] .mk-mcart-card__titleStack .mk-mcart-card__title {
+  width: fit-content !important;
+  max-width: 100% !important;
+}
+
+.mk-mobile-shell[data-mk-route="cart"] .mk-mcart-card__offerGift {
+  min-width: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  flex-wrap: wrap !important;
+}
+
+.mk-mobile-shell[data-mk-route="cart"] .mk-mcart-card__offerGiftBadge {
+  min-height: 21px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 999px !important;
+  border: 1px solid rgba(21, 128, 61, 0.16) !important;
+  background: rgba(21, 128, 61, 0.08) !important;
+  color: #166534 !important;
+  padding: 0 7px !important;
+  font-size: 9.8px !important;
+  font-weight: 1000 !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+}
+
+.mk-mobile-shell[data-mk-route="cart"] .mk-mcart-card__offerGiftNote {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  color: #667085 !important;
+  font-size: 10.2px !important;
+  font-weight: 850 !important;
+  line-height: 1.35 !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+@media (max-width: 380px) {
+  .mk-mobile-shell[data-mk-route="cart"] .mk-mcart-card__offerGift {
+    gap: 4px !important;
+  }
+
+  .mk-mobile-shell[data-mk-route="cart"] .mk-mcart-card__offerGiftBadge {
+    min-height: 20px !important;
+    padding-inline: 6px !important;
+    font-size: 9.4px !important;
+  }
+
+  .mk-mobile-shell[data-mk-route="cart"] .mk-mcart-card__offerGiftNote {
+    font-size: 9.8px !important;
+  }
+}
+
 
 
 

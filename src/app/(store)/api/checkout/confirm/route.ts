@@ -12,6 +12,7 @@ import {
   getStoreIdOrThrow,
 } from "../../_cart/cart.server";
 import { evaluateCodRestrictions } from "../lib/cod-restrictions";
+import { buildCartSummary } from "../lib/summary";
 
 export const dynamic = "force-dynamic";
 
@@ -678,6 +679,7 @@ export async function POST(req: Request) {
     const address_id_in = s(body?.address_id) || null;
     const shipping_id_in = s(body?.shipping_id) || null;
     const payment_method_in = s(body?.payment_method) || null;
+    const include_summary = body?.include_summary === true;
 
     if (!address_id_in && !shipping_id_in && !payment_method_in) {
       return jsonError("PATCH_REQUIRED", 400);
@@ -827,13 +829,20 @@ export async function POST(req: Request) {
       return jsonError("CART_NOT_FOUND", 404);
     }
 
+    const summary = include_summary
+      ? await buildCartSummary({
+          store_id,
+          cart_id,
+        })
+      : null;
+
     return jsonOkWithCartCookie({
       session_id,
       payload: {
         ok: true,
         cart: uR.data,
-        summary: null,
-        summary_pending: true,
+        summary,
+        summary_pending: !summary,
         state: {
           address_id: uR.data.address_id ?? null,
           shipping_id: uR.data.shipping_id ?? null,

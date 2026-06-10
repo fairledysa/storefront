@@ -426,6 +426,31 @@ function readStockLimit(item: CartItemEnriched) {
   };
 }
 
+function readSpecialOfferAdjustment(item: CartItemEnriched) {
+  const itemAny: any = item ?? {};
+  const direct = itemAny.specialOfferAdjustment ?? itemAny.special_offer_adjustment;
+  const list = Array.isArray(itemAny.specialOfferAdjustments)
+    ? itemAny.specialOfferAdjustments
+    : Array.isArray(itemAny.special_offer_adjustments)
+      ? itemAny.special_offer_adjustments
+      : [];
+
+  const source = direct && typeof direct === "object" ? direct : list[0];
+  const discount = firstMoneyNumber(
+    source?.discount,
+    itemAny.specialOfferDiscount,
+    itemAny.special_offer_discount,
+  );
+
+  if (discount === null || discount <= 0) return null;
+
+  return {
+    label: s(source?.label) || "هدية العرض",
+    offerTitle: s(source?.offerTitle ?? source?.offer_title),
+    discount,
+  };
+}
+
 const MobileCartItemCard = memo(function MobileCartItemCard({
   item,
   summary,
@@ -467,6 +492,7 @@ const MobileCartItemCard = memo(function MobileCartItemCard({
     const selectedPairs = buildSelectedOptionsLabel(item);
     const customerNote = readSpecialSelectedOption(item, "ملاحظة");
     const attachments = readAttachments(item);
+    const specialOfferAdjustment = readSpecialOfferAdjustment(item);
 
     const hasVariantOptions =
       Array.isArray(item.options) && item.options.length > 0;
@@ -504,6 +530,7 @@ const MobileCartItemCard = memo(function MobileCartItemCard({
       selectedPairs,
       customerNote,
       attachments,
+      specialOfferAdjustment,
       hasEditableOptions,
       plusDisabled,
       plusTitle,
@@ -571,13 +598,28 @@ const MobileCartItemCard = memo(function MobileCartItemCard({
 
       <div className="mk-mcart-card__body">
         <div className="mk-mcart-card__top">
-          <a
-            href={view.productHref}
-            className="mk-mcart-card__title"
-            title={view.title}
-          >
-            {view.title}
-          </a>
+          <div className="mk-mcart-card__titleStack">
+            <a
+              href={view.productHref}
+              className="mk-mcart-card__title"
+              title={view.title}
+            >
+              {view.title}
+            </a>
+
+            {view.specialOfferAdjustment ? (
+              <div className="mk-mcart-card__offerGift">
+                <span className="mk-mcart-card__offerGiftBadge">
+                  {view.specialOfferAdjustment.label}
+                </span>
+                {view.specialOfferAdjustment.offerTitle ? (
+                  <span className="mk-mcart-card__offerGiftNote">
+                    بسبب عرض: {view.specialOfferAdjustment.offerTitle}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
 
           <button
             type="button"

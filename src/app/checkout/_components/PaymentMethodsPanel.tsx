@@ -33,6 +33,7 @@ export type PaymentOption = {
   disabled_message?: string | null;
   disabled_help?: PaymentDisabledHelp;
   bank_details?: {
+    id?: string;
     bank_name: string;
     account_holder: string;
     iban: string;

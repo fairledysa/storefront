@@ -979,6 +979,31 @@
   font-weight: 900;
 }
 
+.mk-dproduct-miniOffers__item--special {
+  min-height: 34px;
+  gap: 8px;
+  border-color: color-mix(in srgb, var(--mk-product-primary) 14%, transparent);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--mk-product-primary) 6%, var(--mk-product-card)),
+    var(--mk-product-card)
+  );
+}
+
+.mk-dproduct-miniOffers__badge {
+  min-height: 22px;
+  border-radius: 999px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--mk-product-primary) 10%, transparent);
+  color: var(--mk-product-primary);
+  font-size: 11px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
 /* =========================================================
    Sticky Add To Cart
    ========================================================= */

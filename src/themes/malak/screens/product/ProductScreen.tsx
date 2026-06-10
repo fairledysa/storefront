@@ -14,6 +14,7 @@ import ProductBreadcrumbs from "./_components/ProductBreadcrumbs";
 import {
   toProductDetailVM,
   type ProductDetailVM,
+  type ProductSpecialOfferVM,
 } from "@/data/viewmodels/product.vm";
 import type { SeoUrlMode } from "@/data/store/settings";
 import { parseStoreOptions } from "@/lib/store-options";
@@ -183,6 +184,21 @@ function firstText(...values: any[]) {
   }
 
   return "";
+}
+
+
+const SPECIAL_OFFER_TYPE_LABELS: Record<string, string> = {
+  buy_x_get_y: "اشترِ واحصل",
+  fixed_amount: "خصم ثابت",
+  percentage: "خصم نسبة",
+  discount_table: "جدول خصومات",
+  fixed_price: "سعر خاص",
+  category_offer: "عرض فئات",
+};
+
+function specialOfferTypeLabel(value: any) {
+  const key = text(value);
+  return SPECIAL_OFFER_TYPE_LABELS[key] || "عرض خاص";
 }
 
 function clampDecimals(value: any) {
@@ -1876,6 +1892,15 @@ export default function ProductScreen({ data }: Props) {
 
   const promotionTitle = text(productVm.promotionTitle);
 
+  const specialOffers = useMemo<ProductSpecialOfferVM[]>(() => {
+    return Array.isArray(productVm.specialOffers) ? productVm.specialOffers : [];
+  }, [productVm.specialOffers]);
+
+  const shouldShowMiniOffers = Boolean(
+    productOptions.mini_offers_box &&
+      (promotionTitle || hasDiscount || specialOffers.length > 0),
+  );
+
   const descriptionHtml = String(productVm.descriptionHtml ?? "");
   const descriptionText = String(product?.description ?? "");
 
@@ -1941,13 +1966,26 @@ const shouldShowProductReviews = Boolean(
             objectFit={productOptions.slider_background_size}
           />
 
-          {productOptions.mini_offers_box && (promotionTitle || hasDiscount) ? (
+          {shouldShowMiniOffers ? (
             <div className="mk-dproduct-miniOffers">
               <div className="mk-dproduct-miniOffers__title">
                 العروض الخاصة
               </div>
 
               <div className="mk-dproduct-miniOffers__items">
+                {specialOffers.map((offer) => (
+                  <span
+                    key={offer.id}
+                    className="mk-dproduct-miniOffers__item mk-dproduct-miniOffers__item--special"
+                    title={offer.title}
+                  >
+                    <span className="mk-dproduct-miniOffers__badge">
+                      {specialOfferTypeLabel(offer.offerType)}
+                    </span>
+                    <span>{offer.summary}</span>
+                  </span>
+                ))}
+
                 {promotionTitle ? (
                   <span className="mk-dproduct-miniOffers__item">
                     {promotionTitle}
