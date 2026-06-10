@@ -95,6 +95,8 @@ type ThankYouData = {
   items?: OrderItem[];
   specialOffers?: any;
   special_offers?: any;
+  cartOffers?: any;
+  cart_offers?: any;
 
   bootstrap?: MalakBootstrap | null;
   theme?: {
@@ -544,6 +546,70 @@ function SpecialOffersSection({
   );
 }
 
+function readThankYouCartOffers(data: ThankYouData) {
+  const source =
+    data.cartOffers && typeof data.cartOffers === "object"
+      ? data.cartOffers
+      : data.cart_offers && typeof data.cart_offers === "object"
+        ? data.cart_offers
+        : {};
+
+  const discount = n(source.discount);
+  const appliedOffers = Array.isArray(source.appliedOffers)
+    ? source.appliedOffers
+    : Array.isArray(source.applied_offers)
+      ? source.applied_offers
+      : [];
+  const messages = Array.isArray(source.messages)
+    ? source.messages.map(s).filter(Boolean)
+    : [];
+
+  if (discount <= 0 && !appliedOffers.length && !messages.length) return null;
+
+  return {
+    discount,
+    titles: Array.from(
+      new Set([
+        ...appliedOffers
+          .map((offer: any) => s(offer?.message) || s(offer?.title))
+          .filter(Boolean),
+        ...messages,
+      ]),
+    ),
+  };
+}
+
+function CartOffersSection({
+  data,
+  money,
+}: {
+  data: ThankYouData;
+  money: (amount: number) => string;
+}) {
+  const cartOffers = readThankYouCartOffers(data);
+
+  if (!cartOffers) return null;
+
+  return (
+    <div className="mk-mthank-special">
+      <div className="mk-mthank-special__head">
+        <strong>عروض السلة</strong>
+        {cartOffers.discount > 0 ? (
+          <span dir="ltr">- {money(cartOffers.discount)}</span>
+        ) : null}
+      </div>
+
+      {cartOffers.titles.length > 0 ? (
+        <div className="mk-mthank-special__list">
+          {cartOffers.titles.map((title) => (
+            <div key={title}>{title}</div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function ThankYouMobileScreen(props: Props) {
   const data = props.data ?? {};
   const isPaymentSubmitted = usePaymentSubmittedFlag(data);
@@ -804,6 +870,7 @@ export default function ThankYouMobileScreen(props: Props) {
 
         <div className="mk-mthank-moneyBox">
           <SpecialOffersSection data={data} items={items} money={money} />
+          <CartOffersSection data={data} money={money} />
 
           <MoneyRow label="مجموع المنتجات" value={money(subtotal)} />
           <MoneyRow label="الشحن" value={money(shippingAmount)} />

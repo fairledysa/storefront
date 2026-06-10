@@ -136,6 +136,24 @@ export type CartSummaryMoney = {
 
   special_offer_line_adjustments?: CartSpecialOfferAdjustment[];
   specialOfferLineAdjustments?: CartSpecialOfferAdjustment[];
+
+  cart_offer_progress?: any;
+  cartOfferProgress?: any;
+
+  cart_offers_discount?: number;
+  cartOffersDiscount?: number;
+  cart_offers?: {
+    discount?: number;
+    messages?: string[];
+    appliedOffers?: any[];
+    applied_offers?: any[];
+  };
+  cartOffers?: {
+    discount?: number;
+    messages?: string[];
+    appliedOffers?: any[];
+    applied_offers?: any[];
+  };
 };
 
 export type CartCoupon = null | {

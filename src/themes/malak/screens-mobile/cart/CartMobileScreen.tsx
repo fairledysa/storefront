@@ -7,6 +7,7 @@ import { useMobileCart } from "./useMobileCart";
 import MobileCartHeader from "./_components/MobileCartHeader";
 import MobileCartItemsList from "./_components/MobileCartItemsList";
 import MobileCartSummarySheet from "./_components/MobileCartSummarySheet";
+import CartOfferProgressBar from "../../components/cart-offers/CartOfferProgressBar";
 
 type ToastViewKind = "success" | "error" | "info";
 
@@ -91,6 +92,20 @@ async function trackAbandonedCartVisit(jobId: string) {
     }),
     keepalive: true,
   }).catch(() => null);
+}
+
+function pickCartOfferProgress(source: any) {
+  return (
+    source?.cartOfferProgress ||
+    source?.cart_offer_progress ||
+    source?.cartOffers?.progress ||
+    source?.cart_offers?.progress ||
+    source?.summary?.cartOfferProgress ||
+    source?.summary?.cart_offer_progress ||
+    source?.summary?.cartOffers?.progress ||
+    source?.summary?.cart_offers?.progress ||
+    null
+  );
 }
 
 export default function CartMobileScreen() {
@@ -238,6 +253,15 @@ export default function CartMobileScreen() {
   );
 
   const isEmpty = !loading && items.length === 0;
+  const summaryAny = summary as any;
+  const cartOfferProgress = pickCartOfferProgress(summaryAny);
+  const currency = cleanText(summaryAny?.currency);
+  const currencySymbol = cleanText(
+    summaryAny?.currency_symbol ?? summaryAny?.currencySymbol ?? currency,
+  );
+  const currencyDecimals = Number(
+    summaryAny?.currency_decimals ?? summaryAny?.currencyDecimals ?? 2,
+  );
 
   const handleBack = useCallback(() => {
     pop();
@@ -329,6 +353,17 @@ export default function CartMobileScreen() {
           .filter(Boolean)
           .join(" ")}
       >
+        {!loading && cartOfferProgress ? (
+          <div className="malak-mobile-cart-offerProgress">
+            <CartOfferProgressBar
+              progress={cartOfferProgress}
+              currencySymbol={currencySymbol}
+              currencyDecimals={currencyDecimals}
+              variant="mobile"
+            />
+          </div>
+        ) : null}
+
         <MobileCartItemsList
           items={items}
           summary={summary}

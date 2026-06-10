@@ -12,6 +12,7 @@ import { getOrdersDb } from "@/data/db/orders-db.server";
 import { getStoreDb } from "@/data/db/store-db.server";
 import { loadFreeShippingEvaluator } from "../checkout/lib/free-shipping";
 import { calculateCartSpecialOffers } from "../checkout/lib/special-offers";
+import { calculateCartOffers } from "../checkout/lib/cart-offers";
 import {
   buildLineKey,
   cartSessionCookie,
@@ -2439,8 +2440,32 @@ await writeCartTracking({
     });
 
     const specialOffersDiscount = round2(specialOffersResult.discount);
+    const cartOffersResult = await calculateCartOffers({
+      sb: storeDb,
+      storeId: store_id,
+      subtotal,
+      itemCount: enriched.reduce(
+        (sum: number, item: any) =>
+          sum + Math.max(0, Math.floor(toNumber(item?.qty))),
+        0,
+      ),
+      couponApplied: Boolean(coupon),
+      customerId: String(cart?.user_id ?? "").trim(),
+      eligibleAmount: Math.max(0, subtotal - discountFromCoupon - specialOffersDiscount),
+    });
+    const cartOffersDiscount = round2(cartOffersResult.discount);
+    const cartOffersSnapshot = {
+      discount: cartOffersDiscount,
+      messages: cartOffersResult.messages,
+      appliedOffers: cartOffersResult.appliedOffers,
+      applied_offers: cartOffersResult.appliedOffers,
+      progress: cartOffersResult.progress ?? null,
+    };
     const totalDiscount = round2(
-      Math.min(subtotal, discountFromCoupon + specialOffersDiscount),
+      Math.min(
+        subtotal,
+        discountFromCoupon + specialOffersDiscount + cartOffersDiscount,
+      ),
     );
 
     const specialOfferAdjustmentsByItem = new Map<string, any[]>();
@@ -2523,6 +2548,12 @@ await writeCartTracking({
       discount: totalDiscount,
       coupon_discount: discountFromCoupon,
       couponDiscount: discountFromCoupon,
+      cart_offers_discount: cartOffersDiscount,
+      cartOffersDiscount: cartOffersDiscount,
+      cart_offers: cartOffersSnapshot,
+      cartOffers: cartOffersSnapshot,
+      cart_offer_progress: cartOffersResult.progress ?? null,
+      cartOfferProgress: cartOffersResult.progress ?? null,
       special_offers_discount: specialOffersDiscount,
       specialOffersDiscount,
       applied_special_offers: specialOffersResult.appliedOffers,

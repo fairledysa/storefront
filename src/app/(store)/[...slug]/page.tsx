@@ -2468,6 +2468,13 @@ export default async function Page(props: PageProps) {
         shippingSnapshot.specialOffers,
     );
 
+    const cartOffersSnapshot = safeRecord(
+      checkoutSnapshot.cart_offers ??
+        checkoutSnapshot.cartOffers ??
+        shippingSnapshot.cart_offers ??
+        shippingSnapshot.cartOffers,
+    );
+
     const orderOptionsR = await ordersDb
       .from("order_option_answers")
       .select(
@@ -2877,6 +2884,35 @@ export default async function Page(props: PageProps) {
       messages: specialOfferMessages,
     };
 
+    const cartOffersAppliedOffers = Array.isArray(
+      cartOffersSnapshot.appliedOffers,
+    )
+      ? cartOffersSnapshot.appliedOffers
+      : Array.isArray(cartOffersSnapshot.applied_offers)
+        ? cartOffersSnapshot.applied_offers
+        : [];
+
+    const cartOfferMessages = (
+      Array.isArray(cartOffersSnapshot.messages) ? cartOffersSnapshot.messages : []
+    )
+      .map((message: any) => String(message ?? "").trim())
+      .filter(Boolean);
+
+    const cartOffersDiscount = moneyRound(
+      firstSnapshotValue(
+        cartOffersSnapshot,
+        ["discount", "cartOffersDiscount", "cart_offers_discount"],
+        0,
+      ),
+    );
+
+    const cartOffers = {
+      appliedOffers: cartOffersAppliedOffers,
+      applied_offers: cartOffersAppliedOffers,
+      discount: cartOffersDiscount,
+      messages: cartOfferMessages,
+    };
+
     return await renderStoreRoute({
       store: ctx.store,
       store_id: ctx.store.id,
@@ -2934,6 +2970,8 @@ export default async function Page(props: PageProps) {
 
         specialOffers,
         special_offers: specialOffers,
+        cartOffers,
+        cart_offers: cartOffers,
       },
     });
   }

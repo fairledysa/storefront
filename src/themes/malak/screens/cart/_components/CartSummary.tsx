@@ -208,6 +208,70 @@ function CartSummary({
 
   const hasTax = !isLoading && totals.tax > 0;
 
+  const couponDiscount = Math.max(
+    0,
+    readFiniteNumber(
+      summaryAny?.coupon_discount,
+      summaryAny?.couponDiscount,
+      coupon?.discount_amount,
+    ) ?? 0,
+  );
+
+  const specialOffersDiscount = Math.max(
+    0,
+    readFiniteNumber(
+      summaryAny?.special_offers_discount,
+      summaryAny?.specialOffersDiscount,
+      summaryAny?.special_offer_discount,
+      summaryAny?.specialOfferDiscount,
+    ) ?? 0,
+  );
+
+  const cartOffersSource =
+    summaryAny?.cartOffers && typeof summaryAny.cartOffers === "object"
+      ? summaryAny.cartOffers
+      : summaryAny?.cart_offers && typeof summaryAny.cart_offers === "object"
+        ? summaryAny.cart_offers
+        : {};
+
+  const cartOffersDiscount = Math.max(
+    0,
+    readFiniteNumber(
+      summaryAny?.cart_offers_discount,
+      summaryAny?.cartOffersDiscount,
+      cartOffersSource?.discount,
+    ) ?? 0,
+  );
+
+  const cartOfferMessages = useMemo(() => {
+    const messages = Array.isArray(cartOffersSource?.messages)
+      ? cartOffersSource.messages
+      : [];
+
+    const applied = Array.isArray(cartOffersSource?.appliedOffers)
+      ? cartOffersSource.appliedOffers
+      : Array.isArray(cartOffersSource?.applied_offers)
+        ? cartOffersSource.applied_offers
+        : [];
+
+    return Array.from(
+      new Set([
+        ...messages.map(readText).filter(Boolean),
+        ...applied
+          .map((offer: any) => readText(offer?.message, offer?.title))
+          .filter(Boolean),
+      ]),
+    );
+  }, [cartOffersSource]);
+
+  const unclassifiedDiscount = Math.max(
+    0,
+    totals.discount -
+      couponDiscount -
+      specialOffersDiscount -
+      cartOffersDiscount,
+  );
+
   const freeShippingMeta = useMemo(() => {
     if (isLoading) {
       return {
@@ -391,6 +455,22 @@ function CartSummary({
         totals.discount > 0
           ? `- ${fmt(totals.discount, currencySymbol, currencyDecimals)}`
           : fmt(0, currencySymbol, currencyDecimals),
+      couponDiscount: `- ${fmt(couponDiscount, currencySymbol, currencyDecimals)}`,
+      specialOffersDiscount: `- ${fmt(
+        specialOffersDiscount,
+        currencySymbol,
+        currencyDecimals,
+      )}`,
+      cartOffersDiscount: `- ${fmt(
+        cartOffersDiscount,
+        currencySymbol,
+        currencyDecimals,
+      )}`,
+      unclassifiedDiscount: `- ${fmt(
+        unclassifiedDiscount,
+        currencySymbol,
+        currencyDecimals,
+      )}`,
       shipping: fmt(totals.shipping, currencySymbol, currencyDecimals),
       total: fmt(totals.total, currencySymbol, currencyDecimals),
       remaining: fmtCompact(
@@ -405,6 +485,10 @@ function CartSummary({
       totals.subtotal,
       totals.tax,
       totals.discount,
+      couponDiscount,
+      specialOffersDiscount,
+      cartOffersDiscount,
+      unclassifiedDiscount,
       totals.shipping,
       totals.total,
       shippingProgress.remaining,
@@ -536,11 +620,48 @@ function CartSummary({
           />
         ) : null}
 
+        {couponDiscount > 0 ? (
+          <Row
+            label="كوبون الخصم"
+            value={formatted.couponDiscount}
+            loading={isLoading}
+            valueColor="#b91c1c"
+          />
+        ) : null}
+
+        {specialOffersDiscount > 0 ? (
+          <Row
+            label="العروض الخاصة"
+            value={formatted.specialOffersDiscount}
+            loading={isLoading}
+            valueColor="#b91c1c"
+          />
+        ) : null}
+
+        {cartOffersDiscount > 0 ? (
+          <>
+            <Row
+              label="عروض السلة"
+              value={formatted.cartOffersDiscount}
+              loading={isLoading}
+              valueColor="#b91c1c"
+            />
+
+            {cartOfferMessages.length > 0 ? (
+              <div className="mk-dcart-free__hint">
+                {cartOfferMessages.slice(0, 2).join(" · ")}
+              </div>
+            ) : null}
+          </>
+        ) : null}
+
         <Row
           label="الخصم"
-          value={formatted.discount}
+          value={formatted.unclassifiedDiscount}
           loading={isLoading}
-          valueColor={!isLoading && totals.discount > 0 ? "#b91c1c" : undefined}
+          valueColor={
+            !isLoading && unclassifiedDiscount > 0 ? "#b91c1c" : undefined
+          }
         />
 
         <Row label="الشحن" value={formatted.shipping} loading={isLoading} />

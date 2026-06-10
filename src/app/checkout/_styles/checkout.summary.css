@@ -1001,3 +1001,209 @@
     grid-template-columns: minmax(0, 1fr) 76px;
   }
 }
+
+.malak-cart-offerProgress {
+  margin: 12px 0;
+  padding: 14px 12px 12px;
+  border: 1px solid rgba(155, 107, 45, 0.18);
+  border-radius: 8px;
+  background: #fffaf3;
+}
+
+.malak-cart-offerProgress.is-blocked {
+  background: #fafafa;
+  border-color: rgba(16, 24, 40, 0.12);
+}
+
+.malak-cart-offerProgress__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 18px;
+  color: #24170a;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.malak-cart-offerProgress__title strong {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #9b6b2d;
+  color: #fff;
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.malak-cart-offerProgress__track {
+  position: relative;
+  height: 52px;
+  margin: 0 8px;
+}
+
+.malak-cart-offerProgress__track::before,
+.malak-cart-offerProgress__fill {
+  position: absolute;
+  top: 15px;
+  right: 0;
+  height: 6px;
+  border-radius: 999px;
+  content: "";
+}
+
+.malak-cart-offerProgress__track::before {
+  left: 0;
+  background: #eadcc9;
+}
+
+.malak-cart-offerProgress__fill {
+  width: var(--offer-progress, 0%);
+  max-width: 100%;
+  background: linear-gradient(90deg, #c79243, #9b6b2d);
+}
+
+.malak-cart-offerProgress.is-blocked .malak-cart-offerProgress__fill {
+  background: #a1a1aa;
+}
+
+.malak-cart-offerProgress__tier {
+  position: absolute;
+  top: 0;
+  right: var(--tier-pos, 0%);
+  width: 58px;
+  transform: translateX(50%);
+  text-align: center;
+}
+
+.malak-cart-offerProgress__dot {
+  display: block;
+  width: 20px;
+  height: 20px;
+  margin: 8px auto 5px;
+  border-radius: 999px;
+  border: 3px solid #eadcc9;
+  background: #fff;
+}
+
+.malak-cart-offerProgress__tier.is-reached .malak-cart-offerProgress__dot {
+  border-color: #9b6b2d;
+  background: #9b6b2d;
+}
+
+.malak-cart-offerProgress__tierLabel,
+.malak-cart-offerProgress__tierMin {
+  display: block;
+  white-space: nowrap;
+  line-height: 1.25;
+}
+
+.malak-cart-offerProgress__tierLabel {
+  color: #24170a;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.malak-cart-offerProgress__tierMin {
+  margin-top: 2px;
+  color: #7c6b5b;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.malak-cart-offerProgress__message {
+  margin-top: 6px;
+  color: #6b4a20;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.7;
+}
+
+.malak-cart-offerProgress.is-blocked .malak-cart-offerProgress__message {
+  color: #71717a;
+}
+
+.malak-cart-offerProgress__scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.malak-cart-offerProgress__scroll::-webkit-scrollbar {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .co-drawer .malak-cart-offerProgress,
+  .malak-cart-offerProgress.is-compact {
+    margin: 10px 0;
+    padding: 11px 9px 10px;
+    border-radius: 8px;
+  }
+
+  .co-drawer .malak-cart-offerProgress__title,
+  .malak-cart-offerProgress.is-compact .malak-cart-offerProgress__title {
+    margin-bottom: 12px;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .co-drawer .malak-cart-offerProgress__title span,
+  .malak-cart-offerProgress.is-compact .malak-cart-offerProgress__title span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .co-drawer .malak-cart-offerProgress__title strong,
+  .malak-cart-offerProgress.is-compact .malak-cart-offerProgress__title strong {
+    padding: 2px 7px;
+    font-size: 10px;
+  }
+
+  .co-drawer .malak-cart-offerProgress__track,
+  .malak-cart-offerProgress.is-compact .malak-cart-offerProgress__track {
+    min-width: 260px;
+    height: 48px;
+    margin: 0 5px;
+  }
+
+  .co-drawer .malak-cart-offerProgress__track::before,
+  .co-drawer .malak-cart-offerProgress__fill,
+  .malak-cart-offerProgress.is-compact .malak-cart-offerProgress__track::before,
+  .malak-cart-offerProgress.is-compact .malak-cart-offerProgress__fill {
+    top: 13px;
+    height: 5px;
+  }
+
+  .co-drawer .malak-cart-offerProgress__tier,
+  .malak-cart-offerProgress.is-compact .malak-cart-offerProgress__tier {
+    width: 50px;
+  }
+
+  .co-drawer .malak-cart-offerProgress__dot,
+  .malak-cart-offerProgress.is-compact .malak-cart-offerProgress__dot {
+    width: 17px;
+    height: 17px;
+    margin: 7px auto 4px;
+    border-width: 2px;
+  }
+
+  .co-drawer .malak-cart-offerProgress__tierLabel,
+  .malak-cart-offerProgress.is-compact .malak-cart-offerProgress__tierLabel {
+    font-size: 10px;
+  }
+
+  .co-drawer .malak-cart-offerProgress__tierMin,
+  .malak-cart-offerProgress.is-compact .malak-cart-offerProgress__tierMin {
+    font-size: 9px;
+  }
+
+  .co-drawer .malak-cart-offerProgress__message,
+  .malak-cart-offerProgress.is-compact .malak-cart-offerProgress__message {
+    margin-top: 5px;
+    font-size: 11px;
+    line-height: 1.6;
+  }
+}

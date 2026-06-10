@@ -8,6 +8,7 @@ import { getStoreDb } from "@/data/db/store-db.server";
 import { getStoreCurrency } from "../../_cart/cart.server";
 import { loadFreeShippingEvaluator } from "./free-shipping";
 import { calculateCartSpecialOffers } from "./special-offers";
+import { calculateCartOffers } from "./cart-offers";
 import {
   loadCartOrderOptionsSummary,
   type CartOrderOptionSummaryLine,
@@ -1123,6 +1124,24 @@ export type CartSummaryOut = {
   coupon: null | { code: string; discount: number };
   coupon_discount: number;
   couponDiscount: number;
+  cart_offers_discount: number;
+  cartOffersDiscount: number;
+  cart_offers: {
+    discount: number;
+    messages: string[];
+    appliedOffers: any[];
+    applied_offers: any[];
+    progress?: any;
+  };
+  cartOffers: {
+    discount: number;
+    messages: string[];
+    appliedOffers: any[];
+    applied_offers: any[];
+    progress?: any;
+  };
+  cart_offer_progress?: any;
+  cartOfferProgress?: any;
   special_offers_discount: number;
   specialOffersDiscount: number;
   applied_special_offers: Array<{
@@ -1642,8 +1661,31 @@ export async function buildCartSummary(args: {
 
   const couponDiscount = round2(discount);
   const specialOffersDiscount = round2(specialOffersResult.discount);
+  const itemCount = items.reduce(
+    (sum, item) => sum + Math.max(0, Math.floor(n(item.qty))),
+    0,
+  );
+  const cartOffersResult = await calculateCartOffers({
+    sb: storeDb,
+    storeId: args.store_id,
+    subtotal,
+    itemCount,
+    couponApplied: Boolean(couponOut),
+    customerId: customer_id,
+    eligibleAmount: Math.max(0, subtotal - couponDiscount - specialOffersDiscount),
+  });
+  const cartOffersDiscount = round2(cartOffersResult.discount);
+  const cartOffersSnapshot = {
+    discount: cartOffersDiscount,
+    messages: cartOffersResult.messages,
+    appliedOffers: cartOffersResult.appliedOffers,
+    applied_offers: cartOffersResult.appliedOffers,
+    progress: cartOffersResult.progress ?? null,
+  };
 
-  discount = round2(Math.min(subtotal, couponDiscount + specialOffersDiscount));
+  discount = round2(
+    Math.min(subtotal, couponDiscount + specialOffersDiscount + cartOffersDiscount),
+  );
 
   const shipping_rate_id = s(cartR.data.shipping_id) || "";
   const payment_method = s(cartR.data.payment_method) || null;
@@ -1916,6 +1958,12 @@ export async function buildCartSummary(args: {
     coupon: couponOut,
     coupon_discount: couponDiscount,
     couponDiscount,
+    cart_offers_discount: cartOffersDiscount,
+    cartOffersDiscount,
+    cart_offers: cartOffersSnapshot,
+    cartOffers: cartOffersSnapshot,
+    cart_offer_progress: cartOffersResult.progress ?? null,
+    cartOfferProgress: cartOffersResult.progress ?? null,
     special_offers_discount: specialOffersDiscount,
     specialOffersDiscount,
     applied_special_offers: specialOffersResult.appliedOffers,

@@ -2,6 +2,7 @@
 
 import { NextResponse } from "next/server";
 import { getOrdersDb } from "@/data/db/orders-db.server";
+import { getStoreDb } from "@/data/db/store-db.server";
 import {
   cartSessionCookie,
   getCartSessionId,
@@ -15,6 +16,7 @@ import {
 } from "../lib/summary";
 import { copyCartOrderOptionsToOrder } from "../lib/order-options";
 import { evaluateCodRestrictions } from "../lib/cod-restrictions";
+import { recordCartOfferRedemptions } from "../lib/cart-offers";
 
 export const dynamic = "force-dynamic";
 
@@ -1631,6 +1633,46 @@ function buildCheckoutFinancialSnapshot(summary: any) {
     ),
   );
 
+  const cartOffersSource =
+    summary?.cartOffers && typeof summary.cartOffers === "object"
+      ? summary.cartOffers
+      : summary?.cart_offers && typeof summary.cart_offers === "object"
+        ? summary.cart_offers
+        : {};
+
+  const cartOffersApplied = Array.isArray(cartOffersSource?.appliedOffers)
+    ? cartOffersSource.appliedOffers
+    : Array.isArray(cartOffersSource?.applied_offers)
+      ? cartOffersSource.applied_offers
+      : Array.isArray(summary?.appliedCartOffers)
+        ? summary.appliedCartOffers
+        : Array.isArray(summary?.applied_cart_offers)
+          ? summary.applied_cart_offers
+          : [];
+
+  const cartOffersMessages = Array.isArray(cartOffersSource?.messages)
+    ? cartOffersSource.messages
+    : Array.isArray(summary?.cartOfferMessages)
+      ? summary.cartOfferMessages
+      : Array.isArray(summary?.cart_offer_messages)
+        ? summary.cart_offer_messages
+        : [];
+
+  const cartOffersDiscount = round2(
+    n(
+      summary?.cartOffersDiscount ??
+        summary?.cart_offers_discount ??
+        cartOffersSource?.discount,
+    ),
+  );
+
+  const cartOffersSnapshot = {
+    discount: cartOffersDiscount,
+    messages: cartOffersMessages,
+    appliedOffers: cartOffersApplied,
+    applied_offers: cartOffersApplied,
+  };
+
   const specialOffersSnapshot = {
     appliedOffers,
     applied_offers: appliedOffers,
@@ -1708,6 +1750,11 @@ function buildCheckoutFinancialSnapshot(summary: any) {
     specialOfferDiscount: specialOfferDiscount,
     special_offers_discount: specialOfferDiscount,
     specialOffersDiscount: specialOfferDiscount,
+
+    cart_offers: cartOffersSnapshot,
+    cartOffers: cartOffersSnapshot,
+    cart_offers_discount: cartOffersDiscount,
+    cartOffersDiscount: cartOffersDiscount,
   };
 }
 
@@ -1771,6 +1818,11 @@ function enrichShippingSnapshotWithSummary(args: {
     specialOfferDiscount: checkout.specialOfferDiscount,
     special_offers_discount: checkout.special_offers_discount,
     specialOffersDiscount: checkout.specialOffersDiscount,
+
+    cart_offers: checkout.cart_offers,
+    cartOffers: checkout.cartOffers,
+    cart_offers_discount: checkout.cart_offers_discount,
+    cartOffersDiscount: checkout.cartOffersDiscount,
   };
 }
 
@@ -2527,6 +2579,33 @@ export async function POST(req: Request) {
     });
 
     void red;
+  }
+
+  const cartOffersApplied = Array.isArray(summary?.cartOffers?.appliedOffers)
+    ? summary.cartOffers.appliedOffers
+    : Array.isArray(summary?.cart_offers?.applied_offers)
+      ? summary.cart_offers.applied_offers
+      : [];
+
+  if (cartOffersApplied.length > 0) {
+    try {
+      const storeDb = await getStoreDb(store_id);
+      const redemptions = await recordCartOfferRedemptions({
+        sb: storeDb,
+        storeId: store_id,
+        cartId: String(cart.id),
+        orderId: String(order.id),
+        customerId: cart.user_id ? String(cart.user_id) : null,
+        currency: String(summary.currency || "SAR"),
+        appliedOffers: cartOffersApplied,
+      });
+
+      if (!redemptions.ok) {
+        console.error("CART_OFFER_REDEMPTION_FAILED", redemptions.error);
+      }
+    } catch (e: any) {
+      console.error("CART_OFFER_REDEMPTION_FAILED", toStr(e?.message));
+    }
   }
 
   const convertedAt = new Date().toISOString();

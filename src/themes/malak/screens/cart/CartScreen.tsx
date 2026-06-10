@@ -6,6 +6,7 @@ import { useNavStack } from "../../app-navigation/stack";
 import { useCart } from "./useCart";
 import CartItemsList from "./_components/CartItemsList";
 import CartSummary from "./_components/CartSummary";
+import CartOfferProgressBar from "../../components/cart-offers/CartOfferProgressBar";
 
 type ToastViewKind = "success" | "error" | "info";
 
@@ -59,6 +60,22 @@ function cleanCartUrlParams(paramsToRemove: string[]) {
     window.location.hash;
 
   window.history.replaceState({}, "", newUrl);
+}
+
+function readCartOfferProgress(summary: any) {
+  const cartOffers =
+    summary?.cartOffers && typeof summary.cartOffers === "object"
+      ? summary.cartOffers
+      : summary?.cart_offers && typeof summary.cart_offers === "object"
+        ? summary.cart_offers
+        : {};
+
+  return (
+    summary?.cartOfferProgress ??
+    summary?.cart_offer_progress ??
+    cartOffers?.progress ??
+    null
+  );
 }
 
 function resolveAbandonedReminderJobId() {
@@ -239,6 +256,15 @@ export default function CartScreen() {
   );
 
   const isEmpty = !loading && items.length === 0;
+  const summaryAny = summary as any;
+  const cartOfferProgress = readCartOfferProgress(summaryAny);
+  const currency = normalizeText(summaryAny?.currency);
+  const currencySymbol = normalizeText(
+    summaryAny?.currency_symbol ?? summaryAny?.currencySymbol ?? currency,
+  );
+  const currencyDecimals = Number(
+    summaryAny?.currency_decimals ?? summaryAny?.currencyDecimals ?? 2,
+  );
 
   const handleContinueShopping = useCallback(() => {
     push("home");
@@ -334,6 +360,17 @@ export default function CartScreen() {
               <span />
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {!loading && cartOfferProgress ? (
+        <div className="mk-dcart-offerHero">
+          <CartOfferProgressBar
+            progress={cartOfferProgress}
+            currencySymbol={currencySymbol}
+            currencyDecimals={currencyDecimals}
+            variant="hero"
+          />
         </div>
       ) : null}
 

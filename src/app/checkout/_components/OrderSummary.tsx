@@ -15,6 +15,7 @@ import {
   Ticket,
   X,
 } from "lucide-react";
+import CartOfferProgressBar from "@/themes/malak/components/cart-offers/CartOfferProgressBar";
 
 type SummaryItem = {
   id: string;
@@ -84,6 +85,24 @@ type Summary = {
   discount: number;
   coupon_discount?: number;
   couponDiscount?: number;
+  cart_offers_discount?: number;
+  cartOffersDiscount?: number;
+  cart_offers?: {
+    discount?: number;
+    messages?: string[];
+    appliedOffers?: any[];
+    applied_offers?: any[];
+    progress?: any;
+  };
+  cartOffers?: {
+    discount?: number;
+    messages?: string[];
+    appliedOffers?: any[];
+    applied_offers?: any[];
+    progress?: any;
+  };
+  cart_offer_progress?: any;
+  cartOfferProgress?: any;
   special_offers_discount?: number;
   specialOffersDiscount?: number;
   applied_special_offers?: AppliedSpecialOffer[];
@@ -427,6 +446,50 @@ function readSpecialOffersDiscount(summary: Partial<Summary> | null | undefined)
   return n(summary?.special_offers_discount ?? summary?.specialOffersDiscount);
 }
 
+function readCartOffersDiscount(summary: Partial<Summary> | null | undefined) {
+  return n(
+    summary?.cart_offers_discount ??
+      summary?.cartOffersDiscount ??
+      summary?.cartOffers?.discount ??
+      summary?.cart_offers?.discount,
+  );
+}
+
+function readCartOfferMessages(summary: Partial<Summary> | null | undefined) {
+  const source =
+    summary?.cartOffers && typeof summary.cartOffers === "object"
+      ? summary.cartOffers
+      : summary?.cart_offers && typeof summary.cart_offers === "object"
+        ? summary.cart_offers
+        : {};
+
+  const messages = Array.isArray(source?.messages) ? source.messages : [];
+  const applied = Array.isArray(source?.appliedOffers)
+    ? source.appliedOffers
+    : Array.isArray(source?.applied_offers)
+      ? source.applied_offers
+      : [];
+
+  return Array.from(
+    new Set([
+      ...messages.map(s).filter(Boolean),
+      ...applied
+        .map((offer: any) => s(offer?.message) || s(offer?.title))
+        .filter(Boolean),
+    ]),
+  );
+}
+
+function readCartOfferProgress(summary: Partial<Summary> | null | undefined) {
+  return (
+    summary?.cartOfferProgress ??
+    summary?.cart_offer_progress ??
+    summary?.cartOffers?.progress ??
+    summary?.cart_offers?.progress ??
+    null
+  );
+}
+
 function readAppliedSpecialOffers(
   summary: Partial<Summary> | null | undefined,
 ) {
@@ -736,6 +799,19 @@ export default function OrderSummary({
   const specialOffersDiscount = hasTotals
     ? readSpecialOffersDiscount(summary!)
     : 0;
+  const cartOffersDiscount = hasTotals ? readCartOffersDiscount(summary!) : 0;
+  const cartOfferMessages = useMemo(
+    () => readCartOfferMessages(summary),
+    [summary],
+  );
+  const cartOfferProgress = useMemo(
+    () => readCartOfferProgress(summary),
+    [summary],
+  );
+  const unclassifiedDiscount = Math.max(
+    0,
+    n(discount) - couponDiscount - specialOffersDiscount - cartOffersDiscount,
+  );
   const specialOfferDetails = useMemo(
     () => buildSpecialOfferDetails(summary),
     [summary],
@@ -1389,6 +1465,15 @@ export default function OrderSummary({
                 <h3>ملخص السلة</h3>
 
                 <div className="co-totals">
+                  {!showSkeleton ? (
+                    <CartOfferProgressBar
+                      progress={cartOfferProgress}
+                      currencySymbol={money.symbol}
+                      currencyDecimals={money.decimals}
+                      variant="compact"
+                    />
+                  ) : null}
+
                   <Row
                     label={
                       showTaxRow
@@ -1437,15 +1522,34 @@ export default function OrderSummary({
                     </div>
                   ) : null}
 
+                  {!showSkeleton && cartOffersDiscount > 0 ? (
+                    <div className="co-special-offers-block">
+                      <div className="co-total-row is-discount co-total-row--special-offer">
+                        <span>عروض السلة</span>
+                        <strong dir="ltr">
+                          - {formatMoney(money, cartOffersDiscount)}
+                        </strong>
+                      </div>
+
+                      {cartOfferMessages.length > 0 ? (
+                        <div className="co-special-offers-details">
+                          {cartOfferMessages.slice(0, 3).map((detail) => (
+                            <div key={detail}>{detail}</div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
                   {!showSkeleton &&
-                  discount != null &&
-                  discount > 0 &&
+                  unclassifiedDiscount > 0 &&
                   couponDiscount <= 0 &&
-                  specialOffersDiscount <= 0 ? (
+                  specialOffersDiscount <= 0 &&
+                  cartOffersDiscount <= 0 ? (
                     <div className="co-total-row is-discount">
                       <span>الخصم</span>
                       <strong dir="ltr">
-                        - {formatMoney(money, discount)}
+                        - {formatMoney(money, unclassifiedDiscount)}
                       </strong>
                     </div>
                   ) : null}

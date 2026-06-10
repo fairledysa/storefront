@@ -153,6 +153,8 @@ type ThankYouData = {
   items?: OrderItem[];
   specialOffers?: any;
   special_offers?: any;
+  cartOffers?: any;
+  cart_offers?: any;
 
   bootstrap?: MalakBootstrap | null;
   theme?: {
@@ -784,6 +786,60 @@ function SpecialOffersBlock({
   );
 }
 
+function readThankYouCartOffers(data: ThankYouData) {
+  const source = safeObject(data.cartOffers ?? data.cart_offers);
+  const discount = round2(source.discount);
+  const appliedOffers = safeArray(
+    source.appliedOffers ?? source.applied_offers,
+  );
+  const messages = safeArray(source.messages).map(s).filter(Boolean);
+
+  if (discount <= 0 && !appliedOffers.length && !messages.length) return null;
+
+  return {
+    discount,
+    titles: Array.from(
+      new Set([
+        ...appliedOffers
+          .map((offer: any) => s(offer?.message) || s(offer?.title))
+          .filter(Boolean),
+        ...messages,
+      ]),
+    ),
+  };
+}
+
+function CartOffersBlock({
+  data,
+  money,
+}: {
+  data: ThankYouData;
+  money: (amount: number) => string;
+}) {
+  const cartOffers = readThankYouCartOffers(data);
+
+  if (!cartOffers) return null;
+
+  return (
+    <div className="mk-thank-special">
+      <div className="mk-thank-special__head">
+        <strong>عروض السلة</strong>
+        {cartOffers.discount > 0 ? (
+          <span dir="ltr">- {money(cartOffers.discount)}</span>
+        ) : null}
+      </div>
+
+      {cartOffers.titles.length > 0 ? (
+        <div className="mk-thank-special__list">
+          {cartOffers.titles.map((title) => (
+            <div key={title}>{title}</div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function OrderOptionRow({
   option,
   currency,
@@ -1294,6 +1350,7 @@ export default function ThankYouScreen(props: AnyProps) {
               ) : null}
 
               <SpecialOffersBlock data={data} items={items} money={money} />
+              <CartOffersBlock data={data} money={money} />
 
               <div
                 className={
