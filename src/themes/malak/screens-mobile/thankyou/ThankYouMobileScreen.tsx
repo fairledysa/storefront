@@ -121,6 +121,10 @@ function n(value: any) {
   return Number.isFinite(x) ? x : 0;
 }
 
+function round2(value: any) {
+  return Math.round(n(value) * 100) / 100;
+}
+
 function hasValue(value: any) {
   return value !== null && value !== undefined && s(value) !== "";
 }
@@ -579,6 +583,71 @@ function readThankYouCartOffers(data: ThankYouData) {
   };
 }
 
+function readExplicitCouponDiscount(data: ThankYouData) {
+  const raw: any = data ?? {};
+  const coupon =
+    raw.coupon ??
+    raw.coupon_snapshot ??
+    raw.couponSnapshot ??
+    raw.appliedCoupon ??
+    raw.applied_coupon ??
+    {};
+
+  return round2(
+    firstValue(
+      raw.couponDiscount,
+      raw.coupon_discount,
+      raw.couponDiscountAmount,
+      raw.coupon_discount_amount,
+      raw.couponAmount,
+      raw.coupon_amount,
+      coupon?.discount,
+      coupon?.discountAmount,
+      coupon?.discount_amount,
+      coupon?.amount,
+    ),
+  );
+}
+
+function buildThankYouDiscountBreakdown(
+  data: ThankYouData,
+  items: OrderItem[],
+  discountAmount: number,
+) {
+  const totalDiscount = round2(discountAmount);
+  const specialOffers = readThankYouSpecialOffers(data, items);
+  const cartOffers = readThankYouCartOffers(data);
+
+  const knownOffersDiscount = round2(
+    round2(specialOffers?.discount ?? 0) + round2(cartOffers?.discount ?? 0),
+  );
+
+  const remainingDiscount = Math.max(
+    0,
+    round2(totalDiscount - knownOffersDiscount),
+  );
+
+  const explicitCouponDiscount = readExplicitCouponDiscount(data);
+
+  const couponDiscount =
+    explicitCouponDiscount > 0
+      ? Math.min(
+          remainingDiscount > 0 ? remainingDiscount : explicitCouponDiscount,
+          explicitCouponDiscount,
+        )
+      : remainingDiscount;
+
+  const otherDiscount =
+    explicitCouponDiscount > 0
+      ? Math.max(0, round2(remainingDiscount - couponDiscount))
+      : 0;
+
+  return {
+    couponDiscount: round2(couponDiscount),
+    otherDiscount: round2(otherDiscount),
+  };
+}
+
 function CartOffersSection({
   data,
   money,
@@ -736,6 +805,15 @@ export default function ThankYouMobileScreen(props: Props) {
 
   const items = Array.isArray(data.items) ? data.items : [];
 
+  const discountBreakdown = buildThankYouDiscountBreakdown(
+    data,
+    items,
+    discountAmount,
+  );
+
+  const couponDiscountAmount = discountBreakdown.couponDiscount;
+  const otherDiscountAmount = discountBreakdown.otherDiscount;
+
   const bootstrap = props.bootstrap || data.bootstrap || data.theme?.bootstrap;
   const supportContacts = getFooterSupportContacts(bootstrap);
 
@@ -822,9 +900,7 @@ export default function ThankYouMobileScreen(props: Props) {
         <div className="mk-mthank-timeline">
           <TimelineStep
             done
-            title={
-              isPaymentSubmitted ? "استلام طلب الاعتماد" : "استلام الطلب"
-            }
+            title={isPaymentSubmitted ? "استلام طلب الاعتماد" : "استلام الطلب"}
             text={
               isPaymentSubmitted
                 ? "وصل طلب اعتماد التحويل للمتجر وتم تسجيله."
@@ -883,10 +959,18 @@ export default function ThankYouMobileScreen(props: Props) {
             <MoneyRow label="ضريبة القيمة المضافة" value={money(taxAmount)} />
           ) : null}
 
-          {discountAmount > 0 ? (
+          {couponDiscountAmount > 0 ? (
             <MoneyRow
-              label="الخصم"
-              value={`- ${money(discountAmount)}`}
+              label="كوبون الخصم"
+              value={`- ${money(couponDiscountAmount)}`}
+              negative
+            />
+          ) : null}
+
+          {otherDiscountAmount > 0 ? (
+            <MoneyRow
+              label="خصومات أخرى"
+              value={`- ${money(otherDiscountAmount)}`}
               negative
             />
           ) : null}

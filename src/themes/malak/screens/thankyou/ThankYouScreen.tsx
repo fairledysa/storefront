@@ -758,7 +758,9 @@ function SpecialOffersBlock({
   const offerTitles = specialOffers.appliedOffers
     .map((offer: any) => s(offer?.title ?? offer?.message))
     .filter(Boolean);
-  const titles = Array.from(new Set([...offerTitles, ...specialOffers.messages]));
+  const titles = Array.from(
+    new Set([...offerTitles, ...specialOffers.messages]),
+  );
 
   return (
     <div className="mk-thank-special">
@@ -806,6 +808,71 @@ function readThankYouCartOffers(data: ThankYouData) {
         ...messages,
       ]),
     ),
+  };
+}
+
+function readExplicitCouponDiscount(data: ThankYouData) {
+  const raw: any = data ?? {};
+  const coupon =
+    raw.coupon ??
+    raw.coupon_snapshot ??
+    raw.couponSnapshot ??
+    raw.appliedCoupon ??
+    raw.applied_coupon ??
+    {};
+
+  return round2(
+    firstValue(
+      raw.couponDiscount,
+      raw.coupon_discount,
+      raw.couponDiscountAmount,
+      raw.coupon_discount_amount,
+      raw.couponAmount,
+      raw.coupon_amount,
+      coupon?.discount,
+      coupon?.discountAmount,
+      coupon?.discount_amount,
+      coupon?.amount,
+    ),
+  );
+}
+
+function buildThankYouDiscountBreakdown(
+  data: ThankYouData,
+  items: OrderItem[],
+  discountAmount: number,
+) {
+  const totalDiscount = round2(discountAmount);
+  const specialOffers = readThankYouSpecialOffers(data, items);
+  const cartOffers = readThankYouCartOffers(data);
+
+  const knownOffersDiscount = round2(
+    round2(specialOffers?.discount ?? 0) + round2(cartOffers?.discount ?? 0),
+  );
+
+  const remainingDiscount = Math.max(
+    0,
+    round2(totalDiscount - knownOffersDiscount),
+  );
+
+  const explicitCouponDiscount = readExplicitCouponDiscount(data);
+
+  const couponDiscount =
+    explicitCouponDiscount > 0
+      ? Math.min(
+          remainingDiscount > 0 ? remainingDiscount : explicitCouponDiscount,
+          explicitCouponDiscount,
+        )
+      : remainingDiscount;
+
+  const otherDiscount =
+    explicitCouponDiscount > 0
+      ? Math.max(0, round2(remainingDiscount - couponDiscount))
+      : 0;
+
+  return {
+    couponDiscount: round2(couponDiscount),
+    otherDiscount: round2(otherDiscount),
   };
 }
 
@@ -1080,10 +1147,22 @@ export default function ThankYouScreen(props: AnyProps) {
       ? "ضريبة القيمة المضافة"
       : rawTaxLabel;
 
+  const items = Array.isArray(data?.items) ? data.items : [];
+
+  const discountBreakdown = buildThankYouDiscountBreakdown(
+    data,
+    items,
+    discountAmount,
+  );
+
+  const couponDiscountAmount = discountBreakdown.couponDiscount;
+  const otherDiscountAmount = discountBreakdown.otherDiscount;
+
   const showTaxLine = Boolean(taxEnabled && taxAmount > 0);
   const showPaymentFeeLine = paymentFeeAmount > 0;
   const showOrderOptionsLine = orderOptionsFee > 0;
-  const showDiscountLine = discountAmount > 0;
+  const showCouponDiscountLine = couponDiscountAmount > 0;
+  const showOtherDiscountLine = otherDiscountAmount > 0;
 
   const computedFromParts = Math.max(
     0,
@@ -1123,7 +1202,6 @@ export default function ThankYouScreen(props: AnyProps) {
     ? "تم استلام طلب اعتماد التحويل، وسيقوم المتجر بمراجعته وتحديث حالة الطلب."
     : s(data?.statusDescription) || "تم استلام الطلب وجاري مراجعته.";
 
-  const items = Array.isArray(data?.items) ? data.items : [];
   const totalText = money(computedTotal);
 
   const bootstrap = props.bootstrap || data?.bootstrap || data?.theme?.bootstrap;
@@ -1386,10 +1464,18 @@ export default function ThankYouScreen(props: AnyProps) {
                   <SummaryLine label={taxLabel} value={money(taxAmount)} />
                 ) : null}
 
-                {showDiscountLine ? (
+                {showCouponDiscountLine ? (
                   <SummaryLine
-                    label="الخصم"
-                    value={`- ${money(discountAmount)}`}
+                    label="كوبون الخصم"
+                    value={`- ${money(couponDiscountAmount)}`}
+                    negative
+                  />
+                ) : null}
+
+                {showOtherDiscountLine ? (
+                  <SummaryLine
+                    label="خصومات أخرى"
+                    value={`- ${money(otherDiscountAmount)}`}
                     negative
                   />
                 ) : null}
