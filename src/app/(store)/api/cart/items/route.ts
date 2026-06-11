@@ -14,6 +14,7 @@ import {
   getStoreIdOrThrow,
   buildLineKey,
 } from "../../_cart/cart.server";
+import { GET as getCartPayload } from "../route";
 
 export const dynamic = "force-dynamic";
 
@@ -482,6 +483,50 @@ function setCartCookieIfPresent(res: NextResponse, sid: string | null | undefine
   });
 
   return res;
+}
+
+async function fullCartMutationResponse(
+  req: Request,
+  sid: string | null | undefined,
+  extraData: Record<string, any>,
+) {
+  try {
+    const cartRes = await getCartPayload(req);
+    const payload = await cartRes.json();
+    const data =
+      payload?.data && typeof payload.data === "object" ? payload.data : {};
+
+    const res = NextResponse.json(
+      {
+        ...payload,
+        data: {
+          ...data,
+          ...extraData,
+        },
+      },
+      {
+        status: cartRes.status,
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      },
+    );
+
+    return setCartCookieIfPresent(res, sid);
+  } catch {
+    const res = NextResponse.json(
+      {
+        data: extraData,
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      },
+    );
+
+    return setCartCookieIfPresent(res, sid);
+  }
 }
 
 async function parseAddItemRequest(req: Request): Promise<{
@@ -1587,33 +1632,29 @@ export async function PATCH(req: Request) {
 
       await syncCartActivityAndCount(ordersDb, cart.id);
 
-      const res = NextResponse.json({
-        data: {
-          cart_id: cart.id,
-          item: upR.data,
-          notice: wasLimited
-            ? {
-                code: "QTY_LIMITED",
-                message: buildQtyLimitedMessage({
-                  stock,
-                  desiredQty,
-                  finalQty,
-                }),
-                desired: desiredQty,
-                final: finalQty,
-                available,
-                max_per_order,
-              }
-            : null,
-          stock: {
-            available,
-            max_per_order,
-            in_cart_after: finalQty,
-          },
+      return fullCartMutationResponse(req, sid, {
+        cart_id: cart.id,
+        item: upR.data,
+        notice: wasLimited
+          ? {
+              code: "QTY_LIMITED",
+              message: buildQtyLimitedMessage({
+                stock,
+                desiredQty,
+                finalQty,
+              }),
+              desired: desiredQty,
+              final: finalQty,
+              available,
+              max_per_order,
+            }
+          : null,
+        stock: {
+          available,
+          max_per_order,
+          in_cart_after: finalQty,
         },
       });
-
-      return setCartCookieIfPresent(res, sid);
     }
 
     if (op === "set_variant") {
@@ -2039,18 +2080,14 @@ export async function DELETE(req: Request) {
 
     await syncCartActivityAndCount(ordersDb, cart.id);
 
-    const res = NextResponse.json({
-      data: {
-        cart_id: cart.id,
-        removed_item_id: item0.id,
-        notice: {
-          code: "REMOVED",
-          message: "تم حذف المنتج من السلة.",
-        },
+    return fullCartMutationResponse(req, sid, {
+      cart_id: cart.id,
+      removed_item_id: item0.id,
+      notice: {
+        code: "REMOVED",
+        message: "تم حذف المنتج من السلة.",
       },
     });
-
-    return setCartCookieIfPresent(res, sid);
   } catch (e: any) {
     const msg = e?.message ?? "Unknown error";
 

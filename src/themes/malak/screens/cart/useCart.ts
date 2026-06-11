@@ -543,7 +543,10 @@ export function useCart() {
       try {
         setIsRepricing(true);
 
-        const json = await apiGetCart();
+        const pickedSummary = pickCartSummary(payload);
+        const json = hasUsableCartSummary(pickedSummary)
+          ? payload
+          : await apiGetCart();
 
         if (!mountedRef.current) return;
         if (seq !== repriceSeqRef.current) return;
