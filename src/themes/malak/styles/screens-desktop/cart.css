@@ -5770,3 +5770,213 @@
   text-align: center;
   font-size: 13px;
 }
+
+.mk-dcart-item--pro {
+  display: grid !important;
+  grid-template-columns: 120px minmax(0, 1fr) !important;
+  gap: 16px !important;
+  align-items: start !important;
+}
+
+.mk-dcart-item--pro .mk-dcart-item__imageBox {
+  width: 120px !important;
+  height: 120px !important;
+  flex: 0 0 120px !important;
+  overflow: hidden !important;
+}
+
+.mk-dcart-item--pro .mk-dcart-item__image {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  object-fit: cover !important;
+}
+
+@media (max-width: 1100px) {
+  .mk-dcart-item--pro {
+    grid-template-columns: 104px minmax(0, 1fr) !important;
+    gap: 14px !important;
+  }
+
+  .mk-dcart-item--pro .mk-dcart-item__imageBox {
+    width: 104px !important;
+    height: 112px !important;
+    flex-basis: 104px !important;
+  }
+}
+
+.malak-cartOfferProgress {
+  position: relative;
+  width: 100%;
+  min-height: 138px;
+  margin: 12px 0;
+  padding: 22px 28px 20px;
+  overflow: hidden;
+  border: 1px solid rgba(166, 114, 39, 0.2);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 85% 0%, rgba(166, 114, 39, 0.08), transparent 32%),
+    linear-gradient(180deg, #fffdf9 0%, #fffaf2 100%);
+  box-shadow: 0 16px 36px rgba(31, 41, 51, 0.06);
+}
+
+.malak-cartOfferProgress.is-blocked {
+  background: linear-gradient(180deg, #fff 0%, #fafafa 100%);
+  border-color: rgba(31, 41, 51, 0.12);
+}
+
+.malak-cartOfferProgress__head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 22px;
+  color: #1f2933;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.3;
+  text-align: center;
+}
+
+.malak-cartOfferProgress__head > span {
+  min-width: 0;
+}
+
+.malak-cartOfferProgress__badge {
+  position: static !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: #9a681f;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 8px 18px rgba(154, 104, 31, 0.18);
+}
+
+.malak-cartOfferProgress__rail {
+  position: relative;
+  height: 58px;
+  margin: 0 36px;
+  overflow: visible;
+}
+
+.malak-cartOfferProgress__track {
+  position: relative;
+  height: 58px;
+  margin: 0;
+  overflow: visible;
+}
+
+.malak-cartOfferProgress__track::before,
+.malak-cartOfferProgress__fill {
+  position: absolute;
+  top: 14px;
+  right: 0;
+  height: 6px;
+  border-radius: 999px;
+  content: "";
+}
+
+.malak-cartOfferProgress__track::before {
+  left: 0;
+  background: #eadbc7;
+}
+
+.malak-cartOfferProgress__fill {
+  width: var(--offer-progress, 0%);
+  max-width: 100%;
+  background: linear-gradient(90deg, #b98535, #8f5f1e);
+}
+
+.malak-cartOfferProgress.is-blocked .malak-cartOfferProgress__fill {
+  background: #a1a1aa;
+}
+
+.malak-cartOfferProgress__tier {
+  position: absolute;
+  top: 0;
+  right: var(--tier-pos, 0%);
+  z-index: 1;
+  width: 118px;
+  transform: translateX(50%);
+  text-align: center;
+}
+
+.malak-cartOfferProgress__dot {
+  display: block;
+  width: 22px;
+  height: 22px;
+  margin: 5px auto 8px;
+  border: 3px solid #eadbc7;
+  border-radius: 999px;
+  background: #fffdf9;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.84);
+}
+
+.malak-cartOfferProgress__tier.is-reached .malak-cartOfferProgress__dot {
+  border-color: #9a681f;
+  background: #9a681f;
+}
+
+.malak-cartOfferProgress__tierLabel,
+.malak-cartOfferProgress__tierMeta {
+  display: block;
+  line-height: 1.15;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.malak-cartOfferProgress__tierLabel {
+  color: #1f2933;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: normal;
+}
+
+.malak-cartOfferProgress__tierMeta {
+  margin-top: 4px;
+  color: #8b6a42;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.malak-cartOfferProgress__message {
+  margin: 14px 0 0;
+  text-align: center;
+  color: #8a5d22;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.mk-dcart-offerHero .malak-cartOfferProgress {
+  margin: 0;
+}
+
+.mk-dcart-offerHero.is-repricing .malak-cartOfferProgress,
+.mk-dcart-summary.is-repricing .mk-dcart-row--strong,
+.mk-dcart-summary.is-repricing .mk-dcart-row__value {
+  opacity: 0.62;
+}
+
+.mk-dcart-repriceHint {
+  margin: 8px 0 0;
+  color: #8a5d22;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.mk-dcart-box > .mk-dcart-repriceHint {
+  margin: 4px 0 8px;
+  text-align: start;
+}

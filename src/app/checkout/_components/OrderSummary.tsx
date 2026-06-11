@@ -438,6 +438,11 @@ function readOrderOptions(summary: Partial<Summary> | null | undefined) {
   return [];
 }
 
+function hasMoney(value: unknown) {
+  const amount = Number(value ?? 0);
+  return Number.isFinite(amount) && Math.abs(amount) > 0.009;
+}
+
 function readCouponDiscount(summary: Partial<Summary> | null | undefined) {
   return n(summary?.coupon_discount ?? summary?.couponDiscount);
 }
@@ -1494,7 +1499,7 @@ export default function OrderSummary({
                     />
                   ) : null}
 
-                  {!showSkeleton && couponDiscount > 0 ? (
+                  {!showSkeleton && hasMoney(couponDiscount) ? (
                     <div className="co-total-row is-discount">
                       <span>كوبون الخصم</span>
                       <strong dir="ltr">
@@ -1503,7 +1508,7 @@ export default function OrderSummary({
                     </div>
                   ) : null}
 
-                  {!showSkeleton && specialOffersDiscount > 0 ? (
+                  {!showSkeleton && hasMoney(specialOffersDiscount) ? (
                     <div className="co-special-offers-block">
                       <div className="co-total-row is-discount co-total-row--special-offer">
                         <span>العروض الخاصة</span>
@@ -1522,7 +1527,7 @@ export default function OrderSummary({
                     </div>
                   ) : null}
 
-                  {!showSkeleton && cartOffersDiscount > 0 ? (
+                  {!showSkeleton && hasMoney(cartOffersDiscount) ? (
                     <div className="co-special-offers-block">
                       <div className="co-total-row is-discount co-total-row--special-offer">
                         <span>عروض السلة</span>
@@ -1542,10 +1547,7 @@ export default function OrderSummary({
                   ) : null}
 
                   {!showSkeleton &&
-                  unclassifiedDiscount > 0 &&
-                  couponDiscount <= 0 &&
-                  specialOffersDiscount <= 0 &&
-                  cartOffersDiscount <= 0 ? (
+                  hasMoney(unclassifiedDiscount) ? (
                     <div className="co-total-row is-discount">
                       <span>الخصم</span>
                       <strong dir="ltr">

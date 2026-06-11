@@ -17,6 +17,7 @@ type Props = {
   coupon: CartCoupon;
   loading: boolean;
   busy: boolean;
+  isRepricing?: boolean;
   onApplyCoupon: (code: string) => void;
   onRemoveCoupon: () => void;
 };
@@ -99,6 +100,11 @@ function readText(...values: any[]) {
   return "";
 }
 
+function hasMoney(value: unknown) {
+  const amount = Number(value ?? 0);
+  return Number.isFinite(amount) && Math.abs(amount) > 0.009;
+}
+
 function fmt(amount: number, currencySymbol: string, decimalDigits: number) {
   const n = Number(amount ?? 0);
   const val = Number.isFinite(n) ? n : 0;
@@ -142,6 +148,7 @@ function MobileCartSummarySheet({
   coupon,
   loading,
   busy,
+  isRepricing = false,
   onApplyCoupon,
   onRemoveCoupon,
 }: Props) {
@@ -194,6 +201,70 @@ function MobileCartSummarySheet({
   ]);
 
   const hasTax = !isLoading && totals.tax > 0;
+
+  const couponDiscount = Math.max(
+    0,
+    readFiniteNumber(
+      summaryAny?.coupon_discount,
+      summaryAny?.couponDiscount,
+      coupon?.discount_amount,
+    ) ?? 0,
+  );
+
+  const specialOffersDiscount = Math.max(
+    0,
+    readFiniteNumber(
+      summaryAny?.special_offers_discount,
+      summaryAny?.specialOffersDiscount,
+      summaryAny?.special_offer_discount,
+      summaryAny?.specialOfferDiscount,
+    ) ?? 0,
+  );
+
+  const cartOffersSource =
+    summaryAny?.cartOffers && typeof summaryAny.cartOffers === "object"
+      ? summaryAny.cartOffers
+      : summaryAny?.cart_offers && typeof summaryAny.cart_offers === "object"
+        ? summaryAny.cart_offers
+        : {};
+
+  const cartOffersDiscount = Math.max(
+    0,
+    readFiniteNumber(
+      summaryAny?.cart_offers_discount,
+      summaryAny?.cartOffersDiscount,
+      cartOffersSource?.discount,
+    ) ?? 0,
+  );
+
+  const cartOfferMessages = useMemo(() => {
+    const messages = Array.isArray(cartOffersSource?.messages)
+      ? cartOffersSource.messages
+      : [];
+
+    const applied = Array.isArray(cartOffersSource?.appliedOffers)
+      ? cartOffersSource.appliedOffers
+      : Array.isArray(cartOffersSource?.applied_offers)
+        ? cartOffersSource.applied_offers
+        : [];
+
+    return Array.from(
+      new Set([
+        ...messages.map(readText).filter(Boolean),
+        ...applied
+          .map((offer: any) => readText(offer?.message, offer?.title))
+          .filter(Boolean),
+      ]),
+    );
+  }, [cartOffersSource]);
+
+  const unclassifiedDiscount = Math.max(
+    0,
+    totals.discount -
+      couponDiscount -
+      specialOffersDiscount -
+      cartOffersDiscount,
+  );
 
   const canCheckout = useMemo(
     () => !isLoading && !busy && itemsCount > 0,
@@ -352,6 +423,22 @@ function MobileCartSummarySheet({
         totals.discount > 0
           ? `- ${fmt(totals.discount, currencySymbol, currencyDecimals)}`
           : fmt(0, currencySymbol, currencyDecimals),
+      couponDiscount: `- ${fmt(couponDiscount, currencySymbol, currencyDecimals)}`,
+      specialOffersDiscount: `- ${fmt(
+        specialOffersDiscount,
+        currencySymbol,
+        currencyDecimals,
+      )}`,
+      cartOffersDiscount: `- ${fmt(
+        cartOffersDiscount,
+        currencySymbol,
+        currencyDecimals,
+      )}`,
+      unclassifiedDiscount: `- ${fmt(
+        unclassifiedDiscount,
+        currencySymbol,
+        currencyDecimals,
+      )}`,
       shipping: fmt(totals.shipping, currencySymbol, currencyDecimals),
       total: fmt(totals.total, currencySymbol, currencyDecimals),
       remaining: fmtCompact(
@@ -366,6 +453,10 @@ function MobileCartSummarySheet({
       totals.subtotal,
       totals.tax,
       totals.discount,
+      couponDiscount,
+      specialOffersDiscount,
+      cartOffersDiscount,
+      unclassifiedDiscount,
       totals.shipping,
       totals.total,
       shippingProgress.remaining,
@@ -404,6 +495,7 @@ function MobileCartSummarySheet({
           "mk-mcart-sheet",
           expanded ? "is-expanded" : "",
           isLoading ? "is-loading" : "",
+          isRepricing ? "is-repricing" : "",
         ]
           .filter(Boolean)
           .join(" ")}
@@ -499,12 +591,53 @@ function MobileCartSummarySheet({
                 />
               ) : null}
 
-              <Row
-                label="الخصم"
-                value={formatted.discount}
-                loading={isLoading}
-                negative={!isLoading && totals.discount > 0}
-              />
+              {isRepricing ? (
+                <div className="mk-mcart-repriceHint">يعاد احتساب العروض...</div>
+              ) : null}
+
+              {hasMoney(couponDiscount) ? (
+                <Row
+                  label="كوبون الخصم"
+                  value={formatted.couponDiscount}
+                  loading={isLoading}
+                  negative
+                />
+              ) : null}
+
+              {hasMoney(specialOffersDiscount) ? (
+                <Row
+                  label="العروض الخاصة"
+                  value={formatted.specialOffersDiscount}
+                  loading={isLoading || isRepricing}
+                  negative
+                />
+              ) : null}
+
+              {hasMoney(cartOffersDiscount) ? (
+                <>
+                  <Row
+                    label="عروض السلة"
+                    value={formatted.cartOffersDiscount}
+                    loading={isLoading || isRepricing}
+                    negative
+                  />
+
+                  {cartOfferMessages.length > 0 ? (
+                    <div className="mk-mcart-free__top">
+                      <strong>{cartOfferMessages.slice(0, 2).join(" · ")}</strong>
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+
+              {hasMoney(unclassifiedDiscount) ? (
+                <Row
+                  label="الخصم"
+                  value={formatted.unclassifiedDiscount}
+                  loading={isLoading || isRepricing}
+                  negative
+                />
+              ) : null}
 
               <Row
                 label="الشحن"
@@ -518,7 +651,7 @@ function MobileCartSummarySheet({
                 label="الإجمالي"
                 value={formatted.total}
                 strong
-                loading={isLoading}
+                loading={isLoading || isRepricing}
               />
             </div>
 

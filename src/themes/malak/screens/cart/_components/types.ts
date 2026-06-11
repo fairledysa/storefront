@@ -136,6 +136,8 @@ export type CartSummaryMoney = {
 
   special_offer_line_adjustments?: CartSpecialOfferAdjustment[];
   specialOfferLineAdjustments?: CartSpecialOfferAdjustment[];
+  special_offers_discount?: number;
+  specialOffersDiscount?: number;
 
   cart_offer_progress?: any;
   cartOfferProgress?: any;

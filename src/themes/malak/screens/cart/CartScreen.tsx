@@ -119,6 +119,7 @@ export default function CartScreen() {
   const {
     loading,
     busy,
+    isRepricing,
     items,
     summary,
     coupon,
@@ -364,13 +365,23 @@ export default function CartScreen() {
       ) : null}
 
       {!loading && cartOfferProgress ? (
-        <div className="mk-dcart-offerHero">
+        <div
+          className={[
+            "mk-dcart-offerHero",
+            isRepricing ? "is-repricing" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
           <CartOfferProgressBar
             progress={cartOfferProgress}
             currencySymbol={currencySymbol}
             currencyDecimals={currencyDecimals}
             variant="hero"
           />
+          {isRepricing ? (
+            <div className="mk-dcart-repriceHint">يعاد احتساب العروض...</div>
+          ) : null}
         </div>
       ) : null}
 
@@ -397,6 +408,7 @@ export default function CartScreen() {
               coupon={coupon}
               loading={loading}
               busy={busy}
+              isRepricing={isRepricing}
               onApplyCoupon={applyCoupon}
               onRemoveCoupon={removeCoupon}
               onCheckout={handleCheckout}

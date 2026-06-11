@@ -96,15 +96,20 @@ export default function CartOfferProgressBar({
 
   if (!tiers.length) return null;
 
-  const highest = Math.max(...tiers.map((tier) => tier.min), 1);
   const decimals = clampDecimals(currencyDecimals);
   const symbol = s(currencySymbol) || "ر.س";
   const fill = clampPercent(progress.progressPercent);
   const visualVariant = variant || (compact ? "compact" : "hero");
+  const rootStyle = {
+    "--offer-progress": `${fill}%`,
+    "--tiers-count": tiers.length,
+  } as CSSProperties;
 
   return (
     <div
       className={[
+        "malak-cartOfferProgress",
+        `malak-cartOfferProgress--${visualVariant}`,
         "malak-cart-offerProgress",
         progress.blockedByCoupon ? "is-blocked" : "",
         visualVariant === "compact"
@@ -115,24 +120,35 @@ export default function CartOfferProgressBar({
       ]
         .filter(Boolean)
         .join(" ")}
-      style={{ "--offer-progress": `${fill}%` } as CSSProperties}
+      style={rootStyle}
     >
-      <div className="malak-cart-offerProgress__title">
+      <div className="malak-cartOfferProgress__head malak-cart-offerProgress__title">
         <span>{s(progress.title) || "عروض السلة"}</span>
-        {progress.activeTierLabel ? <strong>{progress.activeTierLabel}</strong> : null}
+        {progress.activeTierLabel ? (
+          <strong className="malak-cartOfferProgress__badge">
+            {progress.activeTierLabel}
+          </strong>
+        ) : null}
       </div>
 
-      <div className="malak-cart-offerProgress__scroll" aria-hidden>
-        <div className="malak-cart-offerProgress__track">
-          <div className="malak-cart-offerProgress__fill" />
+      <div
+        className="malak-cartOfferProgress__rail malak-cart-offerProgress__scroll"
+        aria-hidden
+      >
+        <div className="malak-cartOfferProgress__track malak-cart-offerProgress__track">
+          <div className="malak-cartOfferProgress__fill malak-cart-offerProgress__fill" />
 
-          {tiers.map((tier) => {
-            const pos = clampPercent((tier.min / highest) * 100);
+          {tiers.map((tier, index) => {
+            const pos =
+              tiers.length <= 1
+                ? 50
+                : clampPercent((index / (tiers.length - 1)) * 100);
 
             return (
               <div
                 key={`${tier.min}-${tier.label}`}
                 className={[
+                  "malak-cartOfferProgress__tier",
                   "malak-cart-offerProgress__tier",
                   tier.reached ? "is-reached" : "",
                 ]
@@ -140,11 +156,11 @@ export default function CartOfferProgressBar({
                   .join(" ")}
                 style={{ "--tier-pos": `${pos}%` } as CSSProperties}
               >
-                <span className="malak-cart-offerProgress__dot" />
-                <span className="malak-cart-offerProgress__tierLabel">
+                <span className="malak-cartOfferProgress__dot malak-cart-offerProgress__dot" />
+                <span className="malak-cartOfferProgress__tierLabel malak-cart-offerProgress__tierLabel">
                   {tier.label}
                 </span>
-                <span className="malak-cart-offerProgress__tierMin">
+                <span className="malak-cartOfferProgress__tierMeta malak-cart-offerProgress__tierMin">
                   {formatTierMin({
                     metric: progress.metric,
                     min: tier.min,
@@ -158,9 +174,9 @@ export default function CartOfferProgressBar({
         </div>
       </div>
 
-      <div className="malak-cart-offerProgress__message">
+      <p className="malak-cartOfferProgress__message malak-cart-offerProgress__message">
         {s(progress.message)}
-      </div>
+      </p>
     </div>
   );
 }

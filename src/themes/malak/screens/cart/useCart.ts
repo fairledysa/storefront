@@ -42,6 +42,37 @@ function round2(value: any) {
   return Math.round(n * 100) / 100;
 }
 
+function pickCartSummary(payload: any) {
+  return (
+    payload?.summary ||
+    payload?.cart?.summary ||
+    payload?.data?.summary ||
+    payload?.checkout?.summary ||
+    payload
+  );
+}
+
+function pickCartData(payload: any) {
+  return payload?.data && typeof payload.data === "object"
+    ? payload.data
+    : payload && typeof payload === "object"
+      ? payload
+      : {};
+}
+
+function hasUsableCartSummary(value: any) {
+  if (!value || typeof value !== "object") return false;
+
+  return (
+    "subtotal" in value ||
+    "total" in value ||
+    "cartOfferProgress" in value ||
+    "cart_offer_progress" in value ||
+    "cartOffers" in value ||
+    "cart_offers" in value
+  );
+}
+
 function clampQty(value: any) {
   const n = Number(value ?? 1);
   if (!Number.isFinite(n)) return 1;
@@ -374,6 +405,7 @@ function shakeCartLine(cartItemId: string) {
 export function useCart() {
   const [loading, setLoading] = useState(true);
   const [operationBusy, setOperationBusy] = useState(false);
+  const [isRepricing, setIsRepricing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [cart, setCart] = useState<any>(null);
@@ -388,10 +420,9 @@ export function useCart() {
   const couponPreviewRef = useRef<CouponPreview | null>(null);
 
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const reconcileTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const mountedRef = useRef(true);
   const reloadSeqRef = useRef(0);
+  const repriceSeqRef = useRef(0);
   const suppressNextCartChangedRef = useRef(false);
 
   const syncingIdsRef = useRef<Set<string>>(new Set());
@@ -438,12 +469,22 @@ export function useCart() {
     );
   }, []);
 
-  const applyCartResponse = useCallback((json: CartResponse) => {
-    const nextItems = (json?.data?.items ?? []) as CartItemEnriched[];
-    const nextSummary = (json?.data?.summary ?? null) as CartSummaryMoney | null;
-    const nextCoupon = (json?.data?.coupon ?? null) as CartCoupon;
+  const applyCartResponse = useCallback((json: CartResponse | any) => {
+    const data = pickCartData(json);
+    const nextItems = (
+      Array.isArray(data?.items) ? data.items : itemsRef.current
+    ) as CartItemEnriched[];
+    const pickedSummary = pickCartSummary(json);
+    const nextSummary = (hasUsableCartSummary(pickedSummary)
+      ? pickedSummary
+      : null) as CartSummaryMoney | null;
+    const nextCoupon = (
+      "coupon" in data ? data?.coupon ?? null : couponRef.current
+    ) as CartCoupon;
 
-    setCart(json?.data?.cart ?? null);
+    if ("cart" in data) {
+      setCart(data?.cart ?? null);
+    }
 
     itemsRef.current = nextItems;
     summaryRef.current = nextSummary;
@@ -492,25 +533,35 @@ export function useCart() {
     [applyCartResponse],
   );
 
-  const scheduleBackgroundReconcile = useCallback(
-    (delay = 3500) => {
-      if (reconcileTimer.current) {
-        clearTimeout(reconcileTimer.current);
-      }
+  const refreshCartPricing = useCallback(
+    async (reason?: string, payload?: any) => {
+      void reason;
+      void payload;
 
-      reconcileTimer.current = setTimeout(() => {
-        reconcileTimer.current = null;
+      const seq = ++repriceSeqRef.current;
+
+      try {
+        setIsRepricing(true);
+
+        const json = await apiGetCart();
 
         if (!mountedRef.current) return;
-        if (desiredQtyRef.current.size > 0 || qtyTimersRef.current.size > 0) {
-          scheduleBackgroundReconcile(delay);
-          return;
-        }
+        if (seq !== repriceSeqRef.current) return;
 
-        void reload({ silent: true, force: true });
-      }, delay);
+        applyCartResponse(json);
+      } catch (e: any) {
+        if (!mountedRef.current) return;
+        if (seq !== repriceSeqRef.current) return;
+
+        flash(e?.message ?? "تعذر تحديث عروض السلة", "error");
+      } finally {
+        if (!mountedRef.current) return;
+        if (seq === repriceSeqRef.current) {
+          setIsRepricing(false);
+        }
+      }
     },
-    [reload],
+    [applyCartResponse, flash],
   );
 
   const setItemsFast = useCallback((nextItems: CartItemEnriched[]) => {
@@ -607,7 +658,7 @@ export function useCart() {
         markSyncing(cartItemId, false);
 
         emitCartChangedWithoutSelfReload();
-        scheduleBackgroundReconcile(3500);
+        await refreshCartPricing("qty", res);
       } catch (e: any) {
         const latestVersion = versionRef.current.get(cartItemId);
         if (latestVersion !== version) return;
@@ -616,6 +667,7 @@ export function useCart() {
         flash(e?.message ?? "تعذر تحديث الكمية", "error");
 
         void reload({ silent: true, force: true });
+        if (mountedRef.current) setIsRepricing(false);
       } finally {
         const latestVersion = versionRef.current.get(cartItemId);
 
@@ -629,8 +681,8 @@ export function useCart() {
       emitCartChangedWithoutSelfReload,
       flash,
       markSyncing,
+      refreshCartPricing,
       reload,
-      scheduleBackgroundReconcile,
       setItemsFast,
     ],
   );
@@ -654,12 +706,11 @@ export function useCart() {
     return () => {
       mountedRef.current = false;
       reloadSeqRef.current += 1;
+      repriceSeqRef.current += 1;
 
       window.removeEventListener("cart:changed", onChanged as EventListener);
 
       if (toastTimer.current) clearTimeout(toastTimer.current);
-      if (reconcileTimer.current) clearTimeout(reconcileTimer.current);
-
       syncingIdsRef.current.clear();
 
       qtyTimersRef.current.forEach((timer) => clearTimeout(timer));
@@ -700,6 +751,7 @@ export function useCart() {
         }),
       );
 
+      setIsRepricing(true);
       emitCartCountDelta(actualDelta);
       markSyncing(id, true);
 
@@ -738,6 +790,7 @@ export function useCart() {
 
       const removedQty = Math.max(1, Math.floor(toNumber(removedItem.qty)));
 
+      setIsRepricing(true);
       setItemsFast(before.filter((item) => String(item.id) !== id));
       emitCartCountDelta(-removedQty);
 
@@ -748,13 +801,14 @@ export function useCart() {
         flash(msg || "تم حذف المنتج من السلة", "info");
 
         emitCartChangedWithoutSelfReload();
-        scheduleBackgroundReconcile(2500);
+        await refreshCartPricing("remove", res);
       } catch (e: any) {
         setItemsFast(before);
         emitCartCountDelta(removedQty);
 
         flash(e?.message ?? "تعذر حذف المنتج", "error");
         void reload({ silent: true, force: true });
+        if (mountedRef.current) setIsRepricing(false);
       } finally {
         markSyncing(id, false);
       }
@@ -763,8 +817,8 @@ export function useCart() {
       emitCartChangedWithoutSelfReload,
       flash,
       markSyncing,
+      refreshCartPricing,
       reload,
-      scheduleBackgroundReconcile,
       setItemsFast,
     ],
   );
@@ -773,27 +827,30 @@ export function useCart() {
     async (code: string) => {
       try {
         setOperationBusy(true);
+        setIsRepricing(true);
 
-        await apiApplyCoupon(code);
+        const res = await apiApplyCoupon(code);
 
         flash("تم تطبيق الكوبون", "info");
 
-        await reload({ silent: true, force: true });
+        await refreshCartPricing("apply-coupon", res);
         emitCartChangedWithoutSelfReload();
       } catch (e: any) {
         flash(e?.message ?? "تعذر تطبيق الكوبون", "error");
+        if (mountedRef.current) setIsRepricing(false);
       } finally {
         if (mountedRef.current) setOperationBusy(false);
       }
     },
-    [emitCartChangedWithoutSelfReload, flash, reload],
+    [emitCartChangedWithoutSelfReload, flash, refreshCartPricing],
   );
 
   const removeCoupon = useCallback(async () => {
     try {
       setOperationBusy(true);
+      setIsRepricing(true);
 
-      await apiRemoveCoupon();
+      const res = await apiRemoveCoupon();
 
       couponRef.current = null;
       couponPreviewRef.current = null;
@@ -802,18 +859,20 @@ export function useCart() {
 
       flash("تم إزالة الكوبون", "info");
 
-      void reload({ silent: true, force: true });
+      await refreshCartPricing("remove-coupon", res);
       emitCartChangedWithoutSelfReload();
     } catch (e: any) {
       flash(e?.message ?? "تعذر إزالة الكوبون", "error");
+      if (mountedRef.current) setIsRepricing(false);
     } finally {
       if (mountedRef.current) setOperationBusy(false);
     }
-  }, [emitCartChangedWithoutSelfReload, flash, reload, setItemsFast]);
+  }, [emitCartChangedWithoutSelfReload, flash, refreshCartPricing, setItemsFast]);
 
   return {
     loading,
     busy,
+    isRepricing,
     error,
     cart,
     items,

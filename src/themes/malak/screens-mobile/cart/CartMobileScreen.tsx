@@ -118,6 +118,7 @@ export default function CartMobileScreen() {
   const {
     loading,
     busy,
+    isRepricing,
     error,
     items,
     summary,
@@ -354,13 +355,23 @@ export default function CartMobileScreen() {
           .join(" ")}
       >
         {!loading && cartOfferProgress ? (
-          <div className="malak-mobile-cart-offerProgress">
+          <div
+            className={[
+              "mk-mobile-cart-offer-progress",
+              isRepricing ? "is-repricing" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
             <CartOfferProgressBar
               progress={cartOfferProgress}
               currencySymbol={currencySymbol}
               currencyDecimals={currencyDecimals}
               variant="mobile"
             />
+            {isRepricing ? (
+              <div className="mk-mcart-repriceHint">يعاد احتساب العروض...</div>
+            ) : null}
           </div>
         ) : null}
 
@@ -387,6 +398,7 @@ export default function CartMobileScreen() {
           coupon={coupon}
           loading={loading}
           busy={busy}
+          isRepricing={isRepricing}
           onApplyCoupon={applyCoupon}
           onRemoveCoupon={removeCoupon}
           onCheckout={handleCheckout}

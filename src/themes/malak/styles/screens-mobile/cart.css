@@ -3332,8 +3332,19 @@ body:has(.mk-mcart) a[href*="whatsapp"] {
   margin: 10px 0 12px;
 }
 
-.malak-mobile-cart-offerProgress {
+.mk-mobile-cart-offer-progress {
   margin: 12px 12px 10px;
+}
+
+.mk-mobile-cart-offer-progress .malak-cart-offerProgress {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.mk-mobile-cart-offer-progress .malak-cart-offerProgress__scroll,
+.mk-mobile-cart-offer-progress .malak-cart-offerProgress__track {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
 }
 
 .malak-cart-offerProgress__scroll {
@@ -3358,7 +3369,7 @@ body:has(.mk-mcart) a[href*="whatsapp"] {
     margin: 0;
   }
 
-  .malak-mobile-cart-offerProgress .malak-cart-offerProgress,
+  .mk-mobile-cart-offer-progress .malak-cart-offerProgress,
   .malak-cart-offerProgress.is-mobile {
     margin: 0;
     padding: 10px 9px 9px;
@@ -3427,4 +3438,190 @@ body:has(.mk-mcart) a[href*="whatsapp"] {
     font-size: 11px;
     line-height: 1.6;
   }
+}
+
+.mk-mobile-cart-offer-progress {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.malak-cartOfferProgress--mobile,
+.mk-mobile-cart-offer-progress .malak-cartOfferProgress {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 14px 14px 16px;
+  overflow: hidden;
+  border: 1px solid rgba(166, 114, 39, 0.18);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 88% 0%, rgba(166, 114, 39, 0.07), transparent 34%),
+    linear-gradient(180deg, #fffdf9 0%, #fffaf2 100%);
+}
+
+.malak-cartOfferProgress--mobile .malak-cartOfferProgress__head,
+.mk-mobile-cart-offer-progress .malak-cartOfferProgress__head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 18px;
+  color: #1f2933;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.malak-cartOfferProgress--mobile .malak-cartOfferProgress__head > span,
+.mk-mobile-cart-offer-progress .malak-cartOfferProgress__head > span {
+  min-width: 0;
+  white-space: normal;
+}
+
+.malak-cartOfferProgress--mobile .malak-cartOfferProgress__badge,
+.mk-mobile-cart-offer-progress .malak-cartOfferProgress__badge {
+  position: static !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: #9a681f;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: none;
+}
+
+.malak-cartOfferProgress--mobile .malak-cartOfferProgress__rail,
+.mk-mobile-cart-offer-progress .malak-cartOfferProgress__rail {
+  height: 56px;
+  margin: 0;
+  overflow-x: auto;
+  overflow-y: visible;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.malak-cartOfferProgress--mobile .malak-cartOfferProgress__rail::-webkit-scrollbar,
+.mk-mobile-cart-offer-progress .malak-cartOfferProgress__rail::-webkit-scrollbar {
+  display: none;
+}
+
+.malak-cartOfferProgress--mobile .malak-cartOfferProgress__track,
+.mk-mobile-cart-offer-progress .malak-cartOfferProgress__track {
+  position: relative;
+  min-width: 100%;
+  height: 56px;
+  margin: 0;
+  overflow: visible;
+}
+
+.malak-cartOfferProgress--mobile .malak-cartOfferProgress__track::before,
+.mk-mobile-cart-offer-progress .malak-cartOfferProgress__track::before,
+.malak-cartOfferProgress--mobile .malak-cartOfferProgress__fill,
+.mk-mobile-cart-offer-progress .malak-cartOfferProgress__fill {
+  position: absolute;
+  top: 13px;
+  right: 0;
+  height: 5px;
+  border-radius: 999px;
+  content: "";
+}
+
+.malak-cartOfferProgress--mobile .malak-cartOfferProgress__track::before,
+.mk-mobile-cart-offer-progress .malak-cartOfferProgress__track::before {
+  left: 0;
+  background: #eadbc7;
+}
+
+.malak-cartOfferProgress--mobile .malak-cartOfferProgress__fill,
+.mk-mobile-cart-offer-progress .malak-cartOfferProgress__fill {
+  width: var(--offer-progress, 0%);
+  max-width: 100%;
+  background: linear-gradient(90deg, #b98535, #8f5f1e);
+}
+
+.malak-cartOfferProgress--mobile .malak-cartOfferProgress__tier,
+.mk-mobile-cart-offer-progress .malak-cartOfferProgress__tier {
+  position: absolute;
+  top: 0;
+  right: var(--tier-pos, 0%);
+  z-index: 1;
+  width: 70px;
+  transform: translateX(50%);
+  text-align: center;
+}
+
+.malak-cartOfferProgress--mobile .malak-cartOfferProgress__dot,
+.mk-mobile-cart-offer-progress .malak-cartOfferProgress__dot {
+  display: block;
+  width: 18px;
+  height: 18px;
+  margin: 5px auto 7px;
+  border: 3px solid #eadbc7;
+  border-radius: 999px;
+  background: #fffdf9;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.86);
+}
+
+.malak-cartOfferProgress--mobile .malak-cartOfferProgress__tier.is-reached .malak-cartOfferProgress__dot,
+.mk-mobile-cart-offer-progress .malak-cartOfferProgress__tier.is-reached .malak-cartOfferProgress__dot {
+  border-color: #9a681f;
+  background: #9a681f;
+}
+
+.malak-cartOfferProgress--mobile .malak-cartOfferProgress__tierLabel,
+.mk-mobile-cart-offer-progress .malak-cartOfferProgress__tierLabel {
+  display: block;
+  color: #1f2933;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.12;
+  white-space: normal;
+}
+
+.malak-cartOfferProgress--mobile .malak-cartOfferProgress__tierMeta,
+.mk-mobile-cart-offer-progress .malak-cartOfferProgress__tierMeta {
+  display: block;
+  margin-top: 3px;
+  color: #8b6a42;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.malak-cartOfferProgress--mobile .malak-cartOfferProgress__message,
+.mk-mobile-cart-offer-progress .malak-cartOfferProgress__message {
+  margin: 10px 0 0;
+  text-align: center;
+  color: #8a5d22;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.mk-mobile-cart-offer-progress.is-repricing .malak-cartOfferProgress,
+.mk-mcart-sheet.is-repricing .mk-mcart-row--strong,
+.mk-mcart-sheet.is-repricing .mk-mcart-row strong {
+  opacity: 0.62;
+}
+
+.mk-mcart-repriceHint {
+  margin: 7px 0 0;
+  color: #8a5d22;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.mk-mcart-totalBox > .mk-mcart-repriceHint {
+  margin: 4px 0 8px;
+  text-align: start;
 }

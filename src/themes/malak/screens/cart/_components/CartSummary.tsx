@@ -21,6 +21,7 @@ type Props = {
 
   loading: boolean;
   busy: boolean;
+  isRepricing?: boolean;
 
   onApplyCoupon: (code: string) => void;
   onRemoveCoupon: () => void;
@@ -111,6 +112,11 @@ function readText(...values: any[]) {
   return "";
 }
 
+function hasMoney(value: unknown) {
+  const amount = Number(value ?? 0);
+  return Number.isFinite(amount) && Math.abs(amount) > 0.009;
+}
+
 function fmt(amount: number, currencySymbol: string, decimalDigits: number) {
   const n = Number(amount ?? 0);
   const val = Number.isFinite(n) ? n : 0;
@@ -151,6 +157,7 @@ function CartSummary({
   coupon,
   loading,
   busy,
+  isRepricing = false,
   onApplyCoupon,
   onRemoveCoupon,
 }: Props) {
@@ -513,7 +520,11 @@ function CartSummary({
 
   return (
     <div
-      className={["mk-dcart-summary", isLoading ? "is-loading" : ""]
+      className={[
+        "mk-dcart-summary",
+        isLoading ? "is-loading" : "",
+        isRepricing ? "is-repricing" : "",
+      ]
         .filter(Boolean)
         .join(" ")}
       aria-busy={isLoading ? "true" : "false"}
@@ -620,7 +631,11 @@ function CartSummary({
           />
         ) : null}
 
-        {couponDiscount > 0 ? (
+        {isRepricing ? (
+          <div className="mk-dcart-repriceHint">يعاد احتساب العروض...</div>
+        ) : null}
+
+        {hasMoney(couponDiscount) ? (
           <Row
             label="كوبون الخصم"
             value={formatted.couponDiscount}
@@ -629,21 +644,21 @@ function CartSummary({
           />
         ) : null}
 
-        {specialOffersDiscount > 0 ? (
+        {hasMoney(specialOffersDiscount) ? (
           <Row
             label="العروض الخاصة"
             value={formatted.specialOffersDiscount}
-            loading={isLoading}
+            loading={isLoading || isRepricing}
             valueColor="#b91c1c"
           />
         ) : null}
 
-        {cartOffersDiscount > 0 ? (
+        {hasMoney(cartOffersDiscount) ? (
           <>
             <Row
               label="عروض السلة"
               value={formatted.cartOffersDiscount}
-              loading={isLoading}
+              loading={isLoading || isRepricing}
               valueColor="#b91c1c"
             />
 
@@ -655,14 +670,14 @@ function CartSummary({
           </>
         ) : null}
 
-        <Row
-          label="الخصم"
-          value={formatted.unclassifiedDiscount}
-          loading={isLoading}
-          valueColor={
-            !isLoading && unclassifiedDiscount > 0 ? "#b91c1c" : undefined
-          }
-        />
+        {hasMoney(unclassifiedDiscount) ? (
+          <Row
+            label="الخصم"
+            value={formatted.unclassifiedDiscount}
+            loading={isLoading || isRepricing}
+            valueColor="#b91c1c"
+          />
+        ) : null}
 
         <Row label="الشحن" value={formatted.shipping} loading={isLoading} />
 
@@ -672,7 +687,7 @@ function CartSummary({
           label="الإجمالي"
           value={formatted.total}
           strong
-          loading={isLoading}
+          loading={isLoading || isRepricing}
         />
       </div>
 
