@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { getOrdersDb } from "@/data/db/orders-db.server";
 import { getStoreDb } from "@/data/db/store-db.server";
 import { isProductVisibleInWeb } from "@/data/catalog/products";
-
+import { notifyMerchantCartItemAdded } from "@/lib/merchant-notifications.server";
 import {
   cartSessionCookie,
   getCartSessionId,
@@ -63,7 +63,83 @@ function clampQty(n: any) {
   if (!Number.isFinite(x)) return 1;
   return Math.max(1, Math.floor(x));
 }
+function s(value: unknown) {
+  return String(value ?? "").trim();
+}
 
+function isUuidLike(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+}
+async function readProductPrimaryImageUrl(args: {
+  storeDb: any;
+  storeId: string;
+  productId: string;
+}) {
+  const result = await args.storeDb
+    .from("product_media")
+    .select("original_url,thumbnail_url,is_default,sort_order")
+    .eq("store_id", args.storeId)
+    .eq("product_id", args.productId)
+    .eq("media_kind", "image")
+    .order("is_default", { ascending: false })
+    .order("sort_order", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (result.error) {
+    return null;
+  }
+
+  return s(result.data?.thumbnail_url) || s(result.data?.original_url) || null;
+}
+async function readCartActor(args: { storeDb: any; cart: any }) {
+  const userId = s(args.cart?.user_id);
+
+  if (!userId) {
+    return {
+      type: "visitor" as const,
+      name: "زائر",
+    };
+  }
+
+
+  const byAuth = await args.storeDb
+    .from("customers")
+    .select("id,full_name,email")
+    .eq("auth_user_id", userId)
+    .limit(1)
+    .maybeSingle();
+
+  if (!byAuth.error && byAuth.data?.id) {
+    return {
+      type: "customer" as const,
+      name: s(byAuth.data.full_name) || s(byAuth.data.email) || "عميل",
+    };
+  }
+
+  if (isUuidLike(userId)) {
+    const byId = await args.storeDb
+      .from("customers")
+      .select("id,full_name,email")
+      .eq("id", userId)
+      .limit(1)
+      .maybeSingle();
+
+    if (!byId.error && byId.data?.id) {
+      return {
+        type: "customer" as const,
+        name: s(byId.data.full_name) || s(byId.data.email) || "عميل",
+      };
+    }
+  }
+
+  return {
+    type: "visitor" as const,
+    name: "زائر",
+  };
+}
 function clampDelta(n: any) {
   const x = Number(n ?? 0);
   if (!Number.isFinite(x)) return 0;
@@ -1201,7 +1277,7 @@ export async function POST(req: Request) {
 
     const prodR = await storeDb
       .from("products")
-      .select("id,status,metadata")
+      .select("id,name,status,metadata")
       .eq("id", product_id)
       .eq("store_id", store_id)
       .limit(1)
@@ -1233,7 +1309,11 @@ export async function POST(req: Request) {
         { status: 404 },
       );
     }
-
+const productImageUrl = await readProductPrimaryImageUrl({
+  storeDb,
+  storeId: store_id,
+  productId: product_id,
+});
     const productMeta = prodR.data?.metadata ?? null;
     const metaVariants = getMetadataVariants(productMeta);
 
@@ -1445,9 +1525,34 @@ export async function POST(req: Request) {
       item = insR.data;
     }
 
-    await syncCartActivityAndCount(ordersDb, cart.id);
+  await syncCartActivityAndCount(ordersDb, cart.id);
 
-    const isPartial = canAddNow < qtyToAdd;
+try {
+  const actor = await readCartActor({
+    storeDb,
+    cart,
+  });
+
+  await notifyMerchantCartItemAdded({
+    storeId: store_id,
+    cart: {
+      id: String(cart.id),
+      user_id: cart.user_id ? String(cart.user_id) : null,
+    },
+ product: {
+  id: product_id,
+  name: prodR.data?.name ?? null,
+  image_url: productImageUrl,
+},
+    actor,
+    qtyAdded: canAddNow,
+    qtyInCart: finalQty,
+  });
+} catch (error: any) {
+  console.error("MERCHANT_CART_ITEM_NOTIFICATION_FAILED", error?.message || error);
+}
+
+const isPartial = canAddNow < qtyToAdd;
 
     const res = NextResponse.json({
       data: {
@@ -1528,7 +1633,7 @@ export async function PATCH(req: Request) {
 
     const visibleProductR = await storeDb
       .from("products")
-      .select("id,status,metadata")
+      .select("id,name,status,metadata")
       .eq("id", String(item0.product_id))
       .eq("store_id", store_id)
       .limit(1)

@@ -17,7 +17,7 @@ import {
 import { copyCartOrderOptionsToOrder } from "../lib/order-options";
 import { evaluateCodRestrictions } from "../lib/cod-restrictions";
 import { recordCartOfferRedemptions } from "../lib/cart-offers";
-
+import { notifyMerchantNewOrder } from "@/lib/merchant-notifications.server";
 export const dynamic = "force-dynamic";
 
 function n(x: any) {
@@ -2650,6 +2650,29 @@ export async function POST(req: Request) {
 
   if (cleanupError) {
     console.error("CHECKOUT_CART_CLEANUP_FAILED", cleanupError);
+  }
+
+  try {
+    await notifyMerchantNewOrder({
+      storeId: store_id,
+      order: {
+        id: String(order.id),
+        order_number: order.order_number ?? null,
+        invoice_no: order.invoice_no ?? null,
+        total_amount: summary.total ?? null,
+        currency: summary.currency ?? null,
+        payment_method: cart.payment_method ?? null,
+      },
+      customer: customer_snapshot
+        ? {
+            full_name: customer_snapshot.full_name ?? null,
+            phone: customer_snapshot.phone ?? null,
+            email: customer_snapshot.email ?? null,
+          }
+        : null,
+    });
+  } catch (error: any) {
+    console.error("MERCHANT_ORDER_NOTIFICATION_FAILED", error?.message || error);
   }
 
   return buildOrderSuccessResponse({

@@ -11,6 +11,7 @@ import { controlDb } from "@/data/db/control-db.server";
 import { getStoreDb } from "@/data/db/store-db.server";
 import { getStoreOptions } from "@/data/store/options";
 import { verifySession } from "@/lib/auth/session";
+import { notifyMerchantNewQuestion } from "@/lib/merchant-notifications.server";
 
 type RatingPublishSettings = {
   publishTestimonials: boolean;
@@ -830,13 +831,36 @@ export async function POST(req: NextRequest) {
       media: finalMedia,
     });
 
-    if (
+        if (
       reviewType === "review" &&
       targetType === "product" &&
       reviewOptions.requireVerifiedPurchaseForProductReview &&
       !created.is_verified_purchase
     ) {
       return bad("VERIFIED_PURCHASE_REQUIRED", 403);
+    }
+
+    if (reviewType === "question") {
+      try {
+        await notifyMerchantNewQuestion({
+          storeId,
+          question: {
+            id: String(created.id),
+            target_type: targetType,
+            target_id: targetId,
+            title,
+            body: text,
+            author_name: finalAuthorName,
+            author_email: authorEmail,
+            status: finalStatus,
+          },
+        });
+      } catch (error: any) {
+        console.error(
+          "MERCHANT_QUESTION_NOTIFICATION_FAILED",
+          error?.message || error,
+        );
+      }
     }
 
     return NextResponse.json({
