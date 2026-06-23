@@ -3,7 +3,7 @@
 import { NextResponse } from "next/server";
 import {
   getCartSessionIdFromCookie,
-  getExistingOpenCartsForInitialCount,
+  getExistingOpenCart,
   getStoreIdOrThrow,
 } from "../../_cart/cart.server";
 
@@ -12,23 +12,6 @@ export const dynamic = "force-dynamic";
 function n(x: any) {
   const v = Number(x ?? 0);
   return Number.isFinite(v) ? Math.max(0, Math.floor(v)) : 0;
-}
-
-function sumCartItemCount(carts: any[]) {
-  if (!Array.isArray(carts) || carts.length === 0) return 0;
-
-  const seen = new Set<string>();
-  let total = 0;
-
-  for (const cart of carts) {
-    const id = String(cart?.id ?? "").trim();
-    if (!id || seen.has(id)) continue;
-
-    seen.add(id);
-    total += n(cart?.item_count);
-  }
-
-  return total;
 }
 
 function countResponse(count: number) {
@@ -50,12 +33,12 @@ export async function GET() {
      */
     const sessionId = await getCartSessionIdFromCookie();
 
-    const carts = await getExistingOpenCartsForInitialCount({
+    const cart = await getExistingOpenCart({
       store_id: storeId,
       session_id: sessionId,
     });
 
-    return countResponse(sumCartItemCount(carts));
+    return countResponse(cart?.item_count);
   } catch {
     return countResponse(0);
   }

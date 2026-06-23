@@ -14,6 +14,7 @@ import {
 } from "@/data/viewmodels/product.vm";
 import ProductCard from "@/themes/malak/components/product-card/ProductCard";
 import LoadingOverlay from "../../components/LoadingOverlay";
+import { useCategoryInfiniteProducts } from "./_components/useCategoryInfiniteProducts";
 
 type Props = {
   data?: any;
@@ -167,21 +168,6 @@ function buildProductCard(args: {
       href,
       showDashInstead: args.showDashInstead,
     },
-  });
-}
-
-function sortProductsByStock(
-  products: ProductCardVM[],
-  quantitySortEnabled: boolean,
-) {
-  if (!quantitySortEnabled) return products;
-
-  return [...products].sort((a, b) => {
-    if (a.isOutOfStock === b.isOutOfStock) return 0;
-    if (a.isOutOfStock && !b.isOutOfStock) return 1;
-    if (!a.isOutOfStock && b.isOutOfStock) return -1;
-
-    return 0;
   });
 }
 
@@ -384,9 +370,9 @@ function resolveSortLabel(sort: any) {
   const value = s(sort);
 
   if (value === "latest") return "الأحدث";
-  if (value === "oldest") return "الأقدم";
-  if (value === "price_asc") return "الأقل سعرًا";
-  if (value === "price_desc") return "الأعلى سعرًا";
+  if (value === "popular") return "الأكثر طلبًا";
+  if (value === "price_asc") return "السعر ↑";
+  if (value === "price_desc") return "السعر ↓";
 
   return "";
 }
@@ -566,7 +552,6 @@ export default function CategoryScreen({ data, mode }: Props) {
     [data?.options],
   );
 
-  const quantitySortEnabled = storeOptions?.switches?.quantitySort ?? true;
   const showDashInstead = storeOptions?.switches?.showDashInstead ?? true;
 
   const rawProducts = useMemo(
@@ -574,34 +559,33 @@ export default function CategoryScreen({ data, mode }: Props) {
     [data?.products],
   );
 
-  const filteredProductIds: string[] | null = useMemo(() => {
-    if (!filtersEnabled || !Array.isArray(catalogFilters?.productIds)) {
-      return null;
-    }
+  const categoryId = s(data?.category?.id);
+  const paginationKey = [
+    categoryId,
+    searchParamsText,
+    rawProducts.map((product: any) => s(product?.id)).filter(Boolean).join(","),
+    String(data?.pagination?.nextOffset ?? ""),
+    data?.pagination?.hasNextPage ? "1" : "0",
+  ].join("|");
 
-    return catalogFilters.productIds
-      .map((value: unknown) => s(value))
-      .filter(Boolean);
-  }, [filtersEnabled, catalogFilters?.productIds]);
-
-  const productsSource = useMemo(() => {
-    if (!filteredProductIds) return rawProducts;
-
-    const byId = new Map<string, any>();
-
-    for (const product of rawProducts) {
-      const id = s(product?.id);
-      if (id) byId.set(id, product);
-    }
-
-    return filteredProductIds
-      .map((productId) => byId.get(productId))
-      .filter(Boolean);
-  }, [filteredProductIds, rawProducts]);
+  const {
+    products: pagedRawProducts,
+    hasNextPage,
+    isLoadingMore,
+    loadError,
+    sentinelRef,
+  } = useCategoryInfiniteProducts({
+    categoryId,
+    initialItems: rawProducts,
+    pageInfo: data?.pagination,
+    searchParamsText,
+    requestKey: paginationKey,
+    enabled: Boolean(categoryId) && !isTagPage,
+  });
 
   const productCards: ProductCardVM[] = useMemo(
     () =>
-      productsSource.map((product: any): ProductCardVM =>
+      pagedRawProducts.map((product: any): ProductCardVM =>
         buildProductCard({
           product,
           mode,
@@ -610,20 +594,35 @@ export default function CategoryScreen({ data, mode }: Props) {
           tax,
         }),
       ),
-    [productsSource, mode, showDashInstead, currencies, tax],
+    [pagedRawProducts, mode, showDashInstead, currencies, tax],
   );
 
-  const products: ProductCardVM[] = useMemo(
-    () =>
-      filteredProductIds
-        ? productCards
-        : sortProductsByStock(productCards, quantitySortEnabled),
-    [filteredProductIds, productCards, quantitySortEnabled],
-  );
+  /*
+   * ترتيب الدفعات يجب أن يبقى ثابتًا كما أعاده الكتالوج. إعادة فرز البطاقات
+   * في المتصفح بعد كل دفعة تجعل المنتجات القديمة تتحرك وتكسر تسلسل التمرير.
+   */
+  const products: ProductCardVM[] = productCards;
 
   const resultCount = Number(catalogFilters?.resultCount);
   const totalCount = Number.isFinite(resultCount) ? resultCount : products.length;
   const visibleCount = products.length;
+
+  const infiniteTail =
+    !isTagPage && (hasNextPage || isLoadingMore || loadError) ? (
+      <div
+        ref={hasNextPage ? sentinelRef : undefined}
+        className="mk-dcat__infiniteTail"
+        aria-live="polite"
+      >
+        {isLoadingMore ? (
+          <span className="mk-dcat__infiniteLoading">جاري تحميل المزيد…</span>
+        ) : loadError ? (
+          <span className="mk-dcat__infiniteError">{loadError}</span>
+        ) : (
+          <span className="mk-dcat__infiniteLoading" aria-hidden="true" />
+        )}
+      </div>
+    ) : null;
 
   const facets = useMemo(
     () => (Array.isArray(catalogFilters?.facets) ? catalogFilters.facets : []),
@@ -1286,6 +1285,29 @@ export default function CategoryScreen({ data, mode }: Props) {
             <h1 className="mk-dcat__title">{pageTitle}</h1>
           )}
 
+          {!isTagPage ? (
+            <div className="mk-dcat-toolbar mk-dcat-toolbar--standalone-sort">
+              <span className="mk-dcat-toolbar__hint">
+                رتّب المنتجات بالطريقة المناسبة لك
+              </span>
+
+              <label className="mk-dcat-sort">
+                <span>ترتيب:</span>
+
+                <select
+                  value={effectiveSort}
+                  onChange={(event) => setSort(event.target.value)}
+                >
+                  <option value="">التوصية</option>
+                  <option value="latest">الأحدث</option>
+                  <option value="popular">الأكثر طلبًا</option>
+                  <option value="price_asc">السعر ↑</option>
+                  <option value="price_desc">السعر ↓</option>
+                </select>
+              </label>
+            </div>
+          ) : null}
+
           {products.length === 0 ? (
             <div className="mk-dcat__empty">
               {isTagPage
@@ -1304,6 +1326,8 @@ export default function CategoryScreen({ data, mode }: Props) {
               ))}
             </div>
           )}
+
+          {infiniteTail}
         </div>
 
         {tagStyles}
@@ -1386,10 +1410,11 @@ export default function CategoryScreen({ data, mode }: Props) {
               value={effectiveSort}
               onChange={(event) => setSort(event.target.value)}
             >
-              <option value="">الأحدث</option>
-              <option value="price_asc">الأقل سعرًا</option>
-              <option value="price_desc">الأعلى سعرًا</option>
-              <option value="oldest">الأقدم</option>
+              <option value="">التوصية</option>
+              <option value="latest">الأحدث</option>
+              <option value="popular">الأكثر طلبًا</option>
+              <option value="price_asc">السعر ↑</option>
+              <option value="price_desc">السعر ↓</option>
             </select>
           </label>
         </div>
@@ -1416,6 +1441,8 @@ export default function CategoryScreen({ data, mode }: Props) {
                 ))}
               </div>
             )}
+
+            {infiniteTail}
           </section>
 
           <aside

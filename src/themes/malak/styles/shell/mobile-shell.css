@@ -7,6 +7,7 @@
   --mk-safe-top: env(safe-area-inset-top, 0px);
   --mk-tabbar-h: 72px;
   --mk-tabbar-total-h: calc(var(--mk-tabbar-h) + var(--mk-safe-bottom));
+  --mk-home-topbar-h: calc(var(--mk-safe-top) + 114px);
 
   min-height: 100vh;
   min-height: 100svh;
@@ -17,16 +18,34 @@
 }
 
 .mk-mobile-content {
+  display: flex;
   min-height: 100vh;
   min-height: 100svh;
+  flex-direction: column;
   padding-bottom: calc(var(--mk-tabbar-total-h) + 14px);
 }
 
+.mk-mobile-screen-slot {
+  display: block;
+  flex: 1 0 auto;
+  min-height: calc(100svh - var(--mk-tabbar-total-h));
+}
+
 .mk-screen-container {
+  flex: 1 0 auto;
   min-height: calc(100svh - var(--mk-tabbar-total-h));
   transition:
     opacity 180ms ease,
     transform 180ms ease;
+}
+
+.mk-mobile-shell[data-mk-route="home"] .mk-mobile-content {
+  padding-top: 0;
+}
+
+.mk-mobile-shell[data-mk-route="home"] .mk-mobile-screen-slot,
+.mk-mobile-shell[data-mk-route="home"] .mk-screen-container {
+  min-height: calc(100svh - var(--mk-home-topbar-h) - var(--mk-tabbar-total-h));
 }
 
 .mk-mobile-shell[data-mk-route="product"] .mk-mobile-content,

@@ -96,6 +96,13 @@ export type ProductRow = {
   }>;
 };
 
+export type CatalogProductSort =
+  | "recommended"
+  | "latest"
+  | "popular"
+  | "price_asc"
+  | "price_desc";
+
 function s(x: any) {
   return String(x ?? "").trim();
 }
@@ -213,6 +220,221 @@ function compareCategoryProductRows(a: any, b: any) {
   if (createdCompare !== 0) return createdCompare;
 
   return Number(a?.__fallback_rank ?? 0) - Number(b?.__fallback_rank ?? 0);
+}
+
+function normalizeCatalogProductSort(value: unknown): CatalogProductSort {
+  const text = s(value).toLowerCase();
+
+  if (text === "latest" || text === "newest" || text === "new") {
+    return "latest";
+  }
+
+  if (text === "popular" || text === "best_selling" || text === "best-selling") {
+    return "popular";
+  }
+
+  if (text === "price_asc" || text === "price-asc" || text === "low_price") {
+    return "price_asc";
+  }
+
+  if (text === "price_desc" || text === "price-desc" || text === "high_price") {
+    return "price_desc";
+  }
+
+  return "recommended";
+}
+
+function compareTextId(a: any, b: any) {
+  return s(a?.id).localeCompare(s(b?.id));
+}
+
+function readCatalogPrice(row: any) {
+  const value = Number(row?.__catalog_price);
+  return Number.isFinite(value) && value >= 0 ? value : Number.POSITIVE_INFINITY;
+}
+
+function readCatalogSoldQty(row: any) {
+  const value = Number(row?.__catalog_sold_qty ?? row?.sold_qty ?? 0);
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function compareCatalogProductRows(a: any, b: any, sort: CatalogProductSort) {
+  if (sort === "latest") {
+    const created = compareCreatedDesc(a, b);
+    return created !== 0 ? created : compareTextId(a, b);
+  }
+
+  if (sort === "popular") {
+    const sold = readCatalogSoldQty(b) - readCatalogSoldQty(a);
+    if (sold !== 0) return sold;
+
+    const created = compareCreatedDesc(a, b);
+    return created !== 0 ? created : compareTextId(a, b);
+  }
+
+  if (sort === "price_asc" || sort === "price_desc") {
+    const aPrice = readCatalogPrice(a);
+    const bPrice = readCatalogPrice(b);
+    const aHasPrice = Number.isFinite(aPrice);
+    const bHasPrice = Number.isFinite(bPrice);
+
+    // المنتجات التي لا تملك سعرًا صالحًا تبقى في نهاية النتائج في الاتجاهين.
+    if (aHasPrice && !bHasPrice) return -1;
+    if (!aHasPrice && bHasPrice) return 1;
+
+    if (aHasPrice && bHasPrice && aPrice !== bPrice) {
+      return sort === "price_asc" ? aPrice - bPrice : bPrice - aPrice;
+    }
+
+    const created = compareCreatedDesc(a, b);
+    return created !== 0 ? created : compareTextId(a, b);
+  }
+
+  return compareCategoryProductRows(a, b);
+}
+
+const POPULAR_ORDER_STATUSES = [
+  "pending",
+  "paid",
+  "completed",
+  "shipped",
+] as const;
+
+async function loadCatalogSoldQtyRaw(store_id: string): Promise<Record<string, number>> {
+  const storeId = s(store_id);
+  if (!storeId) return {};
+
+  const ordersDb = await getOrdersDb(storeId);
+  const pageSize = 1000;
+  const totals = new Map<string, number>();
+
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await ordersDb
+      .from("order_items")
+      .select("id,product_id,qty,orders!inner(status)")
+      .eq("store_id", storeId)
+      .not("product_id", "is", null)
+      .in("orders.status", [...POPULAR_ORDER_STATUSES])
+      .order("id", { ascending: true })
+      .range(offset, offset + pageSize - 1);
+
+    if (error) {
+      throw new Error(`CATALOG_POPULAR_ORDER_ITEMS_FAILED: ${error.message}`);
+    }
+
+    const rows = Array.isArray(data) ? data : [];
+
+    for (const row of rows) {
+      const productId = s(row?.product_id);
+      const qty = Number(row?.qty ?? 0);
+
+      if (!productId || !Number.isFinite(qty) || qty <= 0) continue;
+
+      totals.set(productId, (totals.get(productId) || 0) + qty);
+    }
+
+    if (rows.length < pageSize) break;
+  }
+
+  return Object.fromEntries(totals);
+}
+
+const catalogSoldQtyCache = new Map<
+  string,
+  () => Promise<Record<string, number>>
+>();
+
+function loadCatalogSoldQty(store_id: string) {
+  const storeId = s(store_id);
+  const key = storeId;
+
+  let fn = catalogSoldQtyCache.get(key);
+
+  if (!fn) {
+    fn = unstable_cache(
+      () => loadCatalogSoldQtyRaw(storeId),
+      ["catalog-popular-order-items-v1", storeId],
+      { revalidate: 60 },
+    );
+
+    catalogSoldQtyCache.set(key, fn);
+  }
+
+  return fn();
+}
+
+export async function getCatalogProductPurchaseQuantities(store_id: string) {
+  return await loadCatalogSoldQty(store_id);
+}
+
+async function attachCatalogSortMetrics(args: {
+  sb: any;
+  store_id: string;
+  products: any[];
+  sort: CatalogProductSort;
+}) {
+  const products = Array.isArray(args.products) ? args.products : [];
+
+  if (!products.length || args.sort === "recommended" || args.sort === "latest") {
+    return products;
+  }
+
+  const ids = uniqueStrings(products.map((product) => product?.id));
+  if (!ids.length) return products;
+
+  const priceByProductId = new Map<string, number>();
+  const soldQtyByProductId = new Map<string, number>();
+
+  if (args.sort === "popular") {
+    const catalogSoldQty = await loadCatalogSoldQty(args.store_id);
+
+    for (const productId of ids) {
+      const soldQty = Number(catalogSoldQty[productId] ?? 0);
+
+      if (Number.isFinite(soldQty) && soldQty > 0) {
+        soldQtyByProductId.set(productId, soldQty);
+      }
+    }
+  }
+
+  for (let index = 0; index < ids.length; index += 400) {
+    const chunk = ids.slice(index, index + 400);
+
+    if (args.sort === "price_asc" || args.sort === "price_desc") {
+      const { data } = await args.sb
+        .from("product_pricing")
+        .select("product_id,price,sale_price,sale_end")
+        .in("product_id", chunk);
+
+      for (const row of Array.isArray(data) ? data : []) {
+        const productId = s(row?.product_id);
+        if (!productId) continue;
+
+        const basePrice = Number(row?.price ?? 0);
+        const salePrice = Number(row?.sale_price);
+        const saleEnd = row?.sale_end ? new Date(row.sale_end).getTime() : null;
+        const saleIsCurrent =
+          Number.isFinite(salePrice) &&
+          salePrice > 0 &&
+          (saleEnd === null || (Number.isFinite(saleEnd) && saleEnd >= Date.now()));
+        const effectivePrice = saleIsCurrent ? salePrice : basePrice;
+
+        if (!Number.isFinite(effectivePrice) || effectivePrice < 0) continue;
+
+        const current = priceByProductId.get(productId);
+        if (current === undefined || effectivePrice < current) {
+          priceByProductId.set(productId, effectivePrice);
+        }
+      }
+    }
+
+  }
+
+  return products.map((product) => ({
+    ...product,
+    __catalog_price: priceByProductId.get(s(product?.id)),
+    __catalog_sold_qty: soldQtyByProductId.get(s(product?.id)),
+  }));
 }
 
 function isPublishedStatus(status: any) {
@@ -921,15 +1143,43 @@ async function getProductsByCategoryRaw(opts: {
   store_id: string;
   category_id: string;
   limit: number;
+  offset?: number;
+}) {
+  return getProductsByCategoriesRaw({
+    store_id: opts.store_id,
+    category_ids: [opts.category_id],
+    limit: opts.limit,
+    offset: opts.offset,
+  });
+}
+
+async function getProductsByCategoriesRaw(opts: {
+  store_id: string;
+  category_ids: string[];
+  limit: number;
+  offset?: number;
+  sort?: CatalogProductSort | string | null;
 }) {
   const sb = await getStoreDb(opts.store_id);
   const limit = Math.min(Math.max(Number(opts.limit ?? 24), 1), 200);
-  const fetchLimit = Math.min(Math.max(limit * 4, limit), 500);
+  const offsetValue = Number(opts.offset ?? 0);
+  const offset = Number.isFinite(offsetValue)
+    ? Math.max(0, Math.min(Math.floor(offsetValue), 5000))
+    : 0;
+  const sort = normalizeCatalogProductSort(opts.sort);
+  const requiredRows = offset + limit;
+  const fetchLimit =
+    sort === "recommended"
+      ? Math.min(Math.max(requiredRows * 4, limit), 20000)
+      : 20000;
+  const categoryIds = uniqueStrings(opts.category_ids).slice(0, 250);
+
+  if (!s(opts.store_id) || !categoryIds.length) return [] as ProductRow[];
 
   const firstR = await sb
     .from("category_products")
     .select(`sort_order, products:products(${BASE_SELECT})`)
-    .eq("category_id", opts.category_id)
+    .in("category_id", categoryIds)
     .order("sort_order", { ascending: true })
     .limit(fetchLimit);
 
@@ -966,7 +1216,7 @@ async function getProductsByCategoryRaw(opts: {
     const secondR = await sb
       .from("product_categories")
       .select(`products:products(${BASE_SELECT})`)
-      .eq("category_id", opts.category_id)
+      .in("category_id", categoryIds)
       .limit(fetchLimit);
 
     const secondProducts = (secondR.data || [])
@@ -997,10 +1247,17 @@ async function getProductsByCategoryRaw(opts: {
 
   if (!merged.length) return [] as ProductRow[];
 
-  const picked = merged
+  const productsWithMetrics = await attachCatalogSortMetrics({
+    sb,
+    store_id: opts.store_id,
+    products: merged,
+    sort,
+  });
+
+  const picked = productsWithMetrics
     .slice()
-    .sort(compareCategoryProductRows)
-    .slice(0, limit);
+    .sort((a, b) => compareCatalogProductRows(a, b, sort))
+    .slice(offset, offset + limit);
 
   return await mapProductRowsBulk(picked);
 }
@@ -1011,20 +1268,79 @@ export async function getProductsByCategory(opts: {
   store_id: string;
   category_id: string;
   limit: number;
+  offset?: number;
+  sort?: CatalogProductSort | string | null;
 }) {
   const limit = Math.min(Math.max(Number(opts.limit ?? 24), 1), 200);
-  const key = `${opts.store_id}:${opts.category_id}:${limit}:display-order-v2`;
+  const offsetValue = Number(opts.offset ?? 0);
+  const offset = Number.isFinite(offsetValue)
+    ? Math.max(0, Math.min(Math.floor(offsetValue), 5000))
+    : 0;
+  const sort = normalizeCatalogProductSort(opts.sort);
+  const key = `${opts.store_id}:${opts.category_id}:${limit}:${offset}:${sort}:catalog-sort-v1`;
 
   let fn = productsByCategoryCache.get(key);
 
   if (!fn) {
     fn = unstable_cache(
-      () => getProductsByCategoryRaw({ ...opts, limit }),
+      () => getProductsByCategoryRaw({ ...opts, limit, offset, sort }),
       [
-        "products-by-category-v2-display-order",
+        "products-by-category-v4-catalog-sort",
         opts.store_id,
         opts.category_id,
         String(limit),
+        String(offset),
+        sort,
+      ],
+      { revalidate: 60 },
+    );
+
+    productsByCategoryCache.set(key, fn);
+  }
+
+  return fn();
+}
+
+export async function getProductsByCategories(opts: {
+  store_id: string;
+  category_ids: string[];
+  limit: number;
+  offset?: number;
+  sort?: CatalogProductSort | string | null;
+}) {
+  const storeId = s(opts.store_id);
+  const limit = Math.min(Math.max(Number(opts.limit ?? 24), 1), 200);
+  const offsetValue = Number(opts.offset ?? 0);
+  const offset = Number.isFinite(offsetValue)
+    ? Math.max(0, Math.min(Math.floor(offsetValue), 5000))
+    : 0;
+  const sort = normalizeCatalogProductSort(opts.sort);
+  const categoryIds = uniqueStrings(opts.category_ids).slice(0, 250);
+
+  if (!storeId || !categoryIds.length) return [] as ProductRow[];
+
+  const sortedCategoryIds = [...categoryIds].sort();
+  const key = `${storeId}:${sortedCategoryIds.join(",")}:${limit}:${offset}:${sort}:catalog-sort-v1`;
+
+  let fn = productsByCategoryCache.get(key);
+
+  if (!fn) {
+    fn = unstable_cache(
+      () =>
+        getProductsByCategoriesRaw({
+          store_id: storeId,
+          category_ids: sortedCategoryIds,
+          limit,
+          offset,
+          sort,
+        }),
+      [
+        "products-by-categories-v4-catalog-sort",
+        storeId,
+        sortedCategoryIds.join(","),
+        String(limit),
+        String(offset),
+        sort,
       ],
       { revalidate: 60 },
     );
@@ -1082,6 +1398,100 @@ export async function getProductsForGrid(opts: {
   }
 
   return fn();
+}
+
+export type ProductsGridPage = {
+  items: ProductRow[];
+  pageInfo: {
+    pageSize: number;
+    nextOffset: number;
+    hasNextPage: boolean;
+  };
+};
+
+export async function getProductsForGridPage(opts: {
+  store_id: string;
+  limit?: number;
+  offset?: number;
+  sort?: CatalogProductSort | string | null;
+}): Promise<ProductsGridPage> {
+  const storeId = s(opts.store_id);
+  const pageSize = Math.min(Math.max(Number(opts.limit ?? 24), 1), 120);
+  const offsetValue = Number(opts.offset ?? 0);
+  const offset = Number.isFinite(offsetValue)
+    ? Math.max(0, Math.min(Math.floor(offsetValue), 5000))
+    : 0;
+  const sort = normalizeCatalogProductSort(opts.sort);
+
+  const empty = {
+    items: [] as ProductRow[],
+    pageInfo: {
+      pageSize,
+      nextOffset: offset,
+      hasNextPage: false,
+    },
+  };
+
+  if (!storeId) return empty;
+
+  const sb = await getStoreDb(storeId);
+  const requiredRows = offset + pageSize + 1;
+  const fetchLimit =
+    sort === "price_asc" || sort === "price_desc" || sort === "popular"
+      ? 20000
+      : Math.min(Math.max(requiredRows * 4, pageSize + 1), 20000);
+
+  let query: any = sb
+    .from("products")
+    .select(BASE_SELECT)
+    .eq("store_id", storeId);
+
+  if (sort === "recommended") {
+    query = query
+      .order("display_order", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: true });
+  } else if (sort === "latest") {
+    query = query
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: true });
+  } else {
+    query = query
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: true });
+  }
+
+  const { data, error } = await query.limit(fetchLimit);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const visible = (Array.isArray(data) ? data : []).filter((row: any) =>
+    isProductVisibleInWeb(row),
+  );
+
+  const productsWithMetrics = await attachCatalogSortMetrics({
+    sb,
+    store_id: storeId,
+    products: visible,
+    sort,
+  });
+
+  const ordered = productsWithMetrics
+    .slice()
+    .sort((a, b) => compareCatalogProductRows(a, b, sort));
+
+  const pageRows = ordered.slice(offset, offset + pageSize);
+
+  return {
+    items: await mapProductRowsBulk(pageRows),
+    pageInfo: {
+      pageSize,
+      nextOffset: offset + pageRows.length,
+      hasNextPage: ordered.length > offset + pageRows.length,
+    },
+  };
 }
 
 async function getBestSellingProductsForGridRaw(opts: {

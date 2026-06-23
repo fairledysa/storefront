@@ -2,6 +2,7 @@
 import { unstable_cache } from "next/cache";
 import { createHash } from "node:crypto";
 
+import { getCatalogProductPurchaseQuantities } from "@/data/catalog/products";
 import { getStoreDb } from "@/data/db/store-db.server";
 
 /* ------------------------- helpers ------------------------ */
@@ -150,6 +151,7 @@ export type CategoryFilterSort =
   | ""
   | "latest"
   | "oldest"
+  | "popular"
   | "price_asc"
   | "price_desc";
 
@@ -525,6 +527,9 @@ function normalizeFilterSort(value: unknown): CategoryFilterSort {
 
   if (text === "latest" || text === "newest" || text === "new") return "latest";
   if (text === "oldest" || text === "old") return "oldest";
+  if (text === "popular" || text === "best_selling" || text === "best-selling") {
+    return "popular";
+  }
 
   if (text === "price_asc" || text === "price-asc" || text === "low_price") {
     return "price_asc";
@@ -896,11 +901,16 @@ async function queryIndexedProductIds(args: {
   categoryIds: string[];
   filters: CategoryPageFilters;
   limit: number;
+  offset?: number;
   includeOptionSelections: boolean;
 }) {
   const storeId = s(args.store_id);
   const categoryIds = uniqueUuid(args.categoryIds);
   const limit = Math.max(1, Math.min(5000, Math.floor(Number(args.limit) || 60)));
+  const offsetValue = Number(args.offset ?? 0);
+  const offset = Number.isFinite(offsetValue)
+    ? Math.max(0, Math.min(5000, Math.floor(offsetValue)))
+    : 0;
   const filters = args.filters;
 
   if (!storeId) {
@@ -984,7 +994,9 @@ async function queryIndexedProductIds(args: {
     query = query.order("updated_at", { ascending: false });
   }
 
-  const { data, error, count } = await query.range(0, limit - 1);
+  query = query.order("product_id", { ascending: true });
+
+  const { data, error, count } = await query.range(offset, offset + limit - 1);
 
   if (error) throw new Error(error.message);
 
@@ -998,6 +1010,119 @@ async function queryIndexedProductIds(args: {
     ids,
     rows,
     total: Number(count ?? ids.length),
+  };
+}
+
+async function queryProductSortedIndexedProductIds(args: {
+  store_id: string;
+  categoryIds: string[];
+  filters: CategoryPageFilters;
+  limit: number;
+  offset: number;
+}) {
+  const baseFilters: CategoryPageFilters = {
+    ...args.filters,
+    sort: "",
+    key: "",
+  };
+
+  const indexed = await queryIndexedProductIds({
+    store_id: args.store_id,
+    categoryIds: args.categoryIds,
+    filters: baseFilters,
+    limit: 20000,
+    offset: 0,
+    includeOptionSelections: true,
+  });
+
+  const ids = uniqueUuid(indexed.ids);
+  if (!ids.length) {
+    return {
+      ids: [] as string[],
+      rows: [] as any[],
+      total: indexed.total,
+    };
+  }
+
+  const sb = (await getStoreDb(args.store_id)) as any;
+  const productById = new Map<string, any>();
+
+  for (const chunk of arrayChunks(ids, 400)) {
+    try {
+      const { data, error } = await sb
+        .from("products")
+        .select("id,display_order,created_at")
+        .eq("store_id", args.store_id)
+        .in("id", chunk);
+
+      if (error) throw new Error(error.message);
+
+      for (const row of Array.isArray(data) ? data : []) {
+        const productId = s(row?.id);
+        if (productId) productById.set(productId, row);
+      }
+    } catch {
+      // نبقي الترتيب القادم من الفهرس إذا تعذر تحميل بيانات ترتيب إضافية.
+    }
+  }
+
+  const originalRank = new Map<string, number>();
+  ids.forEach((id, index) => originalRank.set(id, index));
+
+  const purchaseQtyByProductId =
+    args.filters.sort === "popular"
+      ? await getCatalogProductPurchaseQuantities(args.store_id)
+      : null;
+
+  const readCreatedAt = (id: string) => {
+    const time = new Date(productById.get(id)?.created_at ?? 0).getTime();
+    return Number.isFinite(time) ? time : 0;
+  };
+
+  const readDisplayOrder = (id: string) => {
+    const value = Number(productById.get(id)?.display_order);
+    return Number.isFinite(value) && value > 0 ? Math.floor(value) : null;
+  };
+
+  const readSoldQty = (id: string) => {
+    const value = Number(purchaseQtyByProductId?.[id] ?? 0);
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  };
+
+  const orderedIds = ids.slice().sort((a, b) => {
+    if (args.filters.sort === "popular") {
+      const soldDiff = readSoldQty(b) - readSoldQty(a);
+      if (soldDiff !== 0) return soldDiff;
+    }
+
+    if (args.filters.sort === "") {
+      const aOrder = readDisplayOrder(a);
+      const bOrder = readDisplayOrder(b);
+
+      if (aOrder !== null && bOrder !== null && aOrder !== bOrder) {
+        return aOrder - bOrder;
+      }
+
+      if (aOrder !== null && bOrder === null) return -1;
+      if (aOrder === null && bOrder !== null) return 1;
+    }
+
+    const createdDiff = readCreatedAt(b) - readCreatedAt(a);
+    if (createdDiff !== 0) return createdDiff;
+
+    const rankDiff = (originalRank.get(a) ?? 0) - (originalRank.get(b) ?? 0);
+    if (rankDiff !== 0) return rankDiff;
+
+    return a.localeCompare(b);
+  });
+
+  const offset = Math.max(0, Math.floor(Number(args.offset) || 0));
+  const limit = Math.max(1, Math.floor(Number(args.limit) || 24));
+
+  return {
+    ids: orderedIds.slice(offset, offset + limit),
+    rows: [] as any[],
+    total: indexed.total,
   };
 }
 
@@ -1696,7 +1821,7 @@ function buildPriceFacetFromIndexedRows(args: {
 
 /* ------------------------- full result cache ------------------------ */
 
-const CATEGORY_FILTERS_RESULT_CACHE_VERSION = "v5-full-result-cache";
+const CATEGORY_FILTERS_RESULT_CACHE_VERSION = "v6-paged-result-cache";
 
 const categoryFiltersResultCache = new Map<
   string,
@@ -1727,11 +1852,16 @@ async function loadCategoryFiltersComputed(args: {
   category_id: string;
   filters: CategoryPageFilters;
   limit: number;
+  offset?: number;
 }): Promise<CategoryFiltersResult> {
   const storeId = s(args.store_id);
   const categoryId = s(args.category_id);
   const filters = args.filters;
   const limit = Math.max(1, Math.min(120, Math.floor(Number(args.limit) || 60)));
+  const offsetValue = Number(args.offset ?? 0);
+  const offset = Number.isFinite(offsetValue)
+    ? Math.max(0, Math.min(5000, Math.floor(offsetValue)))
+    : 0;
 
   if (!storeId || !categoryId || !filters.enabled) {
     return emptyCategoryFiltersResult(filters);
@@ -1774,18 +1904,29 @@ async function loadCategoryFiltersComputed(args: {
       })
     : baseForFacets;
 
-  const productResult = filters.hasActiveFilters
-    ? await queryIndexedProductIds({
-        store_id: storeId,
-        categoryIds,
-        filters,
-        limit,
-        includeOptionSelections: true,
-      })
-    : {
+  const productResult = !filters.hasActiveFilters
+    ? {
         ids: null as string[] | null,
         total: baseForFacets.total,
-      };
+      }
+    : filters.sort === "" ||
+        filters.sort === "latest" ||
+        filters.sort === "popular"
+      ? await queryProductSortedIndexedProductIds({
+          store_id: storeId,
+          categoryIds,
+          filters,
+          limit,
+          offset,
+        })
+      : await queryIndexedProductIds({
+          store_id: storeId,
+          categoryIds,
+          filters,
+          limit,
+          offset,
+          includeOptionSelections: true,
+        });
 
   const [optionRows, categoryFacets] = await Promise.all([
     loadOptionFacetRowsCached({
@@ -1835,10 +1976,15 @@ function loadCategoryFiltersCached(args: {
   category_id: string;
   filters: CategoryPageFilters;
   limit: number;
+  offset?: number;
 }) {
   const storeId = s(args.store_id);
   const categoryId = s(args.category_id);
   const limit = Math.max(1, Math.min(120, Math.floor(Number(args.limit) || 60)));
+  const offsetValue = Number(args.offset ?? 0);
+  const offset = Number.isFinite(offsetValue)
+    ? Math.max(0, Math.min(5000, Math.floor(offsetValue)))
+    : 0;
   const filtersHash = hashText(args.filters.key || "{}");
 
   const cacheKey = [
@@ -1846,6 +1992,7 @@ function loadCategoryFiltersCached(args: {
     storeId,
     categoryId,
     String(limit),
+    String(offset),
     filtersHash,
   ].join(":");
 
@@ -1859,6 +2006,7 @@ function loadCategoryFiltersCached(args: {
           category_id: categoryId,
           filters: args.filters,
           limit,
+          offset,
         }),
       [
         "category-filters-result",
@@ -1866,6 +2014,7 @@ function loadCategoryFiltersCached(args: {
         storeId,
         categoryId,
         String(limit),
+        String(offset),
         filtersHash,
       ],
       {
@@ -1886,6 +2035,7 @@ export async function loadCategoryFiltersForPage(args: {
   category_id: string;
   searchParams?: CatalogFilterSearchParams;
   limit?: number;
+  offset?: number;
 }): Promise<CategoryFiltersResult | null> {
   const storeId = s(args.store_id);
   const categoryId = s(args.category_id);
@@ -1903,6 +2053,7 @@ export async function loadCategoryFiltersForPage(args: {
     searchParams: args.searchParams,
     enabled: true,
     limit: args.limit ?? 60,
+    offset: args.offset ?? 0,
   });
 }
 
@@ -1912,11 +2063,16 @@ export async function loadCategoryFilters(args: {
   searchParams?: CatalogFilterSearchParams;
   enabled: boolean;
   limit?: number;
+  offset?: number;
 }): Promise<CategoryFiltersResult> {
   const storeId = s(args.store_id);
   const categoryId = s(args.category_id);
   const enabled = Boolean(args.enabled && storeId && categoryId);
   const limit = Math.max(1, Math.min(120, Math.floor(Number(args.limit) || 60)));
+  const offsetValue = Number(args.offset ?? 0);
+  const offset = Number.isFinite(offsetValue)
+    ? Math.max(0, Math.min(5000, Math.floor(offsetValue)))
+    : 0;
 
   const filters = normalizeCategoryPageFilters({
     searchParams: args.searchParams,
@@ -1932,5 +2088,6 @@ export async function loadCategoryFilters(args: {
     category_id: categoryId,
     filters,
     limit,
+    offset,
   });
 }

@@ -7,13 +7,18 @@ import {
   useRouter,
   useSearchParams,
 } from "next/navigation";
+import Link from "next/link";
+import { SlidersHorizontal } from "lucide-react";
 
 import { buildCategoryHref as buildStoreCategoryHref } from "@/lib/seo/build-store-href";
 import type { SeoUrlMode } from "@/data/store/settings";
 
 import MobileCategoryHeader from "./_components/MobileCategoryHeader";
-import MobileFiltersBar from "./_components/MobileFiltersBar";
 import MobileProductsGrid from "./_components/MobileProductsGrid";
+import {
+  useCategoriesTree,
+  type CategoryNode as TreeCategoryNode,
+} from "../../app-shell/_hooks/useCategoriesTree";
 
 type Props = {
   data: any;
@@ -36,6 +41,10 @@ type CategoryNode = {
   publicNo?: number | string | null;
   short_url?: string | null;
   shortUrl?: string | null;
+  image?: { url?: string | null; alt?: string | null } | null;
+  imageUrl?: string | null;
+  image_url?: string | null;
+  media?: { url?: string | null; alt?: string | null } | null;
   children?: CategoryNode[];
 };
 
@@ -66,6 +75,24 @@ function safePublicNo(value: any) {
 
 function categoryTitle(category: CategoryNode) {
   return s(category.name) || s(category.title) || s(category.label);
+}
+
+function categoryImageUrl(category: CategoryNode | null | undefined) {
+  return (
+    s(category?.image?.url) ||
+    s(category?.imageUrl) ||
+    s(category?.image_url) ||
+    s(category?.media?.url)
+  );
+}
+
+function categoryImageAlt(category: CategoryNode | null | undefined) {
+  return (
+    s(category?.image?.alt) ||
+    s(category?.media?.alt) ||
+    categoryTitle(category || {}) ||
+    "القسم"
+  );
 }
 
 function buildCategoryHref(category: CategoryNode, mode: SeoUrlMode) {
@@ -323,10 +350,117 @@ function clearFilterParams(params: URLSearchParams) {
   }
 }
 
+function getRootCategories(data: any): CategoryNode[] {
+  const candidates = [
+    data?.bootstrap?.navigation?.categories,
+    data?.navigation?.categories,
+    data?.theme?.navigation?.categories,
+    data?.storefront?.navigation?.categories,
+    data?.categories,
+  ];
+
+  for (const candidate of candidates) {
+    if (!Array.isArray(candidate) || !candidate.length) continue;
+
+    return candidate
+      .filter((item) => categoryTitle(item))
+      .sort((a, b) => {
+        const ao = Number(a?.sort_order ?? 0);
+        const bo = Number(b?.sort_order ?? 0);
+
+        if (ao !== bo) return ao - bo;
+
+        return categoryTitle(a).localeCompare(categoryTitle(b), "ar");
+      });
+  }
+
+  return [];
+}
+
+function sameCategory(
+  a: CategoryNode | null | undefined,
+  b: CategoryNode | null | undefined,
+) {
+  const aId = s(a?.id);
+  const bId = s(b?.id);
+  if (aId && bId) return aId === bId;
+
+  const aNo = s(a?.public_no ?? a?.publicNo);
+  const bNo = s(b?.public_no ?? b?.publicNo);
+
+  return Boolean(aNo && bNo && aNo === bNo);
+}
+
+const SORT_OPTIONS = [
+  { value: "", label: "التوصية" },
+  { value: "latest", label: "الأحدث" },
+  { value: "popular", label: "الأكثر طلبًا" },
+  { value: "price_asc", label: "السعر ↑" },
+  { value: "price_desc", label: "السعر ↓" },
+] as const;
+
+function cleanTreeNodes(
+  nodes: TreeCategoryNode[] | undefined | null,
+): TreeCategoryNode[] {
+  if (!Array.isArray(nodes)) return [];
+
+  return [...nodes]
+    .filter((node) => Boolean(node?.id) && Boolean(s(node?.name)))
+    .sort((a, b) => {
+      const ao = Number(a?.sort_order ?? 0);
+      const bo = Number(b?.sort_order ?? 0);
+      if (ao !== bo) return ao - bo;
+      return s(a?.name).localeCompare(s(b?.name), "ar");
+    });
+}
+
+function findCategoryPath(
+  nodes: TreeCategoryNode[],
+  category: CategoryNode | null | undefined,
+) {
+  const categoryId = s(category?.id);
+  const publicNo = s(category?.public_no ?? category?.publicNo);
+
+  function matches(node: TreeCategoryNode) {
+    if (categoryId && s(node.id) === categoryId) return true;
+    if (publicNo && s(node.public_no) === publicNo) return true;
+    return false;
+  }
+
+  function walk(
+    items: TreeCategoryNode[],
+    parents: TreeCategoryNode[],
+  ): TreeCategoryNode[] | null {
+    for (const item of cleanTreeNodes(items)) {
+      const next = [...parents, item];
+      if (matches(item)) return next;
+
+      const found = walk(cleanTreeNodes(item.children), next);
+      if (found) return found;
+    }
+
+    return null;
+  }
+
+  return walk(nodes, []) ?? [];
+}
+
+function treeNodeHref(node: TreeCategoryNode, mode: SeoUrlMode) {
+  return buildStoreCategoryHref({
+    mode,
+    slugNameAr: node?.name ?? "",
+    slugNameEn: node?.slug ?? node?.name ?? "",
+    publicNo: Number(node?.public_no ?? 0),
+    shortCode: node?.short_url ?? null,
+  });
+}
+
 export default function CategoryMobileScreen({ data, mode, seoMode }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { tree: categoriesTree, loading: categoriesTreeLoading } =
+    useCategoriesTree({ maxDepth: 6 });
   const [isPending, startTransition] = useTransition();
 
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -361,30 +495,25 @@ export default function CategoryMobileScreen({ data, mode, seoMode }: Props) {
             label,
           label,
           href: buildCategoryHref(categoryNode, currentMode),
+          imageUrl: categoryImageUrl(categoryNode),
+          imageAlt: categoryImageAlt(categoryNode),
         };
       })
-      .filter(Boolean) as Array<{ id: string; label: string; href: string }>;
+      .filter(Boolean) as Array<{
+        id: string;
+        label: string;
+        href: string;
+        imageUrl: string;
+        imageAlt: string;
+      }>;
   }, [data, currentMode]);
 
-  const filteredProductIds: string[] | null =
-    filtersEnabled && Array.isArray(catalogFilters?.productIds)
-      ? catalogFilters.productIds.map((value: any) => s(value)).filter(Boolean)
-      : null;
-
-  const products = useMemo(() => {
-    if (!filteredProductIds) return rawProducts;
-
-    const byId = new Map<string, any>();
-
-    for (const product of rawProducts) {
-      const id = s(product?.id);
-      if (id) byId.set(id, product);
-    }
-
-    return filteredProductIds
-      .map((productId) => byId.get(productId))
-      .filter(Boolean);
-  }, [filteredProductIds, rawProducts]);
+  /*
+   * نتائج الفلاتر والدفعات التالية تصل مرتبة من السيرفر.
+   * لا نعيد تقاطعها هنا مع productIds الخاصة بالدفعة الأولى،
+   * وإلا ستختفي كل المنتجات التي يصل تحميلها لاحقًا.
+   */
+  const products = rawProducts;
 
   const currentParamsText = searchParams.toString();
 
@@ -747,6 +876,17 @@ function resetDraftPriceRange() {
   });
 }
 
+function setSort(value: string) {
+  const params = new URLSearchParams(currentParamsText);
+
+  if (value) params.set("sort", value);
+  else params.delete("sort");
+
+  startTransition(() => {
+    router.replace(buildUrl(pathname, params), { scroll: false });
+  });
+}
+
   if (!data || !category) {
     return (
       <div dir="rtl" className="mk-mobile-category">
@@ -760,17 +900,204 @@ function resetDraftPriceRange() {
   const title = categoryTitle(category) || "القسم";
   const resultCount = Number(catalogFilters?.resultCount);
   const totalCount = Number.isFinite(resultCount) ? resultCount : products.length;
+  const breadcrumbPath = findCategoryPath(
+    cleanTreeNodes(categoriesTree),
+    category,
+  );
+  const currentTreeNode = breadcrumbPath[breadcrumbPath.length - 1] ?? null;
+  const directChildNodes = cleanTreeNodes(currentTreeNode?.children).length
+    ? cleanTreeNodes(currentTreeNode?.children)
+    : (getCategoryChildren(data) as TreeCategoryNode[]);
+  const hasDirectChildren = directChildNodes.length > 0;
+  const resolvingChildren = categoriesTreeLoading && !breadcrumbPath.length;
+  const showBranches = hasDirectChildren;
+  const visibleChildNodes = directChildNodes.slice(0, 6);
+  const hasMoreChildNodes = directChildNodes.length > visibleChildNodes.length;
+  const compactBreadcrumbPath = breadcrumbPath.slice(-2);
+  const rootCategories: CategoryNode[] = [];
+  const activeSort = s(searchParams.get("sort"));
 
   return (
-    <div dir="rtl" className="mk-mobile-category">
-      <MobileCategoryHeader
-        title={title}
-        onFilterClick={
-          filtersEnabled || subcategoryItems.length ? openFilters : undefined
-        }
-      />
+    <div
+      dir="rtl"
+      className={[
+        "mk-mobile-category",
+        "mk-mobile-category--catalog",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <MobileCategoryHeader title={title} />
 
-      <MobileFiltersBar items={subcategoryItems} />
+      {rootCategories.length ? (
+        <nav className="mk-mobile-category-roots" aria-label="الأقسام الرئيسية">
+          <div className="mk-mobile-category-roots__scroll">
+            {rootCategories.map((root) => {
+              const label = categoryTitle(root);
+              const href = buildCategoryHref(root, currentMode);
+              const active = sameCategory(root, category);
+
+              return (
+                <Link
+                  key={s(root.id) || href || label}
+                  href={href}
+                  className={[
+                    "mk-mobile-category-root",
+                    active ? "is-active" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                >
+                  {label}
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+      ) : null}
+
+      {null}
+
+      <nav className="mk-mobile-category-crumbs" aria-label="مسار القسم">
+        <Link href="/categories">الرئيسية</Link>
+        {breadcrumbPath.length > compactBreadcrumbPath.length ? (
+          <span className="mk-mobile-category-crumbs__item">
+            <span aria-hidden="true">â†گ</span>
+            <span>...</span>
+          </span>
+        ) : null}
+        {compactBreadcrumbPath.map((item, index) => {
+          const isCurrent = index === compactBreadcrumbPath.length - 1;
+          const label = s(item.name);
+
+          return (
+            <span
+              key={s(item.id) || label}
+              className="mk-mobile-category-crumbs__item"
+            >
+              <span aria-hidden="true">←</span>
+              {isCurrent ? (
+                <strong>{label}</strong>
+              ) : (
+                <Link href={treeNodeHref(item, currentMode)}>{label}</Link>
+              )}
+            </span>
+          );
+        })}
+        {!breadcrumbPath.length ? (
+          <span className="mk-mobile-category-crumbs__item">
+            <span aria-hidden="true">←</span>
+            <strong>{title}</strong>
+          </span>
+        ) : null}
+      </nav>
+
+      <section className="mk-mobile-category-titleBlock">
+        <h1>{title}</h1>
+      </section>
+
+      {showBranches ? (
+        <section
+          className={[
+            "mk-mobile-category-branches",
+            resolvingChildren ? "is-loading" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          aria-label="فروع القسم"
+        >
+          {resolvingChildren ? (
+            <>
+              {Array.from({ length: 4 }).map((_, index) => (
+                <span key={index} className="mk-mobile-category-branchSkeleton" />
+              ))}
+            </>
+          ) : visibleChildNodes.map((child) => {
+            const label = categoryTitle(child);
+            const href = buildCategoryHref(child, currentMode);
+            const imageUrl = categoryImageUrl(child);
+
+            return (
+              <Link
+                key={s(child.id) || href || label}
+                href={href}
+                className="mk-mobile-category-branch"
+              >
+                <span className="mk-mobile-category-branch__media">
+                  {imageUrl ? (
+                    <img
+                      src={imageUrl}
+                      alt={categoryImageAlt(child)}
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  ) : (
+                    <span>{label.slice(0, 1)}</span>
+                  )}
+                </span>
+
+                <span className="mk-mobile-category-branch__text">
+                  <strong>{label}</strong>
+                  <small>تصفح القسم</small>
+                </span>
+
+                <span
+                  className="mk-mobile-category-branch__arrow"
+                  aria-hidden="true"
+                >
+                  ‹
+                </span>
+              </Link>
+            );
+          })}
+          {hasMoreChildNodes ? (
+            <span className="mk-mobile-category-branch mk-mobile-category-branch--more">
+              <span className="mk-mobile-category-branch__media">
+                <span>+</span>
+              </span>
+              <span className="mk-mobile-category-branch__text">
+                <strong>ظƒظ„ ط§ظ„ظپط±ظˆط¹</strong>
+                <small>{directChildNodes.length} ظپط±ط¹</small>
+              </span>
+            </span>
+          ) : null}
+        </section>
+      ) : null}
+
+      <div className="mk-mobile-category-tools">
+        <div
+          className="mk-mobile-category-tools__sort"
+          role="group"
+          aria-label="ترتيب المنتجات"
+        >
+          {SORT_OPTIONS.map((option) => {
+            const active =
+              activeSort === option.value || (!activeSort && !option.value);
+
+            return (
+              <button
+                key={option.value || "default"}
+                type="button"
+                className={active ? "is-active" : ""}
+                onClick={() => setSort(option.value)}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {filtersEnabled || subcategoryItems.length ? (
+          <button
+            type="button"
+            className="mk-mobile-category-tools__filter"
+            onClick={openFilters}
+          >
+            <SlidersHorizontal size={15} />
+            <span>تصفية</span>
+          </button>
+        ) : null}
+      </div>
 
       {isPending ? (
         <div className="mk-mobile-category-pending">جاري تحديث النتائج…</div>
@@ -787,6 +1114,9 @@ function resetDraftPriceRange() {
           data={data}
           currencies={currencies}
           tax={tax}
+          categoryId={s(category?.id)}
+          searchParamsText={currentParamsText}
+          pageInfo={data?.pagination}
         />
       )}
 

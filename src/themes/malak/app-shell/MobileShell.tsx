@@ -318,13 +318,15 @@ export default function MobileShell({
         ) : null}
 
         <div className="mk-mobile-content">
-          {forceScreenContainer ? (
-            <ScreenContainer data={dataWithBootstrap} />
-          ) : children ? (
-            children
-          ) : (
-            <ScreenContainer data={dataWithBootstrap} />
-          )}
+          <div className="mk-mobile-screen-slot">
+            {forceScreenContainer ? (
+              <ScreenContainer data={dataWithBootstrap} />
+            ) : children ? (
+              children
+            ) : (
+              <ScreenContainer data={dataWithBootstrap} />
+            )}
+          </div>
 
           {!isAuthScreen ? <Footer bootstrap={shellBootstrap} /> : null}
         </div>

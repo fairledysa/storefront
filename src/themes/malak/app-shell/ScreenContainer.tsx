@@ -8,6 +8,7 @@ import {
   resolveRouteKeyFromPath,
   useNavStack,
 } from "../app-navigation/stack";
+import { MOBILE_ROUTES } from "../app-navigation/routes.mobile";
 
 type Props = {
   data?: any;
@@ -160,7 +161,10 @@ export default function ScreenContainer({ data }: Props) {
   const seoMode = useNavStack((s) => s.seoMode);
 
   const effectiveKey = useMemo(() => {
-    const routesAny = routes as any;
+    const routesAny =
+      routes && Object.keys(routes as any).length > 0
+        ? (routes as any)
+        : (MOBILE_ROUTES as any);
 
     const dataRoute = inferRouteFromData(data);
     if (routeExists(routesAny, dataRoute)) return dataRoute;
@@ -189,7 +193,11 @@ export default function ScreenContainer({ data }: Props) {
   }, [pathname, setFromPath]);
 
   const Screen = useMemo(() => {
-    const routesAny = routes as any;
+    const routesAny =
+      routes && Object.keys(routes as any).length > 0
+        ? (routes as any)
+        : (MOBILE_ROUTES as any);
+
     return routesAny?.[effectiveKey]?.component ?? null;
   }, [routes, effectiveKey]);
 

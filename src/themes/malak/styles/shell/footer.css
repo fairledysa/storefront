@@ -1575,6 +1575,6 @@
   }
 
   .mk-floating-actions {
-    bottom: calc(var(--mk-tabbar-total-h, 72px) + 14px) !important;
+    bottom: calc(var(--mk-tabbar-total-h, 72px) + 24px) !important;
   }
 }

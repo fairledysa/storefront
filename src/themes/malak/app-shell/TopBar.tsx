@@ -115,6 +115,8 @@ export default function TopBar({
                   src={logoUrl}
                   alt={logoAlt || storeName}
                   className="mk-home-topbar__logo"
+                  width={108}
+                  height={42}
                   loading="eager"
                   decoding="async"
                 />

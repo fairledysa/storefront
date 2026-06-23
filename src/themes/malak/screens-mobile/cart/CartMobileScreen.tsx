@@ -386,24 +386,22 @@ export default function CartMobileScreen() {
           flash={flash}
           onContinueShopping={handleContinueShopping}
         />
+
+        {!isEmpty ? (
+          <MobileCartSummarySheet
+            summary={summary}
+            itemsCount={items.length}
+            totalQty={totalQty}
+            coupon={coupon}
+            loading={loading}
+            busy={busy}
+            isRepricing={isRepricing}
+            onApplyCoupon={applyCoupon}
+            onRemoveCoupon={removeCoupon}
+            onCheckout={handleCheckout}
+          />
+        ) : null}
       </main>
-
-
-
-      {!isEmpty ? (
-        <MobileCartSummarySheet
-          summary={summary}
-          itemsCount={items.length}
-          totalQty={totalQty}
-          coupon={coupon}
-          loading={loading}
-          busy={busy}
-          isRepricing={isRepricing}
-          onApplyCoupon={applyCoupon}
-          onRemoveCoupon={removeCoupon}
-          onCheckout={handleCheckout}
-        />
-      ) : null}
     </div>
   );
 }

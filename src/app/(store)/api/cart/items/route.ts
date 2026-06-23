@@ -1525,7 +1525,7 @@ const productImageUrl = await readProductPrimaryImageUrl({
       item = insR.data;
     }
 
-  await syncCartActivityAndCount(ordersDb, cart.id);
+  const cartCount = await syncCartActivityAndCount(ordersDb, cart.id);
 
 try {
   const actor = await readCartActor({
@@ -1555,8 +1555,12 @@ try {
 const isPartial = canAddNow < qtyToAdd;
 
     const res = NextResponse.json({
+      cart_count: cartCount,
+      cartCount,
       data: {
         cart_id: cart.id,
+        cart_count: cartCount,
+        cartCount,
         item,
         notice: isPartial
           ? {

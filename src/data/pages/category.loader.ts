@@ -9,11 +9,16 @@ import {
   getCategoryByShortUrl,
 } from "@/data/catalog/category";
 import {
-  getProductsByCategory,
+  getProductsByCategories,
   getProductsByIds,
+  type CatalogProductSort,
 } from "@/data/catalog/products";
 import { getStoreDb } from "@/data/db/store-db.server";
 import { fromBase62 } from "@/lib/seo/base62";
+import {
+  loadCategoryFiltersForPage,
+  type CatalogFilterSearchParams,
+} from "@/data/pages/category-filters.loader";
 
 /* ------------------------- helpers ------------------------ */
 
@@ -68,6 +73,131 @@ function uniqueStrings(values: any[]) {
         .filter(Boolean),
     ),
   );
+}
+
+export const CATEGORY_PRODUCTS_PAGE_SIZE = 24;
+
+function normalizePageSize(value: unknown) {
+  const n = Number(value ?? CATEGORY_PRODUCTS_PAGE_SIZE);
+
+  if (!Number.isFinite(n)) return CATEGORY_PRODUCTS_PAGE_SIZE;
+
+  return Math.max(1, Math.min(CATEGORY_PRODUCTS_PAGE_SIZE, Math.floor(n)));
+}
+
+function normalizeCatalogSort(
+  searchParams: CatalogFilterSearchParams | undefined,
+): CatalogProductSort {
+  let value = "";
+
+  if (searchParams instanceof URLSearchParams) {
+    value = s(searchParams.get("sort"));
+  } else if (searchParams && typeof searchParams === "object") {
+    const raw = (searchParams as Record<string, string | string[] | undefined>).sort;
+    value = Array.isArray(raw) ? s(raw[0]) : s(raw);
+  }
+
+  const text = value.toLowerCase();
+
+  if (text === "latest" || text === "newest" || text === "new") return "latest";
+  if (text === "popular" || text === "best_selling" || text === "best-selling") {
+    return "popular";
+  }
+  if (text === "price_asc" || text === "price-asc" || text === "low_price") {
+    return "price_asc";
+  }
+  if (text === "price_desc" || text === "price-desc" || text === "high_price") {
+    return "price_desc";
+  }
+
+  return "recommended";
+}
+
+function normalizePageOffset(value: unknown) {
+  const n = Number(value ?? 0);
+
+  if (!Number.isFinite(n)) return 0;
+
+  return Math.max(0, Math.min(5000, Math.floor(n)));
+}
+
+async function loadCategoryScopeIdsRaw(args: {
+  store_id: string;
+  category_id: string;
+}) {
+  const storeId = s(args.store_id);
+  const categoryId = s(args.category_id);
+
+  if (!storeId || !categoryId) return [];
+
+  const sb = (await getStoreDb(storeId)) as any;
+
+  const { data, error } = await sb
+    .from("categories")
+    .select("id,parent_id,status")
+    .eq("store_id", storeId)
+    .eq("status", "active");
+
+  if (error || !Array.isArray(data)) return [categoryId];
+
+  const childrenByParent = new Map<string, string[]>();
+
+  for (const row of data as any[]) {
+    const id = s(row?.id);
+    const parentId = s(row?.parent_id);
+    if (!id || !parentId) continue;
+
+    const list = childrenByParent.get(parentId) || [];
+    list.push(id);
+    childrenByParent.set(parentId, list);
+  }
+
+  const out: string[] = [];
+  const queue = [categoryId];
+  const seen = new Set<string>();
+
+  while (queue.length) {
+    const current = queue.shift();
+    if (!current || seen.has(current)) continue;
+
+    seen.add(current);
+    out.push(current);
+
+    for (const childId of childrenByParent.get(current) || []) {
+      queue.push(childId);
+    }
+  }
+
+  return out.length ? out : [categoryId];
+}
+
+const categoryProductScopeCache = new Map<string, () => Promise<string[]>>();
+
+function loadCategoryProductScopeIds(args: {
+  store_id: string;
+  category_id: string;
+}) {
+  const storeId = s(args.store_id);
+  const categoryId = s(args.category_id);
+  const key = `${storeId}:${categoryId}`;
+
+  let fn = categoryProductScopeCache.get(key);
+
+  if (!fn) {
+    fn = unstable_cache(
+      () =>
+        loadCategoryScopeIdsRaw({
+          store_id: storeId,
+          category_id: categoryId,
+        }),
+      ["category-product-scope-ids", storeId, categoryId],
+      { revalidate: 120 },
+    );
+
+    categoryProductScopeCache.set(key, fn);
+  }
+
+  return fn();
 }
 
 /* ------------------------- store options loader ------------------------ */
@@ -697,6 +827,116 @@ async function buildCategoryProductsForDisplay(args: {
   });
 }
 
+export type CategoryProductsPage = {
+  items: any[];
+  categoryScopeIds: string[];
+  pageInfo: {
+    pageSize: number;
+    nextOffset: number;
+    hasNextPage: boolean;
+  };
+  catalogFilters: any | null;
+};
+
+export async function loadCategoryProductsPage(args: {
+  store_id: string;
+  category_id: string;
+  searchParams?: CatalogFilterSearchParams;
+  offset?: number;
+  limit?: number;
+}): Promise<CategoryProductsPage> {
+  const storeId = s(args.store_id);
+  const categoryId = s(args.category_id);
+  const pageSize = normalizePageSize(args.limit);
+  const offset = normalizePageOffset(args.offset);
+
+  if (!storeId || !categoryId) {
+    return {
+      items: [],
+      categoryScopeIds: [],
+      pageInfo: {
+        pageSize,
+        nextOffset: offset,
+        hasNextPage: false,
+      },
+      catalogFilters: null,
+    };
+  }
+
+  const categoryScopeIds = await loadCategoryProductScopeIds({
+    store_id: storeId,
+    category_id: categoryId,
+  });
+
+  const sort = normalizeCatalogSort(args.searchParams);
+
+  const catalogFilters = args.searchParams
+    ? await loadCategoryFiltersForPage({
+        store_id: storeId,
+        category_id: categoryId,
+        searchParams: args.searchParams,
+        limit: pageSize,
+        offset,
+      })
+    : null;
+
+  const hasActiveFilters = Boolean(
+    catalogFilters?.enabled && catalogFilters?.filters?.hasActiveFilters,
+  );
+
+  if (hasActiveFilters) {
+    const pageIds = Array.isArray(catalogFilters?.productIds)
+      ? catalogFilters.productIds.map((value: unknown) => s(value)).filter(Boolean)
+      : [];
+
+    const items = await loadCategoryProductsByIds({
+      store_id: storeId,
+      productIds: pageIds,
+      limit: pageSize,
+    });
+
+    const total = Number(catalogFilters?.resultCount ?? 0);
+    const nextOffset = offset + pageIds.length;
+
+    return {
+      items,
+      categoryScopeIds,
+      pageInfo: {
+        pageSize,
+        nextOffset,
+        hasNextPage: pageIds.length > 0 && nextOffset < total,
+      },
+      catalogFilters,
+    };
+  }
+
+  const rows = await getProductsByCategories({
+    store_id: storeId,
+    category_ids: categoryScopeIds,
+    offset,
+    limit: pageSize + 1,
+    sort,
+  });
+
+  const hasNextPage = rows.length > pageSize;
+  const pageRows = rows.slice(0, pageSize);
+  const items = await buildCategoryProductsForDisplay({
+    store_id: storeId,
+    rawProducts: pageRows,
+  });
+
+  return {
+    items,
+    categoryScopeIds,
+    pageInfo: {
+      pageSize,
+      nextOffset: offset + pageRows.length,
+      hasNextPage,
+    },
+    catalogFilters,
+  };
+}
+
 async function loadCategoryPageByPublicNoRaw(args: {
   store_id: string;
   publicNo: number;
@@ -708,24 +948,20 @@ async function loadCategoryPageByPublicNoRaw(args: {
 
   if (!category) return null;
 
-  const [rawProducts, options] = await Promise.all([
-    getProductsByCategory({
+  const [page, options] = await Promise.all([
+    loadCategoryProductsPage({
       store_id: args.store_id,
       category_id: category.id,
-      limit: 60,
+      limit: CATEGORY_PRODUCTS_PAGE_SIZE,
     }),
-
     loadStoreOptions(args.store_id),
   ]);
 
-  const products = await buildCategoryProductsForDisplay({
-    store_id: args.store_id,
-    rawProducts,
-  });
-
   return {
     category,
-    products,
+    categoryScopeIds: page.categoryScopeIds,
+    products: page.items,
+    pagination: page.pageInfo,
     options,
   };
 }
@@ -762,24 +998,20 @@ async function loadCategoryPageByShortCodeRaw(args: {
 
   if (!category) return null;
 
-  const [rawProducts, options] = await Promise.all([
-    getProductsByCategory({
+  const [page, options] = await Promise.all([
+    loadCategoryProductsPage({
       store_id: args.store_id,
       category_id: category.id,
-      limit: 60,
+      limit: CATEGORY_PRODUCTS_PAGE_SIZE,
     }),
-
     loadStoreOptions(args.store_id),
   ]);
 
-  const products = await buildCategoryProductsForDisplay({
-    store_id: args.store_id,
-    rawProducts,
-  });
-
   return {
     category,
-    products,
+    categoryScopeIds: page.categoryScopeIds,
+    products: page.items,
+    pagination: page.pageInfo,
     options,
   };
 }
@@ -807,7 +1039,7 @@ export async function loadCategoryPageByPublicNo(args: {
     fn = unstable_cache(
       () =>
         redisCached(
-          cacheKey("category", "page-public-no", storeId, String(publicNo)),
+          cacheKey("category", "page-public-no-v2-pagination", storeId, String(publicNo)),
           { ttlSeconds: 120 },
           () =>
             loadCategoryPageByPublicNoRaw({
@@ -815,7 +1047,7 @@ export async function loadCategoryPageByPublicNo(args: {
               publicNo,
             }),
         ),
-      ["category-page-public-no", storeId, String(publicNo)],
+      ["category-page-public-no-v2-pagination", storeId, String(publicNo)],
       {
         revalidate: 60,
       },
@@ -847,7 +1079,7 @@ export async function loadCategoryPageByShortCode(args: {
     fn = unstable_cache(
       () =>
         redisCached(
-          cacheKey("category", "page-short-code", storeId, normalizedCode),
+          cacheKey("category", "page-short-code-v2-pagination", storeId, normalizedCode),
           { ttlSeconds: 120 },
           () =>
             loadCategoryPageByShortCodeRaw({
@@ -855,7 +1087,7 @@ export async function loadCategoryPageByShortCode(args: {
               code,
             }),
         ),
-      ["category-page-short-code", storeId, normalizedCode],
+      ["category-page-short-code-v2-pagination", storeId, normalizedCode],
       {
         revalidate: 60,
       },

@@ -603,6 +603,22 @@ function emitCartSync() {
   window.dispatchEvent(new CustomEvent("cart:changed"));
 }
 
+async function readServerCartCount() {
+  const response = await fetch("/api/cart/count", {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) return null;
+
+  const json = await response.json().catch(() => null);
+  return readExactCartCount(json);
+}
+
 function emitAddToCartError(args: {
   productId: string;
   item: AddToCartItem;
@@ -1373,11 +1389,11 @@ export default function ProductCartRuntime({ currencies = null }: Props) {
         if (exactCartCount !== null) {
           emitCartCountSet(exactCartCount);
         } else {
-          emitOptimisticAdd({
-            productId,
-            qty: addedQty,
-            item,
-          });
+          const serverCartCount = await readServerCartCount().catch(() => null);
+
+          if (serverCartCount !== null) {
+            emitCartCountSet(serverCartCount);
+          }
         }
 
         emitCartSync();

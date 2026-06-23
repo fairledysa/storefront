@@ -440,3 +440,35 @@
     font-size: 12px !important;
   }
 }
+/* Infinite product pagination: scoped to category pages only. */
+.mk-dcat__infiniteTail {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 0 4px;
+}
+
+.mk-dcat__infiniteLoading,
+.mk-dcat__infiniteError {
+  color: var(--mk-text-muted, #64748b);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.mk-dcat__infiniteLoading:empty {
+  width: 30px;
+  height: 30px;
+  border: 3px solid color-mix(in srgb, var(--mk-color-primary, #111827) 18%, transparent);
+  border-top-color: var(--mk-color-primary, #111827);
+  border-radius: 50%;
+  animation: mk-category-pagination-spin 700ms linear infinite;
+}
+
+@keyframes mk-category-pagination-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

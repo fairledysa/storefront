@@ -24,8 +24,11 @@ import { loadHomePage } from "@/data/pages/home.loader";
 import {
   loadCategoryPageByPublicNo,
   loadCategoryPageByShortCode,
+  loadCategoryProductsByIds,
+  loadCategoryProductsPage,
 } from "@/data/pages/category.loader";
 import { loadCategoryFiltersForPage } from "@/data/pages/category-filters.loader";
+import { getProductsForGridPage } from "@/data/catalog/products";
 
 import {
   loadProductPageByPublicNo,
@@ -156,7 +159,8 @@ const loadCategoryFiltersForPageCached = cache(
       store_id: storeId,
       category_id: categoryId,
       searchParams,
-      limit: 60,
+      limit: 24,
+      offset: 0,
     });
   },
 );
@@ -687,10 +691,58 @@ async function attachCatalogFiltersToCategoryData(args: {
     args.searchParams,
   );
 
-  if (!catalogFilters) return args.data;
+  if (!catalogFilters) {
+    const rawSort = args.searchParams?.sort;
+    const requestedSort = Array.isArray(rawSort) ? s(rawSort[0]) : s(rawSort);
+
+    if (!requestedSort) return args.data;
+
+    const page = await loadCategoryProductsPage({
+      store_id: args.storeId,
+      category_id: categoryId,
+      searchParams: args.searchParams,
+      limit: 24,
+      offset: 0,
+    });
+
+    return {
+      ...(args.data ?? {}),
+      products: page.items,
+      pagination: page.pageInfo,
+    };
+  }
+
+  const hasActiveFilters = Boolean(
+    catalogFilters.enabled && catalogFilters.filters?.hasActiveFilters,
+  );
+
+  if (!hasActiveFilters) {
+    return {
+      ...(args.data ?? {}),
+      catalogFilters,
+    };
+  }
+
+  const productIds = Array.isArray(catalogFilters.productIds)
+    ? catalogFilters.productIds.map((value: unknown) => s(value)).filter(Boolean)
+    : [];
+
+  const products = await loadCategoryProductsByIds({
+    store_id: args.storeId,
+    productIds,
+    limit: 24,
+  });
+
+  const resultCount = Number(catalogFilters.resultCount ?? 0);
 
   return {
     ...(args.data ?? {}),
+    products,
+    pagination: {
+      pageSize: 24,
+      nextOffset: productIds.length,
+      hasNextPage: productIds.length > 0 && productIds.length < resultCount,
+    },
     catalogFilters,
   };
 }
@@ -1840,6 +1892,18 @@ export async function generateMetadata(props: PageProps): Promise<Metadata> {
     });
   }
 
+  if (matchRoute(slug, ["categories"])) {
+    return makeMetadata({
+      origin,
+      title: titleWithStore("الأقسام", storeName),
+      description: storeDescription,
+      canonicalPath: "/categories",
+      storeName,
+      image: storeImage,
+      keywords: buildKeywords(["الأقسام", storeName, storeDescription]),
+    });
+  }
+
   const infoPageSlug = getInfoPageSlug(slug);
 
   if (infoPageSlug) {
@@ -2120,6 +2184,27 @@ export default async function Page(props: PageProps) {
     });
   }
 
+  if (matchRoute(slug, ["categories"])) {
+    const rawSort = Array.isArray(sp.sort) ? sp.sort[0] : sp.sort;
+    const page = await getProductsForGridPage({
+      store_id: ctx.store.id,
+      limit: 24,
+      offset: 0,
+      sort: rawSort,
+    });
+
+    return await renderStoreRoute({
+      store: ctx.store,
+      store_id: ctx.store.id,
+      preview,
+      route: "categories",
+      extraData: {
+        products: page.items,
+        pagination: page.pageInfo,
+      },
+    });
+  }
+
   const infoPageSlug = getInfoPageSlug(slug);
 
   if (infoPageSlug) {
@@ -2228,6 +2313,27 @@ export default async function Page(props: PageProps) {
       store_id: ctx.store.id,
       preview,
       route: "cart",
+    });
+  }
+
+  if (matchRoute(slug, ["categories"])) {
+    const rawSort = Array.isArray(sp.sort) ? sp.sort[0] : sp.sort;
+    const page = await getProductsForGridPage({
+      store_id: ctx.store.id,
+      limit: 24,
+      offset: 0,
+      sort: rawSort,
+    });
+
+    return await renderStoreRoute({
+      store: ctx.store,
+      store_id: ctx.store.id,
+      preview,
+      route: "categories",
+      extraData: {
+        products: page.items,
+        pagination: page.pageInfo,
+      },
     });
   }
 

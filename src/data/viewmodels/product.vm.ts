@@ -1867,15 +1867,15 @@ if (!hasVariants) {
 
   let isOutOfStock = false;
 
-  if (explicitOutOfStock !== null) {
-    isOutOfStock = explicitOutOfStock;
-  } else if (unlimitedQuantity) {
-    isOutOfStock = false;
-  } else if (variants.length > 0) {
-    isOutOfStock = !variants.some(isVariantSellable);
-  } else if (quantity !== null) {
-    isOutOfStock = quantity <= 0;
-  }
+if (variants.length > 0) {
+  isOutOfStock = !variants.some(isVariantSellable);
+} else if (explicitOutOfStock !== null) {
+  isOutOfStock = explicitOutOfStock;
+} else if (unlimitedQuantity) {
+  isOutOfStock = false;
+} else if (quantity !== null) {
+  isOutOfStock = quantity <= 0;
+}
 
   return {
     quantity,
