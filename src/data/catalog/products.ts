@@ -1144,12 +1144,14 @@ async function getProductsByCategoryRaw(opts: {
   category_id: string;
   limit: number;
   offset?: number;
+  sort?: CatalogProductSort | string | null;
 }) {
   return getProductsByCategoriesRaw({
     store_id: opts.store_id,
     category_ids: [opts.category_id],
     limit: opts.limit,
     offset: opts.offset,
+    sort: opts.sort,
   });
 }
 
