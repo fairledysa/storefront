@@ -114,6 +114,7 @@ export default function CartMobileScreen() {
 
   const autoCouponAttemptedRef = useRef(false);
   const abandonedVisitAttemptedRef = useRef(false);
+  const checkoutStartingRef = useRef(false);
 
   const {
     loading,
@@ -280,8 +281,40 @@ export default function CartMobileScreen() {
     reload();
   }, [reload]);
 
-  const handleCheckout = useCallback(() => {
-    window.location.href = "/checkout";
+  const handleCheckout = useCallback(async () => {
+    if (typeof window === "undefined") return;
+    if (checkoutStartingRef.current) return;
+
+    checkoutStartingRef.current = true;
+    let isNavigating = false;
+
+    try {
+      const response = await fetch("/api/auth/me", {
+        cache: "no-store",
+        credentials: "include",
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (response.ok && payload?.authed === true) {
+        isNavigating = true;
+        window.location.assign("/checkout");
+        return;
+      }
+
+      window.dispatchEvent(new CustomEvent("auth:open"));
+    } catch {
+      /*
+       * إذا تعذر فحص الجلسة في المتصفح، نترك صفحة الدفع نفسها
+       * تتحقق من الجلسة وتعيد غير المسجل إلى /cart?auth=1.
+       */
+      isNavigating = true;
+      window.location.assign("/checkout");
+    } finally {
+      if (!isNavigating) {
+        checkoutStartingRef.current = false;
+      }
+    }
   }, []);
 
   const handleDismissToast = useCallback(() => {

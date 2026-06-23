@@ -267,8 +267,8 @@ function MobileCartSummarySheet({
   );
 
   const canCheckout = useMemo(
-    () => !isLoading && !busy && itemsCount > 0,
-    [busy, isLoading, itemsCount],
+    () => !isLoading && itemsCount > 0,
+    [isLoading, itemsCount],
   );
 
   const freeShippingMeta = useMemo(() => {
@@ -531,11 +531,7 @@ function MobileCartSummarySheet({
             className="mk-mcart-checkout"
           >
             <span>
-              {busy
-                ? "جاري التحديث..."
-                : isLoading
-                  ? "انتظر قليلًا"
-                  : "إتمام الطلب"}
+              {isLoading ? "انتظر قليلًا" : "إتمام الطلب"}
             </span>
           </button>
         </div>
