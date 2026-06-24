@@ -78,6 +78,22 @@ function readCartOfferProgress(summary: any) {
   );
 }
 
+function isAuthedPayload(payload: any) {
+  return Boolean(payload && payload.authed === true);
+}
+
+function isCheckoutReadyAfterAuth(payload: any) {
+  const customer = payload?.customer;
+
+  return Boolean(
+    isAuthedPayload(payload) &&
+      customer?.full_name &&
+      customer?.birth_date &&
+      customer?.gender &&
+      customer?.city_id,
+  );
+}
+
 function resolveAbandonedReminderJobId() {
   if (typeof window === "undefined") return "";
 
@@ -115,6 +131,8 @@ export default function CartScreen() {
 
   const autoCouponAttemptedRef = useRef(false);
   const abandonedVisitAttemptedRef = useRef(false);
+  const checkoutStartingRef = useRef(false);
+  const checkoutAfterAuthRef = useRef(false);
 
   const {
     loading,
@@ -143,6 +161,7 @@ export default function CartScreen() {
 
     if (!shouldOpenAuth) return;
 
+    checkoutAfterAuthRef.current = true;
     window.dispatchEvent(new CustomEvent("auth:open"));
 
     params.delete("auth");
@@ -275,8 +294,66 @@ export default function CartScreen() {
     reload({ silent: true });
   }, [reload]);
 
-  const handleCheckout = useCallback(() => {
-    window.location.href = "/checkout";
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    let cancelled = false;
+
+    async function handleAuthChanged() {
+      if (!checkoutAfterAuthRef.current) return;
+
+      try {
+        const response = await fetch("/api/auth/me", {
+          cache: "no-store",
+          credentials: "include",
+        });
+
+        const payload = await response.json().catch(() => null);
+
+        if (!cancelled && response.ok && isCheckoutReadyAfterAuth(payload)) {
+          checkoutAfterAuthRef.current = false;
+          window.location.assign("/checkout");
+        }
+      } catch {
+        checkoutStartingRef.current = false;
+      }
+    }
+
+    window.addEventListener("auth:changed", handleAuthChanged);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("auth:changed", handleAuthChanged);
+    };
+  }, []);
+
+  const handleCheckout = useCallback(async () => {
+    if (typeof window === "undefined") return;
+    if (checkoutStartingRef.current) return;
+
+    checkoutStartingRef.current = true;
+
+    try {
+      const response = await fetch("/api/auth/me", {
+        cache: "no-store",
+        credentials: "include",
+      });
+
+      const payload = await response.json().catch(() => null);
+
+      if (response.ok && isAuthedPayload(payload)) {
+        window.location.assign("/checkout");
+        return;
+      }
+
+      checkoutAfterAuthRef.current = true;
+      window.dispatchEvent(new CustomEvent("auth:open"));
+    } catch {
+      checkoutAfterAuthRef.current = true;
+      window.dispatchEvent(new CustomEvent("auth:open"));
+    } finally {
+      checkoutStartingRef.current = false;
+    }
   }, []);
 
   const handleDismissToast = useCallback(() => {

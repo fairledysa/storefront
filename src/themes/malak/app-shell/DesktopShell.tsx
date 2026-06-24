@@ -774,7 +774,11 @@ export default function DesktopShell({
 
         <main className="mk-desktop-main">
           <div className="mk-desktop-container">
-            {children ? children : <ScreenContainer data={screenData} />}
+            {children ? (
+              children
+            ) : (
+              <ScreenContainer data={screenData} routesOverride={ROUTES} />
+            )}
           </div>
         </main>
 

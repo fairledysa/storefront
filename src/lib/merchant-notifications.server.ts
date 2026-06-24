@@ -38,7 +38,7 @@ type ExpoMessage = {
   to: string;
   title: string;
   body: string;
-  sound?: "default";
+  sound?: "default" | "cash_register_kaching.wav";
   priority?: "default" | "normal" | "high";
   channelId?: string;
   badge?: number;
@@ -63,21 +63,6 @@ function s(value: unknown) {
 function n(value: unknown) {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function money(value: unknown, currency?: string | null) {
-  const amount = n(value);
-  const code = s(currency) || "SAR";
-
-  try {
-    return new Intl.NumberFormat("ar-SA", {
-      style: "currency",
-      currency: code,
-      maximumFractionDigits: 2,
-    }).format(amount);
-  } catch {
-    return `${amount.toFixed(2)} ${code}`;
-  }
 }
 
 function shortId(id: string) {
@@ -121,7 +106,7 @@ function shouldSendPush(type: NotificationType, push?: boolean) {
 }
 
 function pushChannelId(type: NotificationType) {
-  if (type === "order_new") return "merchant-orders";
+  if (type === "order_new") return "merchant-orders-payment";
   if (type === "question_new") return "merchant-questions";
 
   return "merchant-general";
@@ -301,7 +286,7 @@ async function sendPushToStore(args: {
     to: row.token,
     title: args.title,
     body: args.body || args.title,
-    sound: "default",
+    sound: args.type === "order_new" ? "cash_register_kaching.wav" : "default",
     priority: "high",
     channelId,
     badge: badgeCounts.get(row.storeUserId) || 0,
@@ -405,7 +390,7 @@ export async function createMerchantNotification(
         },
       });
     } catch (error: any) {
-      console.error("MERCHANT_PUSH_SEND_FAILED", error?.message || error);
+      console.error("MERCHANT_PUSH_SEND_FAILED", error);
     }
   }
 
@@ -443,7 +428,8 @@ export async function notifyMerchantNewOrder(input: {
     shortId(orderId);
 
   const customerName = s(input.customer?.full_name) || "عميل";
-  const totalText = money(input.order?.total_amount, input.order?.currency);
+  const totalAmount = n(input.order?.total_amount);
+  const totalText = `${totalAmount.toFixed(2)} ${s(input.order?.currency) || "SAR"}`;
 
   return createMerchantNotification({
     storeId: input.storeId,
@@ -451,8 +437,8 @@ export async function notifyMerchantNewOrder(input: {
     entityType: "order",
     entityId: orderId,
     title: `طلب جديد #${orderNo}`,
-    body: `${customerName} أرسل طلبًا جديدًا بقيمة ${totalText}.`,
-    actionPath: `/(app)/orders/${orderId}`,
+    body: `وصلك طلب جديد بقيمة ${totalText}`,
+    actionPath: `/orders/${orderId}`,
     priority: "high",
     dedupeKey: `order_new:${orderId}`,
     payload: {

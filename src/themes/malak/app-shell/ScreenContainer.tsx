@@ -9,9 +9,11 @@ import {
   useNavStack,
 } from "../app-navigation/stack";
 import { MOBILE_ROUTES } from "../app-navigation/routes.mobile";
+import type { RoutesMap } from "../app-navigation/routes";
 
 type Props = {
   data?: any;
+  routesOverride?: RoutesMap;
 };
 
 function text(value: unknown) {
@@ -152,7 +154,7 @@ function inferRouteFromPathname(pathname: string | null) {
   return "";
 }
 
-export default function ScreenContainer({ data }: Props) {
+export default function ScreenContainer({ data, routesOverride }: Props) {
   const pathname = usePathname();
 
   const currentKey = useNavStack((s) => s.current());
@@ -162,7 +164,9 @@ export default function ScreenContainer({ data }: Props) {
 
   const effectiveKey = useMemo(() => {
     const routesAny =
-      routes && Object.keys(routes as any).length > 0
+      routesOverride && Object.keys(routesOverride as any).length > 0
+        ? (routesOverride as any)
+        : routes && Object.keys(routes as any).length > 0
         ? (routes as any)
         : (MOBILE_ROUTES as any);
 
@@ -185,7 +189,7 @@ export default function ScreenContainer({ data }: Props) {
     }
 
     return "home";
-  }, [data, pathname, routes, currentKey]);
+  }, [data, pathname, routesOverride, routes, currentKey]);
 
   useEffect(() => {
     if (!pathname) return;
@@ -194,12 +198,14 @@ export default function ScreenContainer({ data }: Props) {
 
   const Screen = useMemo(() => {
     const routesAny =
-      routes && Object.keys(routes as any).length > 0
+      routesOverride && Object.keys(routesOverride as any).length > 0
+        ? (routesOverride as any)
+        : routes && Object.keys(routes as any).length > 0
         ? (routes as any)
         : (MOBILE_ROUTES as any);
 
     return routesAny?.[effectiveKey]?.component ?? null;
-  }, [routes, effectiveKey]);
+  }, [routesOverride, routes, effectiveKey]);
 
   if (!Screen) return null;
 
