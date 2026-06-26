@@ -80,6 +80,11 @@ function madrarSubdomainSlug(host: string) {
   return parts[0] || null;
 }
 
+function isPublicStoreStatus(status: unknown) {
+  const value = String(status ?? "").trim().toLowerCase();
+  return !["closing", "archived", "deleted"].includes(value);
+}
+
 function safeObject(value: any): Record<string, any> {
   if (value && typeof value === "object" && !Array.isArray(value)) return value;
   return {};
@@ -639,7 +644,7 @@ async function resolveStoreContextByHost(host: string): Promise<StoreContext> {
   if (localSlug) {
     const store0 = await cachedStoreBySlug(localSlug);
 
-    if (store0) {
+    if (store0 && isPublicStoreStatus(store0.status)) {
       return attachThemeToContext({
         host,
         store_slug: store0.slug,
@@ -649,7 +654,7 @@ async function resolveStoreContextByHost(host: string): Promise<StoreContext> {
 
     return {
       host,
-      store_slug: localSlug,
+      store_slug: store0?.slug || localSlug,
     };
   }
 
@@ -658,7 +663,7 @@ async function resolveStoreContextByHost(host: string): Promise<StoreContext> {
   if (slug) {
     const store = await cachedStoreBySlug(slug);
 
-    if (store) {
+    if (store && isPublicStoreStatus(store.status)) {
       return attachThemeToContext({
         host,
         store_slug: store.slug,
@@ -668,7 +673,7 @@ async function resolveStoreContextByHost(host: string): Promise<StoreContext> {
 
     return {
       host,
-      store_slug: slug,
+      store_slug: store?.slug || slug,
     };
   }
 
@@ -677,7 +682,7 @@ async function resolveStoreContextByHost(host: string): Promise<StoreContext> {
   if (domainRow?.store_id) {
     const store2 = await cachedStoreById(String(domainRow.store_id));
 
-    if (store2) {
+    if (store2 && isPublicStoreStatus(store2.status)) {
       return attachThemeToContext({
         host,
         store_slug: store2.slug,

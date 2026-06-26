@@ -1,0 +1,2 @@
+import { InternalPage } from "../../_components/InternalPage";
+export default function SolutionDetailPage({ params }: { params: { slug: string } }) { const label = decodeURIComponent(params.slug).replaceAll("-", " "); return <InternalPage kicker="حلول إيلايا" title={`حل ${label}`} description="صفحة تفصيلية لحل متكامل يساعد متجرك على العمل والنمو بثقة." bullets={["تشغيل أسرع","تجربة أوضح","تقارير عملية"]}/>; }

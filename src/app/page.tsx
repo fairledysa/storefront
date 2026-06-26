@@ -1,14 +1,12 @@
-// apps/storefront/src/app/page.tsx
+// FILE: apps/storefront/src/app/page.tsx
+
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 
+import PlatformLayout from "./platform/layout";
 import PlatformHome from "./platform/page";
 import StoreHomePage from "./(store)/page";
 import { generateMetadata as generateStoreMetadata } from "./(store)/page";
-
-/* ---------------------------------- */
-/* helpers                            */
-/* ---------------------------------- */
 
 function cleanHost(raw: string) {
   return String(raw || "")
@@ -37,27 +35,20 @@ function isPlatformHost(host: string) {
   );
 }
 
-/* ---------------------------------- */
-/* META                               */
-/* ---------------------------------- */
-
 export async function generateMetadata(): Promise<Metadata> {
   const h = await headers();
   const host = cleanHost(h.get("host") || "");
 
   if (isPlatformHost(host)) {
     return {
-      title: "منصة elyaia",
-      description: "منصة تجارة إلكترونية",
+      title: "إيلايا | منصة تجارة إلكترونية ذكية",
+      description:
+        "إيلايا منصة تجارة إلكترونية ذكية تساعدك على بناء متجرك وإدارته وتنمية أعمالك من مكان واحد.",
     };
   }
 
   return await generateStoreMetadata();
 }
-
-/* ---------------------------------- */
-/* PAGE                               */
-/* ---------------------------------- */
 
 export default async function RootPage({
   searchParams,
@@ -68,7 +59,11 @@ export default async function RootPage({
   const host = cleanHost(h.get("host") || "");
 
   if (isPlatformHost(host)) {
-    return <PlatformHome />;
+    return (
+      <PlatformLayout>
+        <PlatformHome />
+      </PlatformLayout>
+    );
   }
 
   return <StoreHomePage searchParams={searchParams} />;

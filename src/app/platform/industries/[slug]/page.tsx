@@ -1,0 +1,2 @@
+import { InternalPage } from "../../_components/InternalPage";
+export default function IndustryDetailPage({ params }: { params: { slug: string } }) { const label = decodeURIComponent(params.slug).replaceAll("-", " "); return <InternalPage kicker="قطاعات إيلايا" title={`حلول ${label}`} description="أدوات وتجارب جاهزة تساعد هذا القطاع على البيع والتوسع بثقة." bullets={["تجربة شراء واضحة","إدارة منتجات سهلة","حملات تسويقية أذكى"]}/>; }
