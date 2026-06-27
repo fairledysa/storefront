@@ -225,8 +225,8 @@ export function PlatformFooter() {
 
                 <div className="ely-premium-footer__phone-sales">
                   <span>مبيعات اليوم</span>
-                  <b>12,480 <small>ر.س</small></b>
-                  <i>+18.6%</i>
+                  <b>متابعة اليوم</b>
+                  <i>أداء أوضح</i>
                   <div className="ely-premium-footer__phone-bars">
                     <span />
                     <span />
@@ -245,14 +245,14 @@ export function PlatformFooter() {
 
                 <div className="ely-premium-footer__phone-order">
                   <span className="ely-premium-footer__phone-order-icon"><FooterIcon name="box" size={15} /></span>
-                  <span><b>#10482</b><small>طلب جديد</small></span>
-                  <em>420 ر.س</em>
+                  <span><b>طلب جديد</b><small>قيد المتابعة</small></span>
+                  <em>الآن</em>
                 </div>
 
                 <div className="ely-premium-footer__phone-order">
                   <span className="ely-premium-footer__phone-order-icon ely-premium-footer__phone-order-icon--mint"><FooterIcon name="check" size={15} /></span>
-                  <span><b>#10481</b><small>تم الشحن</small></span>
-                  <em>185 ر.س</em>
+                  <span><b>طلب مكتمل</b><small>تم الشحن</small></span>
+                  <em>محدّث</em>
                 </div>
 
                 <div className="ely-premium-footer__phone-nav">
@@ -266,13 +266,13 @@ export function PlatformFooter() {
 
             <div className="ely-premium-footer__floating-card ely-premium-footer__floating-card--order">
               <span className="ely-premium-footer__floating-card-icon"><FooterIcon name="box" size={17} /></span>
-              <span><small>طلب جديد</small><b>#10482</b></span>
+              <span><small>طلب جديد</small><b>متابعة فورية</b></span>
               <em>الآن</em>
             </div>
 
             <div className="ely-premium-footer__floating-card ely-premium-footer__floating-card--growth">
               <span className="ely-premium-footer__growth-line">↗</span>
-              <span><small>نمو المبيعات</small><b>+18.6%</b></span>
+              <span><small>نمو المبيعات</small><b>رؤية أوضح</b></span>
             </div>
           </div>
         </div>

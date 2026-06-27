@@ -36,14 +36,14 @@ export function PlatformShell({ children }: { children: ReactNode }) {
           </nav>
           <div className="platformHeader__actions">
             <a href="#footer" className="platformHeader__lang"><Icon name="globe" size={16} /> En</a>
-            <a href="#footer" className="platformHeader__login">تسجيل الدخول</a>
-            <PlatformButton href="#start" tone="dark" icon="arrow">ابدأ تجارتك</PlatformButton>
+            <a href="https://e.elyaia.com/login" className="platformHeader__login">تسجيل الدخول</a>
+            <PlatformButton href="https://e.elyaia.com/register" tone="dark" icon="arrow">ابدأ تجارتك</PlatformButton>
           </div>
           <details className="platformMobile">
             <summary aria-label="فتح القائمة"><Icon name="menu" size={22} /></summary>
             <div className="platformMobile__panel">
               {nav.map(([label, href]) => <a href={href} key={label}>{label}</a>)}
-              <PlatformButton href="#start" tone="dark" icon="arrow">ابدأ تجارتك</PlatformButton>
+              <PlatformButton href="https://e.elyaia.com/register" tone="dark" icon="arrow">ابدأ تجارتك</PlatformButton>
             </div>
           </details>
         </div>

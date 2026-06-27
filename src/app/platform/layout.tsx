@@ -33,9 +33,6 @@ function BrandMark() {
   );
 }
 
-function Chevron() {
-  return <span className="ely-chevron" aria-hidden="true">⌄</span>;
-}
 
 export default function PlatformLayout({ children }: { children: ReactNode }) {
   return (
@@ -50,18 +47,17 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
 
           <nav className="ely-nav" aria-label="التنقل الرئيسي">
             <Link href="/platform/solutions">كيف تعمل</Link>
-            <Link href="/platform/solutions">كيفية الحلول <Chevron /></Link>
+            <Link href="/platform/solutions">الحلول</Link>
             <Link href="/platform/industries">القطاعات</Link>
             <Link href="/platform/pricing">الأسعار</Link>
             <Link href="/platform/success-stories">قصص النجاح</Link>
             <Link href="/platform/partners">الشركاء</Link>
-            <Link href="/platform/resources">الموارد <Chevron /></Link>
+            <Link href="/platform/resources">الموارد</Link>
           </nav>
 
           <div className="ely-header__actions">
-            <a className="ely-login" href="#login">تسجيل الدخول</a>
-            <a className="ely-lang" href="#language">◎ En</a>
-            <Link className="ely-header__cta" href="/platform/pricing">
+            <a className="ely-login" href="https://e.elyaia.com/login">تسجيل الدخول</a>
+            <Link className="ely-header__cta" href="https://e.elyaia.com/register">
               ابدأ متجرك مجانًا
             </Link>
           </div>

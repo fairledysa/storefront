@@ -5,9 +5,9 @@ import { PlatformButton } from "./_components/ui/PlatformUI";
 import styles from "./PlatformHome.module.css";
 
 const signals = [
-  ["طلب جديد", "#5419", "store"],
-  ["دفع مكتمل", "1,280 ر.س", "credit"],
-  ["الشحنة في الطريق", "الرياض", "truck"],
+  ["طلب جديد", "متابعة فورية", "store"],
+  ["حالة الدفع", "عرض واضح", "credit"],
+  ["الشحنة في الطريق", "تتبع منظم", "truck"],
 ] as const;
 
 const moves = [
@@ -21,34 +21,34 @@ const industries = ["أزياء", "جمال", "إلكترونيات", "مأكو�
 
 const successStories = [
   {
-    quote: "ما تغيّر عندنا ليس عدد الأدوات فقط؛ بل صار كل قرار في المتجر أوضح من أول طلب إلى لحظة التسليم.",
-    name: "خالد الشهري",
-    role: "مؤسس متجر أُفق",
-    sector: "الأزياء والموضة",
-    initial: "خ",
+    quote: "رتّب خطوات البيع والمتابعة في واجهة واحدة، من المنتج وحتى حالة الطلب.",
+    name: "إدارة أوضح",
+    role: "أدوات متصلة للتشغيل",
+    sector: "التجارة الإلكترونية",
+    initial: "إ",
     accent: "teal",
-    outcome: "تشغيل يومي أوضح",
-    detail: "الطلبات، المدفوعات، والشحن في مسار واحد.",
+    outcome: "تشغيل يومي منظم",
+    detail: "الطلبات والمدفوعات والشحن في مسار واحد.",
   },
   {
-    quote: "كل ما نحتاجه لإدارة متجرنا صار في واجهة واحدة سهلة وواضحة، بدون أن نفقد تفاصيل التشغيل.",
-    name: "فهد المطيري",
-    role: "مدير نمو تجاري",
-    sector: "منتجات منزلية",
-    initial: "ف",
+    quote: "واجهة مرنة تساعد الفريق على متابعة تفاصيل المتجر والمهام اليومية بصورة أبسط.",
+    name: "متابعة مرنة",
+    role: "تنظيم للعمل اليومي",
+    sector: "إدارة المتجر",
+    initial: "م",
     accent: "sand",
-    outcome: "فريق أسرع في التنفيذ",
-    detail: "متابعة أدق للطلبات والتحديثات اليومية.",
+    outcome: "خطوات أكثر وضوحًا",
+    detail: "تفاصيل عملية للطلبات والتحديثات اليومية.",
   },
   {
-    quote: "صرنا نعرف ما الذي يحدث في المتجر لحظة بلحظة، وهذا غيّر طريقة خدمة العملاء واتخاذ القرار.",
-    name: "سارة العتيبي",
-    role: "مؤسسة علامة نُور",
-    sector: "الجمال والعناية",
-    initial: "س",
+    quote: "من عرض المنتج إلى متابعة الطلب، اجعل تجربة العميل واضحة وسهلة في كل مرحلة.",
+    name: "تجربة العميل",
+    role: "رحلة شراء منظمة",
+    sector: "خدمة العملاء",
+    initial: "ت",
     accent: "mint",
-    outcome: "تجربة عميل أكثر سلاسة",
-    detail: "رسائل أوضح وتفاصيل طلب لا تضيع.",
+    outcome: "رحلة شراء أكثر سلاسة",
+    detail: "رسائل أوضح وتفاصيل طلب منظمة.",
   },
 ];
 
@@ -76,11 +76,11 @@ function HeroField() {
       <div className={styles.heroField__core}>
         <div className={styles.coreHeader}><span>مركز الحركة</span><i>● الآن</i></div>
         <div className={styles.coreTrack}><span>المنتج</span><i /><span>الطلب</span><i /><span>الدفع</span><i /><span>التسليم</span></div>
-        <div className={styles.coreWave}><svg viewBox="0 0 410 95" role="img" aria-label="مسار نمو"><path d="M0 80 C42 76 52 49 86 60 S140 27 173 45 S229 70 250 37 S315 30 340 17 S382 21 410 4" /><path d="M0 95V80 C42 76 52 49 86 60 S140 27 173 45 S229 70 250 37 S315 30 340 17 S382 21 410 4V95Z" /></svg><b>+24.8%</b></div>
-        <div className={styles.coreMetrics}><div><small>طلبات اليوم</small><b>1,248</b></div><div><small>قيمة المبيعات</small><b>86,300</b></div><div><small>عملاء عائدون</small><b>42%</b></div></div>
+        <div className={styles.coreWave}><svg viewBox="0 0 410 95" role="img" aria-label="مسار نمو"><path d="M0 80 C42 76 52 49 86 60 S140 27 173 45 S229 70 250 37 S315 30 340 17 S382 21 410 4" /><path d="M0 95V80 C42 76 52 49 86 60 S140 27 173 45 S229 70 250 37 S315 30 340 17 S382 21 410 4V95Z" /></svg><b>نمو أوضح</b></div>
+        <div className={styles.coreMetrics}><div><small>الطلبات</small><b>متابعة</b></div><div><small>المبيعات</small><b>وضوح</b></div><div><small>العملاء</small><b>تواصل</b></div></div>
       </div>
-      <div className={styles.heroField__cardA}><span>إطلاق منتج</span><strong>مجموعة الصيف</strong><small>36 منتجًا جاهزًا للنشر</small><i><Icon name="arrow" size={17} /></i></div>
-      <div className={styles.heroField__cardB}><Icon name="cube" size={25} /><span>المخزون متصل<br /><b>3 تنبيهات ذكية</b></span></div>
+      <div className={styles.heroField__cardA}><span>إطلاق منتج</span><strong>مجموعة الصيف</strong><small>منتجات جاهزة للنشر</small><i><Icon name="arrow" size={17} /></i></div>
+      <div className={styles.heroField__cardB}><Icon name="cube" size={25} /><span>المخزون متصل<br /><b>تنبيهات مفيدة</b></span></div>
       <div className={styles.heroField__cardC}><i>م</i><span><small>عميل جديد</small><b>مرحبًا، مريم</b></span><em>✓</em></div>
     </div>
   );
@@ -91,7 +91,7 @@ function StoreCanvas() {
     <div className={styles.storeCanvas}>
       <div className={styles.storeCanvas__top}><span>شروق</span><div>الرئيسية &nbsp; المتجر &nbsp; قصتنا</div><i>⌕</i></div>
       <div className={styles.storeCanvas__hero}><div><small>مجموعة موسمية</small><b>حكاية تُلبس<br />كل يوم</b><span>اكتشف الآن</span></div><aside><i /><i /><i /></aside></div>
-      <div className={styles.storeCanvas__products}>{["عباية ساتان", "حقيبة ناعمة", "قطعة أساسية", "عطر يومي"].map((p, i) => <div key={p}><i className={`${styles[`productTone${i}`]}`} /><b>{p}</b><small>من {199 + i * 80} ر.س</small></div>)}</div>
+      <div className={styles.storeCanvas__products}>{["عباية ساتان", "حقيبة ناعمة", "قطعة أساسية", "عطر يومي"].map((p, i) => <div key={p}><i className={`${styles[`productTone${i}`]}`} /><b>{p}</b><small>تفاصيل المنتج</small></div>)}</div>
       <div className={styles.storeCanvas__phone}><span>شروق</span><i /><i /><i /><b>أضف إلى السلة</b></div>
     </div>
   );
@@ -111,10 +111,10 @@ function ConnectorMap() {
 }
 
 function FeatureVisual({ type }: { type: "payments" | "shipping" | "growth" | "customers" }) {
-  if (type === "payments") return <div className={styles.paymentVisual}><span className={styles.paymentVisual__brand}>إيلايا Pay</span><div className={styles.paymentVisual__card}><small>رصيد متاح</small><b>128,580 <em>ر.س</em></b><span>•••• &nbsp; 3491</span></div><div className={styles.paymentVisual__chips}><i>mada</i><i>VISA</i><i> Pay</i></div><div className={styles.paymentVisual__line}><span>تسوية مكتملة</span><b>+ 24,700 ر.س</b></div></div>;
+  if (type === "payments") return <div className={styles.paymentVisual}><span className={styles.paymentVisual__brand}>إيلايا Pay</span><div className={styles.paymentVisual__card}><small>الرصيد المتاح</small><b>متابعة مالية</b><span>تفاصيل منظمة</span></div><div className={styles.paymentVisual__chips}><i>mada</i><i>VISA</i><i> Pay</i></div><div className={styles.paymentVisual__line}><span>تسوية مكتملة</span><b>حالة واضحة</b></div></div>;
   if (type === "shipping") return <div className={styles.shippingVisual}><div className={styles.shippingVisual__map}><i /><i /><i /><svg viewBox="0 0 420 150"><path d="M38 116C91 28 137 130 190 67S307 50 382 34" /></svg></div><div className={styles.shippingVisual__parcel}><Icon name="cube" size={26} /><span>EL-20491<br /><b>خرجت للتسليم</b></span></div><div className={styles.shippingVisual__pin}>الرياض</div></div>;
   if (type === "growth") return <div className={styles.growthVisual}><div className={styles.growthVisual__chart}><svg viewBox="0 0 430 160"><path d="M0 135C45 128 63 117 94 120S149 80 183 91s60 35 95 9S342 54 374 60s31-24 56-43" /><path d="M0 160V135C45 128 63 117 94 120S149 80 183 91s60 35 95 9S342 54 374 60s31-24 56-43v143Z" /></svg><i>+38%</i></div><div className={styles.growthVisual__media}><span>◎</span><span>◉</span><span>◐</span><span>✦</span></div><div className={styles.growthVisual__offer}>خصم 15%<small>لعملاءك الجدد</small></div></div>;
-  return <div className={styles.customerVisual}><div className={styles.customerVisual__chat}><span>مرحبًا، نحتاج مساعدة في المقاس</span><i>أكيد، دليل المقاسات موجود هنا.</i><span>تم الطلب، شكرًا ✨</span></div><div className={styles.customerVisual__score}><small>معدل الرضا</small><b>94%</b><i /><span>تجربة شراء واضحة من أول زيارة</span></div></div>;
+  return <div className={styles.customerVisual}><div className={styles.customerVisual__chat}><span>مرحبًا، نحتاج مساعدة في المقاس</span><i>أكيد، دليل المقاسات موجود هنا.</i><span>تم الطلب، شكرًا ✨</span></div><div className={styles.customerVisual__score}><small>تجربة العميل</small><b>وضوح</b><i /><span>تجربة شراء واضحة من أول زيارة</span></div></div>;
 }
 
 export default function PlatformHome() {
@@ -128,8 +128,8 @@ export default function PlatformHome() {
               <span className={styles.eyebrow}><Icon name="spark" size={15} /> التجارة، حين تصبح حركة واحدة</span>
               <h1>لا تدِر متجرًا.<br /><em>حرّك تجارة كاملة.</em></h1>
               <p>إيلايا تجمع المنتج والطلب والدفع والشحن والنمو في نظام واحد يضع كل لحظة مهمة أمامك، في وقتها الصحيح.</p>
-              <div className={styles.heroActions}><PlatformButton href="#how-it-works" icon="arrow">ابدأ رحلتك</PlatformButton><PlatformButton href="#system" tone="ghost" icon="play">شاهد كيف تتحرك</PlatformButton></div>
-              <div className={styles.heroProof}><div className={styles.heroProof__faces}><i>ن</i><i>س</i><i>ر</i><i>م</i></div><span><b>70,000+ تاجر يختارون مسارًا أوضح</b><small>من أول منتج حتى آخر عميل</small></span></div>
+              <div className={styles.heroActions}><PlatformButton href="https://e.elyaia.com/register" icon="arrow">ابدأ رحلتك</PlatformButton><PlatformButton href="#system" tone="ghost" icon="play">شاهد كيف تتحرك</PlatformButton></div>
+              <div className={styles.heroProof}><div className={styles.heroProof__faces}><i>إ</i><i>د</i><i>ا</i><i>ر</i></div><span><b>أدوات تساعدك على إدارة تجارتك</b><small>من أول منتج حتى آخر طلب</small></span></div>
             </div>
             <HeroField />
           </div>
@@ -253,7 +253,7 @@ export default function PlatformHome() {
         </div>
       </section>
 
-      <section className={styles.finalSection}><div className="platformContainer"><div className={styles.finalFrame}><span>الخطوة التالية لا تحتاج تعقيدًا</span><h2>ابدأ تجارتك من المكان الصحيح.</h2><p>متجر واحد، مسار واحد، وقرارات أوضح في كل يوم.</p><div><PlatformButton href="#start" icon="arrow">أنشئ متجرك الآن</PlatformButton><PlatformButton href="#system" tone="ghost">استكشف إيلايا</PlatformButton></div><i className={styles.finalFrame__shapeA} /><i className={styles.finalFrame__shapeB} /></div></div></section>
+      <section className={styles.finalSection}><div className="platformContainer"><div className={styles.finalFrame}><span>الخطوة التالية لا تحتاج تعقيدًا</span><h2>ابدأ تجارتك من المكان الصحيح.</h2><p>متجر واحد، مسار واحد، وقرارات أوضح في كل يوم.</p><div><PlatformButton href="https://e.elyaia.com/register" icon="arrow">أنشئ متجرك الآن</PlatformButton><PlatformButton href="#system" tone="ghost">استكشف إيلايا</PlatformButton></div><i className={styles.finalFrame__shapeA} /><i className={styles.finalFrame__shapeB} /></div></div></section>
     </div>
   );
 }
