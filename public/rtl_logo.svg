@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1918" height="797" viewBox="0 0 1918 797" role="img"
+     aria-labelledby="title desc">
+  <title id="title">Logo placeholder</title>
+  <desc id="desc">Minimal black LOGO wordmark with a geometric symbol for RTL layouts.</desc>
+
+  <!-- Transparent canvas, sized to match the supplied reference asset. -->
+  <g fill="#111111">
+    <!-- Wordmark -->
+    <text x="118" y="500"
+          font-family="Arial, Helvetica, sans-serif"
+          font-size="238"
+          font-weight="800"
+          letter-spacing="18">LOGO</text>
+
+    <!-- Symbol -->
+    <g transform="translate(1460 398)">
+      <circle cx="0" cy="0" r="260" fill="none" stroke="#111111" stroke-width="34"/>
+      <g transform="rotate(45)">
+        <rect x="-108" y="-108" width="216" height="216" rx="34"/>
+        <rect x="-48" y="-48" width="96" height="96" rx="14" fill="#FFFFFF"/>
+      </g>
+      <circle cx="0" cy="0" r="20" fill="#111111"/>
+    </g>
+  </g>
+</svg>
