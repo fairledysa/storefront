@@ -97,18 +97,17 @@
   overflow: hidden;
   border-bottom: 1px solid rgba(205, 240, 230, 0.12);
   background:
-    radial-gradient(circle at 16% 16%, rgba(141, 224, 198, 0.16), transparent 30%),
-    radial-gradient(circle at 86% 85%, rgba(232, 214, 168, 0.16), transparent 26%),
-    linear-gradient(135deg, #073f49 0%, #07333d 54%, #062b33 100%);
+    radial-gradient(circle at 28% 48%, rgba(116, 216, 188, 0.11), transparent 34%),
+    linear-gradient(135deg, #073f49 0%, #07343d 58%, #062f38 100%);
 }
 
 .ely-premium-footer__app-inner {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 0.92fr) minmax(430px, 0.82fr);
+  grid-template-columns: minmax(0, 0.9fr) minmax(470px, 0.84fr);
   align-items: center;
-  gap: 64px;
-  min-height: 500px;
+  gap: 54px;
+  min-height: 560px;
   padding-block: 62px;
 }
 
@@ -231,7 +230,8 @@
 
 .ely-premium-footer__app-visual {
   position: relative;
-  min-height: 410px;
+  min-height: 465px;
+  isolation: isolate;
 }
 
 .ely-premium-footer__orb {
@@ -241,29 +241,23 @@
 }
 
 .ely-premium-footer__orb--one {
-  top: 22px;
-  right: 8%;
-  width: 328px;
-  height: 328px;
-  border: 1px solid rgba(167, 237, 215, 0.18);
-  box-shadow:
-    0 0 0 33px rgba(167, 237, 215, 0.04),
-    0 0 0 72px rgba(167, 237, 215, 0.025);
+  top: 54px;
+  right: 50%;
+  width: 330px;
+  height: 330px;
+  border: 1px solid rgba(167, 237, 215, 0.1);
+  background: radial-gradient(circle, rgba(102, 214, 184, 0.12), transparent 68%);
+  transform: translateX(50%);
 }
 
 .ely-premium-footer__orb--two {
-  bottom: 16px;
-  left: 5%;
-  width: 170px;
-  height: 170px;
-  background: radial-gradient(circle, rgba(232, 214, 168, 0.2), transparent 68%);
-  filter: blur(1px);
+  display: none;
 }
 
 .ely-premium-footer__grid {
   position: absolute;
   inset: 0;
-  opacity: 0.48;
+  opacity: 0.14;
   background-image:
     linear-gradient(rgba(179, 235, 219, 0.055) 1px, transparent 1px),
     linear-gradient(90deg, rgba(179, 235, 219, 0.055) 1px, transparent 1px);
@@ -275,18 +269,18 @@
 .ely-premium-footer__phone {
   position: absolute;
   z-index: 2;
-  top: 10px;
-  right: 19%;
-  width: 224px;
-  height: 425px;
-  padding: 8px;
+  top: 50%;
+  right: 50%;
+  width: 270px;
+  height: 512px;
+  padding: 10px;
   border: 1px solid rgba(239, 255, 250, 0.4);
   border-radius: 34px;
   background: linear-gradient(135deg, #d8e8e5 0%, #ffffff 48%, #adcac6 100%);
   box-shadow:
     0 36px 70px rgba(0, 10, 13, 0.35),
     inset 0 0 0 1px rgba(255, 255, 255, 0.78);
-  transform: rotate(6deg);
+  transform: translate(50%, -50%) rotate(4deg);
 }
 
 .ely-premium-footer__phone::after {
@@ -317,7 +311,7 @@
   position: relative;
   display: grid;
   min-height: 100%;
-  padding: 32px 13px 14px;
+  padding: 38px 16px 17px;
   overflow: hidden;
   border-radius: 27px;
   background: #f9fffd;
@@ -367,7 +361,7 @@
 .ely-premium-footer__phone-sales {
   position: relative;
   margin-top: 12px;
-  padding: 12px;
+  padding: 15px;
   overflow: hidden;
   border-radius: 14px;
   background: linear-gradient(135deg, #0b5661, #0e7771);
@@ -383,7 +377,7 @@
 .ely-premium-footer__phone-sales > b {
   display: block;
   margin-top: 4px;
-  font-size: 17px;
+  font-size: 20px;
   font-weight: 950;
   letter-spacing: -0.03em;
 }
@@ -451,11 +445,11 @@
 
 .ely-premium-footer__phone-order {
   display: grid;
-  grid-template-columns: 29px 1fr auto;
+  grid-template-columns: 32px 1fr auto;
   align-items: center;
   gap: 7px;
   margin-top: 9px;
-  padding: 8px;
+  padding: 9px;
   border: 1px solid #e4f0ed;
   border-radius: 11px;
   background: #ffffff;
@@ -525,11 +519,11 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 10px 12px;
+  padding: 9px 11px;
   border: 1px solid rgba(255, 255, 255, 0.72);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 17px 35px rgba(0, 11, 16, 0.22);
+  box-shadow: 0 14px 30px rgba(0, 11, 16, 0.18);
   color: #20464c;
   backdrop-filter: blur(12px);
 }
@@ -558,13 +552,13 @@
 }
 
 .ely-premium-footer__floating-card--order {
-  top: 54px;
-  left: 1%;
+  top: 76px;
+  left: 34px;
 }
 
 .ely-premium-footer__floating-card--growth {
-  right: 1%;
-  bottom: 45px;
+  right: 28px;
+  bottom: 92px;
 }
 
 .ely-premium-footer__floating-card-icon {
@@ -844,22 +838,22 @@
 
 @media (max-width: 1100px) {
   .ely-premium-footer__app-inner {
-    grid-template-columns: minmax(0, 1fr) minmax(370px, 0.72fr);
+    grid-template-columns: minmax(0, 1fr) minmax(390px, 0.76fr);
     gap: 32px;
   }
 
   .ely-premium-footer__phone {
-    right: 18%;
-    transform: scale(0.86) rotate(6deg);
-    transform-origin: top center;
+    width: 244px;
+    height: 464px;
+    transform: translate(50%, -50%) rotate(4deg);
   }
 
   .ely-premium-footer__floating-card--order {
-    left: -7%;
+    left: 8px;
   }
 
   .ely-premium-footer__floating-card--growth {
-    right: -5%;
+    right: 6px;
   }
 
   .ely-premium-footer__main-grid {
@@ -877,8 +871,8 @@
     display: flex;
     min-height: auto;
     flex-direction: column;
-    gap: 5px;
-    padding-block: 47px 0;
+    gap: 24px;
+    padding-block: 47px 36px;
   }
 
   .ely-premium-footer__app-copy {
@@ -920,18 +914,18 @@
 
   .ely-premium-footer__app-visual {
     width: 100%;
-    min-height: 365px;
-    margin-top: 13px;
+    min-height: 440px;
+    margin-top: 8px;
   }
 
   .ely-premium-footer__phone {
-    top: 7px;
+    top: 50%;
     right: 50%;
-    width: 190px;
-    height: 360px;
-    padding: 7px;
-    border-radius: 30px;
-    transform: translateX(50%) rotate(5deg);
+    width: 222px;
+    height: 422px;
+    padding: 8px;
+    border-radius: 32px;
+    transform: translate(50%, -50%) rotate(3deg);
   }
 
   .ely-premium-footer__phone-screen {
@@ -947,7 +941,7 @@
 
   .ely-premium-footer__phone-sales {
     margin-top: 9px;
-    padding: 10px;
+    padding: 12px;
   }
 
   .ely-premium-footer__phone-orders-head {
@@ -956,7 +950,7 @@
 
   .ely-premium-footer__phone-order {
     margin-top: 6px;
-    padding: 6px;
+    padding: 7px;
   }
 
   .ely-premium-footer__phone-order:nth-of-type(2) {
@@ -968,13 +962,13 @@
   }
 
   .ely-premium-footer__floating-card--order {
-    top: 47px;
-    left: 0;
+    top: 38px;
+    left: 18px;
   }
 
   .ely-premium-footer__floating-card--growth {
-    right: 0;
-    bottom: 27px;
+    right: 18px;
+    bottom: 44px;
   }
 
   .ely-premium-footer__orb--one {
@@ -1185,6 +1179,36 @@
   }
 
   .ely-premium-footer__app-visual {
+    display: block;
+    min-height: 430px;
+    margin-top: 28px;
+    overflow: hidden;
+  }
+
+  .ely-premium-footer__app-visual .ely-premium-footer__grid,
+  .ely-premium-footer__app-visual .ely-premium-footer__orb--two {
+    display: none;
+  }
+
+  .ely-premium-footer__app-visual .ely-premium-footer__orb--one {
+    top: 54px;
+    width: 255px;
+    height: 255px;
+    opacity: 0.72;
+  }
+
+  .ely-premium-footer__phone {
+    width: 218px;
+    height: 414px;
+    transform: translate(50%, -50%) rotate(2deg);
+  }
+
+  .ely-premium-footer__floating-card--order {
+    top: 24px;
+    left: 18px;
+  }
+
+  .ely-premium-footer__floating-card--growth {
     display: none;
   }
 
