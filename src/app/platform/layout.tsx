@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode } from "react";
 import Link from "next/link";
 
 import { PlatformFooter } from "./_components/shell/PlatformFooter";
+import { PlatformMobileMenu } from "./PlatformMobileMenu";
 
 import "./platform.css";
 
@@ -24,11 +25,12 @@ function BrandMark() {
         <strong>إيلايا</strong>
         <small>ELYAIA</small>
       </span>
-      <span className="ely-brand__glyph" aria-hidden="true">
-        <i />
-        <i />
-        <i />
-      </span>
+      <img
+        src="/elyaia-icon.png"
+        alt=""
+        className="ely-brand__icon"
+        aria-hidden="true"
+      />
     </Link>
   );
 }
@@ -61,6 +63,8 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
               ابدأ متجرك مجانًا
             </Link>
           </div>
+
+          <PlatformMobileMenu />
         </div>
       </header>
 
