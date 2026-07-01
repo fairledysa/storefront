@@ -6,3 +6,7 @@
  Detected additional lockfiles: 
    * D:\projects\elyaia-sala-main2026\apps\storefront\package-lock.json
 
+TypeError: controller[kState].transformAlgorithm is not a function
+    at ignore-listed frames
+TypeError: controller[kState].transformAlgorithm is not a function
+    at ignore-listed frames

@@ -15,3 +15,22 @@ Creating turbopack project {
  ✓ Ready in 16.3s
  ○ Compiling / ...
  GET / 200 in 10.7s (compile: 1370ms, render: 9.3s)
+ GET / 200 in 773ms (compile: 15ms, render: 758ms)
+ GET /manifest.webmanifest 404 in 1632ms (compile: 1415ms, render: 217ms)
+ GET / 200 in 257ms (compile: 8ms, render: 248ms)
+ GET / 200 in 4.4s (compile: 5ms, render: 4.4s)
+ GET /manifest.webmanifest 200 in 659ms (compile: 3ms, render: 656ms)
+ GET /api/auth/me 200 in 1069ms (compile: 529ms, render: 541ms)
+ GET /api/account/favorites 200 in 1492ms (compile: 742ms, render: 750ms)
+ ○ Compiling /[...slug] ...
+ GET /p/%D8%B3%D9%8A%D8%A7%D8%B3%D8%A9-%D8%A7%D9%84%D8%A5%D8%B1%D8%AC%D8%A7%D8%B9-%D9%88%D8%A7%D9%84%D8%A7%D8%B3%D8%AA%D8%A8%D8%AF%D8%A7%D9%84 200 in 6.2s (compile: 5.2s, render: 1022ms)
+ GET /manifest.webmanifest 200 in 190ms (compile: 3ms, render: 188ms)
+ GET /p/%D8%B3%D9%8A%D8%A7%D8%B3%D8%A9-%D8%A7%D9%84%D8%A5%D8%B1%D8%AC%D8%A7%D8%B9-%D9%88%D8%A7%D9%84%D8%A7%D8%B3%D8%AA%D8%A8%D8%AF%D8%A7%D9%84 200 in 6.8s (compile: 324ms, render: 6.5s)
+ GET /manifest.webmanifest 200 in 806ms (compile: 5ms, render: 801ms)
+ GET /api/auth/me 200 in 560ms (compile: 2ms, render: 558ms)
+ GET /manifest.webmanifest 200 in 758ms (compile: 3ms, render: 755ms)
+ GET /.well-known/appspecific/com.chrome.devtools.json 404 in 1146ms (compile: 353ms, render: 793ms)
+ GET /p/%D8%B3%D9%8A%D8%A7%D8%B3%D8%A9-%D8%A7%D9%84%D8%A5%D8%B1%D8%AC%D8%A7%D8%B9-%D9%88%D8%A7%D9%84%D8%A7%D8%B3%D8%AA%D8%A8%D8%AF%D8%A7%D9%84 200 in 1208ms (compile: 368ms, render: 840ms)
+ GET /manifest.webmanifest 200 in 295ms (compile: 4ms, render: 291ms)
+ GET /api/auth/me 200 in 659ms (compile: 2ms, render: 657ms)
+ GET /.well-known/appspecific/com.chrome.devtools.json 404 in 1152ms (compile: 408ms, render: 744ms)
