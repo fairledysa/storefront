@@ -322,48 +322,152 @@ export async function POST(req: Request) {
     );
   }
 
-  const existing: any = await storeDb
+  /*
+   * قد يكون العميل موجودًا من طلب سابق أو تسجيل دخول قديم بدون auth_user_id.
+   * البحث بـ auth_user_id فقط يجعل المسار يحاول إنشاء صف جديد بالبريد نفسه،
+   * فتفشل قاعدة البيانات بسبب unique(email).
+   */
+  const customerColumns = "id,email,auth_user_id,birth_date,gender,city_id";
+
+  const byAuthUser: any = await storeDb
     .from(customersTable)
-    .select("id,email,auth_user_id,birth_date,gender,city_id")
+    .select(customerColumns)
     .eq("auth_user_id", auth_user_id)
     .maybeSingle();
 
-  if (existing?.error) {
+  if (byAuthUser?.error) {
+    console.error("OTP_CUSTOMER_LOOKUP_BY_AUTH_FAILED", byAuthUser.error);
+
     return NextResponse.json(
-      { error: "CUSTOMER_LOOKUP_FAILED", message: existing.error.message },
+      {
+        error: "CUSTOMER_LOOKUP_FAILED",
+        message: "تعذر إكمال تسجيل الدخول. أعد المحاولة.",
+      },
       { status: 500 },
     );
   }
 
-  let customer_id: string;
+  let customer: any = byAuthUser?.data ?? null;
 
-  if (!existing?.data) {
-    const created: any = await storeDb
+  if (!customer?.id) {
+    const byEmail: any = await storeDb
       .from(customersTable)
-      .upsert({ auth_user_id, email: target } as any, {
-        onConflict: "auth_user_id",
-      })
-      .select("id,auth_user_id,email")
-      .single();
+      .select(customerColumns)
+      .eq("email", target)
+      .maybeSingle();
 
-    if (created?.error || !created?.data?.id) {
+    if (byEmail?.error) {
+      console.error("OTP_CUSTOMER_LOOKUP_BY_EMAIL_FAILED", byEmail.error);
+
       return NextResponse.json(
         {
-          error: "CUSTOMER_CREATE_FAILED",
-          message: created?.error?.message || "create failed",
+          error: "CUSTOMER_LOOKUP_FAILED",
+          message: "تعذر إكمال تسجيل الدخول. أعد المحاولة.",
         },
         { status: 500 },
       );
     }
 
-    customer_id = String(created.data.id);
-  } else {
-    customer_id = String(existing.data.id);
+    customer = byEmail?.data ?? null;
+  }
 
-    await storeDb
+  let customer_id: string;
+
+  if (customer?.id) {
+    customer_id = String(customer.id);
+
+    const needsAuthUserId =
+      String(customer.auth_user_id || "") !== auth_user_id;
+    const needsEmail = String(customer.email || "").toLowerCase() !== target;
+
+    if (needsAuthUserId || needsEmail) {
+      const updated: any = await storeDb
+        .from(customersTable)
+        .update({ auth_user_id, email: target } as any)
+        .eq("id", customer_id)
+        .select("id")
+        .single();
+
+      if (updated?.error || !updated?.data?.id) {
+        console.error("OTP_CUSTOMER_LINK_FAILED", updated?.error);
+
+        return NextResponse.json(
+          {
+            error: "CUSTOMER_LINK_FAILED",
+            message: "تعذر ربط الحساب ببيانات العميل. أعد المحاولة.",
+          },
+          { status: 500 },
+        );
+      }
+    }
+  } else {
+    const created: any = await storeDb
       .from(customersTable)
-      .update({ email: target } as any)
-      .eq("id", customer_id);
+      .insert({ auth_user_id, email: target } as any)
+      .select("id,auth_user_id,email")
+      .single();
+
+    if (created?.error || !created?.data?.id) {
+      if (created?.error?.code !== "23505") {
+        console.error("OTP_CUSTOMER_CREATE_FAILED", created?.error);
+
+        return NextResponse.json(
+          {
+            error: "CUSTOMER_CREATE_FAILED",
+            message: "تعذر إكمال تسجيل الدخول. أعد المحاولة.",
+          },
+          { status: 500 },
+        );
+      }
+
+      /*
+       * حماية من محاولة متزامنة: قد يكون صف العميل أُنشئ بعد البحث الأول.
+       * نعيد قراءته بالبريد ثم نربطه بدل إظهار خطأ unique(email) للمستخدم.
+       */
+      const afterConflict: any = await storeDb
+        .from(customersTable)
+        .select(customerColumns)
+        .eq("email", target)
+        .maybeSingle();
+
+      if (afterConflict?.error || !afterConflict?.data?.id) {
+        console.error(
+          "OTP_CUSTOMER_CREATE_CONFLICT_LOOKUP_FAILED",
+          created?.error || afterConflict?.error,
+        );
+
+        return NextResponse.json(
+          {
+            error: "CUSTOMER_CREATE_FAILED",
+            message: "تعذر إكمال تسجيل الدخول. أعد المحاولة.",
+          },
+          { status: 500 },
+        );
+      }
+
+      customer_id = String(afterConflict.data.id);
+
+      const linked: any = await storeDb
+        .from(customersTable)
+        .update({ auth_user_id, email: target } as any)
+        .eq("id", customer_id)
+        .select("id")
+        .single();
+
+      if (linked?.error || !linked?.data?.id) {
+        console.error("OTP_CUSTOMER_LINK_AFTER_CONFLICT_FAILED", linked?.error);
+
+        return NextResponse.json(
+          {
+            error: "CUSTOMER_LINK_FAILED",
+            message: "تعذر ربط الحساب ببيانات العميل. أعد المحاولة.",
+          },
+          { status: 500 },
+        );
+      }
+    } else {
+      customer_id = String(created.data.id);
+    }
   }
 
   const link: any = await storeDb.from(storeCustomersTable).upsert(
