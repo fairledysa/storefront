@@ -67,6 +67,44 @@ function renderChildren(node: Node, keyPrefix: string): ReactNode[] {
   );
 }
 
+function isTextOnlyElement(element: Element) {
+  return Array.from(element.childNodes).every(
+    (child) => child.nodeType === Node.TEXT_NODE,
+  );
+}
+
+function markdownHeadingFromParagraph(element: Element) {
+  if (element.tagName.toUpperCase() !== "P" || !isTextOnlyElement(element)) {
+    return null;
+  }
+
+  const text = String(element.textContent || "").trim();
+  const match = /^(#{1,3})\s+(.+)$/.exec(text);
+
+  if (!match) return null;
+
+  return {
+    tag: `h${match[1].length}`,
+    text: match[2].trim(),
+  };
+}
+
+function hasMeaningfulContent(element: Element): boolean {
+  const tag = element.tagName.toUpperCase();
+  const text = String(element.textContent || "").trim();
+
+  if (text) return true;
+  if (element.querySelector("img,table")) return true;
+
+  if (tag === "UL" || tag === "OL") {
+    return Array.from(element.querySelectorAll("li")).some((item) =>
+      hasMeaningfulContent(item),
+    );
+  }
+
+  return false;
+}
+
 function renderNode(node: Node, key: string): ReactNode {
   if (node.nodeType === Node.TEXT_NODE) return node.textContent || "";
   if (node.nodeType !== Node.ELEMENT_NODE) return null;
@@ -74,24 +112,17 @@ function renderNode(node: Node, key: string): ReactNode {
   const element = node as Element;
   const tag = element.tagName.toUpperCase();
   const children = renderChildren(element, key);
+  const markdownHeading = markdownHeadingFromParagraph(element);
+
+  if (markdownHeading) {
+    return createElement(markdownHeading.tag, { key }, markdownHeading.text);
+  }
 
   if (tag === "A") {
     const href = safeUrl(element.getAttribute("href") || "");
     if (!href) return <span key={key}>{children}</span>;
 
-    const external =
-      href.startsWith("http://") || href.startsWith("https://");
-
-    return (
-      <a
-        key={key}
-        href={href}
-        target={external ? "_blank" : undefined}
-        rel={external ? "noreferrer" : undefined}
-      >
-        {children}
-      </a>
-    );
+    return <a key={key} href={href}>{children}</a>;
   }
 
   if (tag === "IMG") {
@@ -117,6 +148,8 @@ function renderNode(node: Node, key: string): ReactNode {
   }
 
   if (!ALLOWED_BLOCKS.has(tag)) return <span key={key}>{children}</span>;
+
+  if (!hasMeaningfulContent(element)) return null;
 
   return createElement(tag.toLowerCase(), { key }, children);
 }

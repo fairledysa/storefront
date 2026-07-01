@@ -51,7 +51,6 @@ export default function PageScreen({ data }: Props) {
     <main className="mk-page-screen" dir="rtl">
       <div className="mk-page-screen__container">
         <header className="mk-page-screen__header">
-          <div className="mk-page-screen__eyebrow">صفحة تعريفية</div>
           <h1 className="mk-page-screen__title">{title}</h1>
         </header>
 
