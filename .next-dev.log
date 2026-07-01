@@ -1,0 +1,17 @@
+
+> storefront@0.1.0 dev
+> next dev -p 3003
+
+   ▲ Next.js 16.0.10 (Turbopack)
+   - Local:         http://localhost:3003
+   - Network:       http://192.168.8.48:3003
+   - Environments: .env.local
+
+ ✓ Starting...
+Creating turbopack project {
+  dir: 'D:\\projects\\elyaia-sala-main2026\\apps\\storefront',
+  testMode: true
+}
+ ✓ Ready in 16.3s
+ ○ Compiling / ...
+ GET / 200 in 10.7s (compile: 1370ms, render: 9.3s)

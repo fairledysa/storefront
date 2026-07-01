@@ -1107,6 +1107,25 @@ export default function Footer({ theme, bootstrap }: Props) {
     const seen = new Set<string>();
     const out: Item[] = [];
 
+    const addItem = (item: Item) => {
+      const label = text(item.label);
+      const href = normalizeHref(item.href);
+
+      if (!label || !href || href === "#") return false;
+
+      const key = `${label}|${href}`;
+      if (seen.has(key)) return false;
+
+      seen.add(key);
+      out.push({ label, href });
+
+      return out.length >= 10;
+    };
+
+    for (const page of storePages) {
+      if (addItem(page)) return out;
+    }
+
     for (const col of cols) {
       for (const item of col.items) {
         const label = text(item.label);
@@ -1120,7 +1139,7 @@ export default function Footer({ theme, bootstrap }: Props) {
         seen.add(key);
         out.push({ label, href });
 
-        if (out.length >= 8) return out;
+        if (out.length >= 10) return out;
       }
     }
 

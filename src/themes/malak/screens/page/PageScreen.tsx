@@ -1,5 +1,7 @@
 // FILE: apps/storefront/src/themes/malak/screens/page/PageScreen.tsx
 
+import SafePageHtml from "./SafePageHtml";
+
 type StorePageData = {
   id: string;
   title: string;
@@ -20,6 +22,15 @@ function isHtmlPage(type: string) {
   return String(type || "").trim().toLowerCase() === "html";
 }
 
+function looksLikeHtml(content: string) {
+  const value = String(content || "");
+
+  return (
+    (value.includes("<") && value.includes(">")) ||
+    (value.includes("&lt;") && value.includes("&gt;"))
+  );
+}
+
 function nl2brText(content: string) {
   return String(content || "")
     .split(/\n/g)
@@ -34,6 +45,7 @@ function nl2brText(content: string) {
 export default function PageScreen({ data }: Props) {
   const title = String(data?.title || "").trim();
   const content = String(data?.content || "");
+  const renderAsHtml = isHtmlPage(data?.page_type) || looksLikeHtml(content);
 
   return (
     <main className="mk-page-screen" dir="rtl">
@@ -44,13 +56,14 @@ export default function PageScreen({ data }: Props) {
         </header>
 
         <article className="mk-page-screen__card">
-          {isHtmlPage(data?.page_type) ? (
-            <div
-              className="mk-page-screen__content"
-              dangerouslySetInnerHTML={{ __html: content }}
-            />
+          {renderAsHtml ? (
+            <div className="mk-page-screen__content malak-page-content">
+              <SafePageHtml html={content} />
+            </div>
           ) : (
-            <div className="mk-page-screen__content">{nl2brText(content)}</div>
+            <div className="mk-page-screen__content malak-page-content">
+              {nl2brText(content)}
+            </div>
           )}
         </article>
       </div>
