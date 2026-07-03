@@ -5,6 +5,7 @@ import "server-only";
 import { after } from "next/server";
 
 import { controlDb } from "@/data/db/control-db.server";
+import { getStoreDb } from "@/data/db/store-db.server";
 
 type NotificationType =
   | "cart_item_added"
@@ -236,6 +237,56 @@ function merchantActionUrl(actionPath: string | null | undefined) {
   return `${origin.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
+function firstHttpUrl(...values: unknown[]) {
+  for (const value of values) {
+    const url = safeHttpUrl(value);
+    if (url) return url;
+  }
+
+  return null;
+}
+
+function logoUrlFromValue(value: unknown) {
+  if (typeof value === "string") return safeHttpUrl(value);
+
+  const data = value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+
+  return firstHttpUrl(
+    data.logo_url,
+    data.logoUrl,
+    data.logo,
+    data.image_url,
+    data.imageUrl,
+  );
+}
+
+async function getStoreProfileLogo(storeId: string) {
+  try {
+    const db: any = await getStoreDb(storeId);
+    const result = await db
+      .from("store_settings")
+      .select("slug,value,updated_at,created_at")
+      .eq("store_id", storeId)
+      .in("slug", ["profile", "store.profile"])
+      .order("updated_at", { ascending: false })
+      .order("created_at", { ascending: false });
+
+    if (result.error || !Array.isArray(result.data)) return null;
+
+    for (const row of result.data) {
+      const logoUrl = logoUrlFromValue(row?.value);
+      if (logoUrl) return logoUrl;
+    }
+
+    return null;
+  } catch (error) {
+    console.error("MERCHANT_EMAIL_PROFILE_LOGO_LOAD_FAILED", error);
+    return null;
+  }
+}
+
 async function getStoreEmailBrand(storeId: string): Promise<StoreEmailBrand> {
   const fallback: StoreEmailBrand = {
     name: "متجرك",
@@ -243,18 +294,33 @@ async function getStoreEmailBrand(storeId: string): Promise<StoreEmailBrand> {
   };
 
   try {
-    const result = await (controlDb() as any)
-      .from("stores")
-      .select("name,logo_url")
-      .eq("id", storeId)
-      .limit(1)
-      .maybeSingle();
+    const [storeResult, profileLogo] = await Promise.all([
+      (controlDb() as any)
+        .from("stores")
+        .select("name,logo_url,metadata")
+        .eq("id", storeId)
+        .limit(1)
+        .maybeSingle(),
+      getStoreProfileLogo(storeId),
+    ]);
 
-    if (result.error || !result.data) return fallback;
+    if (storeResult.error || !storeResult.data) {
+      return {
+        ...fallback,
+        logoUrl: profileLogo,
+      };
+    }
 
     return {
-      name: s(result.data?.name) || fallback.name,
-      logoUrl: safeHttpUrl(result.data?.logo_url),
+      name: s(storeResult.data?.name) || fallback.name,
+      // The storefront uses profile.logo_url first; email must show the exact
+      // same logo the merchant selected for the store, not a generated mark.
+      logoUrl:
+        profileLogo ||
+        firstHttpUrl(
+          storeResult.data?.logo_url,
+          logoUrlFromValue(storeResult.data?.metadata),
+        ),
     };
   } catch (error) {
     console.error("MERCHANT_EMAIL_BRAND_LOAD_FAILED", error);
@@ -323,9 +389,16 @@ function emailDetail(type: NotificationType, payload: Record<string, any> | unde
   };
 }
 
-function fallbackBrandMark(name: string) {
-  const clean = s(name);
-  return escapeHtml(clean.slice(0, 2) || "م");
+function notificationMessage(args: {
+  type: NotificationType;
+  body: string;
+  payload?: Record<string, any>;
+}) {
+  if (args.type === "question_new") {
+    return s(args.payload?.questionText || args.payload?.questionBody || args.body) || "ورد سؤال جديد يحتاج إلى ردك.";
+  }
+
+  return s(args.body) || emailIntro(args.type);
 }
 
 async function sendMerchantNotificationEmail(args: {
@@ -349,15 +422,21 @@ async function sendMerchantNotificationEmail(args: {
   const detail = emailDetail(args.notificationType, args.payload);
   const brandName = escapeHtml(args.brand.name || "متجرك");
   const title = escapeHtml(args.title);
-  const body = escapeHtml(args.body);
   const intro = escapeHtml(emailIntro(args.notificationType));
   const detailLabel = escapeHtml(detail.label);
   const detailValue = escapeHtml(detail.value);
   const detailNote = detail.note ? escapeHtml(detail.note) : "";
+  const message = escapeHtml(
+    notificationMessage({
+      type: args.notificationType,
+      body: args.body,
+      payload: args.payload,
+    }),
+  );
   const currentYear = new Date().getFullYear();
-  const brandLogo = args.brand.logoUrl
-    ? `<img src="${escapeHtml(args.brand.logoUrl)}" alt="${brandName}" width="132" style="display:block;max-width:132px;max-height:56px;width:auto;height:auto;border:0;outline:none;text-decoration:none;" />`
-    : `<span style="display:inline-block;min-width:46px;height:46px;line-height:46px;border-radius:14px;background:#bfe6d8;color:#0d3b45;text-align:center;font-size:20px;font-weight:800;">${fallbackBrandMark(args.brand.name)}</span>`;
+  const logo = args.brand.logoUrl
+    ? `<img src="${escapeHtml(args.brand.logoUrl)}" alt="${brandName}" width="168" style="display:block;max-width:168px;width:auto;max-height:64px;height:auto;border:0;outline:none;text-decoration:none;" />`
+    : `<span style="display:inline-block;color:#0d3b45;font-size:21px;line-height:30px;font-weight:800;">${brandName}</span>`;
 
   const html = `<!doctype html>
 <html dir="rtl" lang="ar">
@@ -366,42 +445,40 @@ async function sendMerchantNotificationEmail(args: {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
   </head>
   <body dir="rtl" style="margin:0;padding:0;background:#f3f6f7;color:#1f2933;font-family:Tahoma,Arial,'Segoe UI',sans-serif;">
-    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;line-height:1px;mso-hide:all;">${title} — ${body}</div>
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;line-height:1px;mso-hide:all;">${title}</div>
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;margin:0;padding:0;background:#f3f6f7;">
       <tr>
-        <td align="center" style="padding:30px 12px;">
-          <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="width:600px;max-width:600px;background:#ffffff;border:1px solid #e4ecec;border-radius:18px;overflow:hidden;box-shadow:0 8px 24px rgba(13,59,69,.08);">
+        <td align="center" style="padding:32px 12px;">
+          <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="width:600px;max-width:600px;background:#ffffff;border:1px solid #e1e9e9;border-radius:18px;overflow:hidden;">
             <tr>
-              <td style="background:#0d3b45;height:7px;line-height:7px;font-size:0;">&nbsp;</td>
+              <td style="height:7px;line-height:7px;font-size:0;background:#0d3b45;">&nbsp;</td>
             </tr>
             <tr>
-              <td dir="rtl" style="padding:26px 34px 22px;background:#ffffff;text-align:right;">
+              <td dir="rtl" style="padding:28px 34px 24px;text-align:right;">
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
                   <tr>
-                    <td align="right" valign="middle" style="width:72%;text-align:right;">
-                      <p style="margin:0 0 5px;color:#64748b;font-size:12px;line-height:18px;">إشعار من متجرك</p>
-                      <p style="margin:0;color:#0d3b45;font-size:20px;line-height:28px;font-weight:800;">${brandName}</p>
+                    <td align="right" valign="middle" style="text-align:right;">
+                      <p style="margin:0 0 5px;color:#64748b;font-size:12px;line-height:18px;">تنبيه من متجرك</p>
+                      <p style="margin:0;color:#0d3b45;font-size:18px;line-height:26px;font-weight:800;">${brandName}</p>
                     </td>
-                    <td align="left" valign="middle" style="width:28%;text-align:left;">${brandLogo}</td>
+                    <td align="left" valign="middle" style="width:180px;text-align:left;">${logo}</td>
                   </tr>
                 </table>
               </td>
             </tr>
             <tr>
-              <td style="padding:0 34px;">
-                <div style="height:1px;background:#e8eeee;line-height:1px;font-size:0;">&nbsp;</div>
+              <td style="padding:0 34px;"><div style="height:1px;line-height:1px;font-size:0;background:#e8eeee;">&nbsp;</div></td>
+            </tr>
+            <tr>
+              <td dir="rtl" style="padding:34px 34px 12px;text-align:right;">
+                <p style="margin:0 0 10px;color:#0d756c;font-size:13px;line-height:20px;font-weight:800;">يتطلب انتباهك</p>
+                <h1 style="margin:0;color:#0d3b45;font-size:30px;line-height:42px;font-weight:800;letter-spacing:0;">${title}</h1>
+                <p style="margin:10px 0 0;color:#64748b;font-size:16px;line-height:27px;">${intro}</p>
               </td>
             </tr>
             <tr>
-              <td dir="rtl" style="padding:34px 34px 18px;text-align:right;">
-                <span style="display:inline-block;padding:6px 11px;border-radius:999px;background:#edf8f5;color:#0d756c;font-size:12px;font-weight:700;">إشعار جديد</span>
-                <h1 style="margin:16px 0 8px;color:#0d3b45;font-size:29px;line-height:42px;font-weight:800;letter-spacing:0;">${title}</h1>
-                <p style="margin:0;color:#64748b;font-size:16px;line-height:28px;">${intro}</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:10px 34px 0;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f4fbf9;border:1px solid #dcefe9;border-radius:14px;">
+              <td style="padding:18px 34px 0;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f4fbf9;border:1px solid #d7ece5;border-radius:14px;">
                   <tr>
                     <td dir="rtl" style="padding:18px 20px;text-align:right;">
                       <p style="margin:0 0 5px;color:#64748b;font-size:12px;line-height:18px;">${detailLabel}</p>
@@ -413,33 +490,15 @@ async function sendMerchantNotificationEmail(args: {
               </td>
             </tr>
             <tr>
-              <td style="padding:14px 34px 0;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#ffffff;border:1px solid #e7eeee;border-radius:14px;">
-                  <tr>
-                    <td dir="rtl" style="padding:17px 20px;text-align:right;">
-                      <p style="margin:0 0 6px;color:#0d3b45;font-size:13px;line-height:20px;font-weight:800;">ملخص الإشعار</p>
-                      <p style="margin:0;color:#475569;font-size:14px;line-height:24px;">${body}</p>
-                    </td>
-                  </tr>
-                </table>
+              <td dir="rtl" style="padding:20px 34px 0;text-align:right;">
+                <p style="margin:0 0 7px;color:#0d3b45;font-size:13px;line-height:20px;font-weight:800;">تفاصيل الإشعار</p>
+                <p style="margin:0;color:#475569;font-size:15px;line-height:27px;white-space:pre-line;">${message}</p>
               </td>
             </tr>
-            ${action ? `<tr><td align="center" style="padding:28px 34px 34px;text-align:center;"><a href="${escapeHtml(action)}" target="_blank" style="display:inline-block;background:#0d3b45;border:1px solid #0d3b45;border-radius:10px;padding:14px 30px;color:#ffffff;font-size:16px;line-height:20px;font-weight:800;text-decoration:none;">فتح الإشعار</a></td></tr>` : ""}
+            ${action ? `<tr><td align="center" style="padding:30px 34px 34px;text-align:center;"><a href="${escapeHtml(action)}" target="_blank" style="display:inline-block;background:#0d3b45;border-radius:10px;padding:14px 30px;color:#ffffff;font-size:16px;line-height:20px;font-weight:800;text-decoration:none;">عرض التفاصيل في لوحة التحكم</a></td></tr>` : ""}
             <tr>
-              <td style="padding:0 34px;">
-                <div style="height:1px;background:#e8eeee;line-height:1px;font-size:0;">&nbsp;</div>
-              </td>
-            </tr>
-            <tr>
-              <td dir="rtl" style="padding:20px 26px;background:#fbfcfc;text-align:center;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
-                  <tr>
-                    <td style="width:33.33%;padding:0 6px;text-align:center;color:#64748b;font-size:12px;line-height:20px;">إشعارات فورية</td>
-                    <td style="width:33.33%;padding:0 6px;text-align:center;color:#64748b;font-size:12px;line-height:20px;border-right:1px solid #e4ecec;border-left:1px solid #e4ecec;">وصول مباشر</td>
-                    <td style="width:33.33%;padding:0 6px;text-align:center;color:#64748b;font-size:12px;line-height:20px;">إدارة منظمة</td>
-                  </tr>
-                </table>
-                <p style="margin:18px 0 0;color:#94a3b8;font-size:11px;line-height:20px;">هذا إشعار تلقائي من ${brandName}. الرجاء عدم الرد على هذا البريد.</p>
+              <td dir="rtl" style="padding:22px 34px 24px;background:#fbfcfc;border-top:1px solid #e8eeee;text-align:center;">
+                <p style="margin:0;color:#94a3b8;font-size:11px;line-height:20px;">تم إرسال هذا البريد لأن إشعاراتك البريدية مفعّلة في ${brandName}.</p>
                 <p style="margin:4px 0 0;color:#94a3b8;font-size:11px;line-height:20px;">© ${currentYear} ${brandName}. جميع الحقوق محفوظة.</p>
               </td>
             </tr>
@@ -467,8 +526,12 @@ async function sendMerchantNotificationEmail(args: {
         emailIntro(args.notificationType),
         `${detail.label}: ${detail.value}`,
         detail.note || "",
-        args.body,
-        action ? `فتح الإشعار: ${action}` : "",
+        notificationMessage({
+          type: args.notificationType,
+          body: args.body,
+          payload: args.payload,
+        }),
+        action ? `عرض التفاصيل: ${action}` : "",
       ]
         .filter(Boolean)
         .join("\n\n"),
@@ -1088,6 +1151,7 @@ export async function notifyMerchantNewQuestion(input: {
       targetId: input.question?.target_id ?? null,
       authorName,
       authorEmail: input.question?.author_email ?? null,
+      questionText,
       status: input.question?.status ?? null,
     },
     push: true,
