@@ -2,6 +2,8 @@
 
 import "server-only";
 
+import { after } from "next/server";
+
 import { controlDb } from "@/data/db/control-db.server";
 
 type NotificationType =
@@ -45,6 +47,19 @@ type ExpoMessage = {
   data?: Record<string, any>;
 };
 
+type NotificationDefinition = {
+  permission: string;
+  defaultAppEnabled: boolean;
+  defaultEmailEnabled: boolean;
+};
+
+type Recipient = {
+  id: string;
+  email: string;
+  appEnabled: boolean;
+  emailEnabled: boolean;
+};
+
 const BADGE_NOTIFICATION_TYPES = [
   "order_new",
   "question_new",
@@ -55,6 +70,72 @@ const BADGE_NOTIFICATION_TYPES = [
 ];
 
 const PUSH_NOTIFICATION_TYPES = ["order_new", "question_new"];
+
+// Keep this manifest aligned with apps/merchant/src/lib/staff/permissions.ts.
+// The storefront must apply the same permission and preference rules before
+// creating internal recipients or sending a mobile/email delivery.
+const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefinition> = {
+  order_new: {
+    permission: "orders.notifications.new",
+    defaultAppEnabled: true,
+    defaultEmailEnabled: false,
+  },
+  bank_transfer_proof_new: {
+    permission: "orders.bank_transfer.review",
+    defaultAppEnabled: true,
+    defaultEmailEnabled: true,
+  },
+  question_new: {
+    permission: "feedback.list",
+    defaultAppEnabled: true,
+    defaultEmailEnabled: true,
+  },
+  review_new: {
+    permission: "feedback.list",
+    defaultAppEnabled: true,
+    defaultEmailEnabled: true,
+  },
+  comment_new: {
+    permission: "feedback.list",
+    defaultAppEnabled: true,
+    defaultEmailEnabled: true,
+  },
+  stock_low: {
+    permission: "products.stock.manage",
+    defaultAppEnabled: true,
+    defaultEmailEnabled: true,
+  },
+  stock_out: {
+    permission: "products.stock.manage",
+    defaultAppEnabled: true,
+    defaultEmailEnabled: true,
+  },
+  customer_registered: {
+    permission: "customers.list",
+    defaultAppEnabled: true,
+    defaultEmailEnabled: false,
+  },
+  cart_item_added: {
+    permission: "marketing.abandoned_carts.view",
+    defaultAppEnabled: false,
+    defaultEmailEnabled: false,
+  },
+  cart_abandoned: {
+    permission: "marketing.abandoned_carts.view",
+    defaultAppEnabled: false,
+    defaultEmailEnabled: false,
+  },
+  invoice_issued: {
+    permission: "settings.invoices.view",
+    defaultAppEnabled: false,
+    defaultEmailEnabled: true,
+  },
+  system: {
+    permission: "dashboard.alerts.view",
+    defaultAppEnabled: true,
+    defaultEmailEnabled: true,
+  },
+};
 
 function s(value: unknown) {
   return String(value ?? "").trim();
@@ -112,6 +193,79 @@ function pushChannelId(type: NotificationType) {
   return "merchant-general";
 }
 
+function escapeHtml(value: string) {
+  return value.replace(/[&<>'"]/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "'": "&#39;",
+    '"': "&quot;",
+  })[char] || char);
+}
+
+function merchantActionUrl(actionPath: string | null | undefined) {
+  const path = s(actionPath);
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path;
+
+  const origin = s(
+    process.env.MERCHANT_APP_URL ||
+      process.env.APP_PUBLIC_URL ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      process.env.APP_URL,
+  );
+
+  if (!origin) return null;
+
+  return `${origin.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+async function sendMerchantNotificationEmail(args: {
+  to: string;
+  title: string;
+  body: string;
+  actionUrl?: string | null;
+}) {
+  const apiKey = s(process.env.RESEND_API_KEY);
+  const from = s(process.env.RESEND_FROM_EMAIL || process.env.EMAIL_FROM);
+  const to = s(args.to).toLowerCase();
+
+  if (!apiKey || !from || !to) {
+    return { ok: false, skipped: true };
+  }
+
+  const action = s(args.actionUrl);
+  const html = `<!doctype html><html dir="rtl" lang="ar"><body style="margin:0;background:#f6f8fa;padding:28px 12px;font-family:Tahoma,Arial,sans-serif;color:#1f2933;"><table role="presentation" width="100%"><tr><td align="center"><table role="presentation" width="600" style="max-width:600px;width:100%;background:#fff;border:1px solid #e2e8f0;border-radius:18px;"><tr><td style="height:7px;background:#0d3b45">&nbsp;</td></tr><tr><td style="padding:28px 32px;text-align:right"><h1 style="margin:0 0 14px;color:#0d3b45;font-size:21px">${escapeHtml(args.title)}</h1><p style="margin:0;color:#334155;font-size:15px;line-height:1.9">${escapeHtml(args.body)}</p>${action ? `<p style="margin:24px 0 0"><a href="${escapeHtml(action)}" style="display:inline-block;padding:12px 18px;border-radius:10px;background:#0d3b45;color:#fff;text-decoration:none;font-weight:700">فتح الإشعار</a></p>` : ""}</td></tr></table></td></tr></table></body></html>`;
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from,
+      to,
+      subject: args.title,
+      html,
+      text: [args.title, "", args.body, action ? `فتح الإشعار: ${action}` : ""]
+        .filter(Boolean)
+        .join("\n"),
+    }),
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    return {
+      ok: false,
+      skipped: false,
+      error: s(payload?.message || payload?.name || `RESEND_HTTP_${response.status}`),
+    };
+  }
+
+  return { ok: true, skipped: false };
+}
+
 async function sendExpoPushMessages(messages: ExpoMessage[]) {
   const valid = messages.filter((message) => isExpoPushToken(message.to));
 
@@ -156,22 +310,133 @@ async function sendExpoPushMessages(messages: ExpoMessage[]) {
   };
 }
 
-async function getStoreUserIds(storeId: string) {
+async function getEligibleRecipients(args: {
+  storeId: string;
+  type: NotificationType;
+}): Promise<Recipient[]> {
   const db = controlDb() as any;
+  const definition = NOTIFICATION_DEFINITIONS[args.type];
 
-  const result = await db
+  const usersResult = await db
     .from("store_users")
-    .select("id,status")
-    .eq("store_id", storeId);
+    .select("id,email,role,status")
+    .eq("store_id", args.storeId);
 
-  if (result.error) {
-    throw new Error(result.error.message);
+  if (usersResult.error) {
+    throw new Error(usersResult.error.message);
   }
 
-  return (Array.isArray(result.data) ? result.data : [])
+  const users = (Array.isArray(usersResult.data) ? usersResult.data : [])
     .filter(isActiveStoreUser)
-    .map((row: any) => s(row?.id))
-    .filter(Boolean);
+    .map((row: any) => ({
+      id: s(row?.id),
+      email: s(row?.email).toLowerCase(),
+      role: s(row?.role).toLowerCase(),
+    }))
+    .filter((row: { id: string }) => Boolean(row.id));
+
+  if (!users.length) return [];
+
+  const userIds = users.map((user: { id: string }) => user.id);
+  const ownerIds = new Set(
+    users
+      .filter((user: { role: string }) => ["owner", "admin"].includes(user.role))
+      .map((user: { id: string }) => user.id),
+  );
+
+  const rolesResult = await db
+    .from("store_user_roles")
+    .select("user_id,role_id,role:store_roles!inner(code,status)")
+    .in("user_id", userIds);
+
+  if (rolesResult.error) {
+    throw new Error(rolesResult.error.message);
+  }
+
+  const roleIds = new Set<string>();
+  const activeRolesByUser = new Map<string, string[]>();
+
+  for (const row of Array.isArray(rolesResult.data) ? rolesResult.data : []) {
+    const userId = s(row?.user_id);
+    const roleId = s(row?.role_id);
+    const role = row?.role || {};
+    const status = s(role?.status || "active").toLowerCase();
+    const code = s(role?.code).toLowerCase();
+
+    if (!userId || !roleId || !["active", "enabled"].includes(status)) continue;
+
+    roleIds.add(roleId);
+    const current = activeRolesByUser.get(userId) || [];
+    current.push(roleId);
+    activeRolesByUser.set(userId, current);
+
+    if (code === "owner") ownerIds.add(userId);
+  }
+
+  const permissionsByRole = new Map<string, Set<string>>();
+  if (roleIds.size) {
+    const permissionResult = await db
+      .from("store_role_permissions")
+      .select("role_id,permission:store_permissions!inner(key)")
+      .in("role_id", Array.from(roleIds));
+
+    if (permissionResult.error) {
+      throw new Error(permissionResult.error.message);
+    }
+
+    for (const row of Array.isArray(permissionResult.data) ? permissionResult.data : []) {
+      const roleId = s(row?.role_id);
+      const permission = s(row?.permission?.key);
+      if (!roleId || !permission) continue;
+
+      const current = permissionsByRole.get(roleId) || new Set<string>();
+      current.add(permission);
+      permissionsByRole.set(roleId, current);
+    }
+  }
+
+  const preferencesResult = await db
+    .from("store_user_notification_preferences")
+    .select("store_user_id,app_enabled,email_enabled")
+    .eq("store_id", args.storeId)
+    .eq("notification_type", args.type)
+    .in("store_user_id", userIds);
+
+  if (preferencesResult.error) {
+    throw new Error(preferencesResult.error.message);
+  }
+
+  const preferenceByUser = new Map(
+    (Array.isArray(preferencesResult.data) ? preferencesResult.data : []).map((row: any) => [
+      s(row?.store_user_id),
+      row,
+    ]),
+  );
+
+  return users
+    .filter((user: { id: string }) => {
+      if (ownerIds.has(user.id)) return true;
+
+      for (const roleId of activeRolesByUser.get(user.id) || []) {
+        if (permissionsByRole.get(roleId)?.has(definition.permission)) return true;
+      }
+
+      return false;
+    })
+    .map((user: { id: string; email: string }) => {
+      const preference: any = preferenceByUser.get(user.id);
+
+      return {
+        id: user.id,
+        email: user.email,
+        appEnabled: preference
+          ? Boolean(preference.app_enabled)
+          : definition.defaultAppEnabled,
+        emailEnabled: preference
+          ? Boolean(preference.email_enabled)
+          : definition.defaultEmailEnabled,
+      };
+    });
 }
 
 async function createRecipients(args: {
@@ -198,6 +463,34 @@ async function createRecipients(args: {
 
   if (result.error) {
     throw new Error(result.error.message);
+  }
+}
+
+async function skipStorefrontOutboxDeliveries(args: {
+  notificationId: string;
+  storeUserIds: string[];
+}) {
+  if (!args.storeUserIds.length) return;
+
+  const result = await (controlDb() as any)
+    .from("merchant_notification_deliveries")
+    .update({
+      status: "skipped",
+      sent_at: new Date().toISOString(),
+      locked_at: null,
+      last_error: "DIRECT_STOREFRONT_DELIVERY",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("notification_id", args.notificationId)
+    .in("store_user_id", args.storeUserIds)
+    .in("channel", ["push", "email"])
+    .in("status", ["pending", "retry"]);
+
+  // The old outbox trigger is still retained for the merchant test button.
+  // Storefront events are delivered directly below, so their jobs must not be
+  // picked later by the worker and sent a second time.
+  if (result.error) {
+    console.error("MERCHANT_OUTBOX_SKIP_FAILED", result.error);
   }
 }
 
@@ -245,24 +538,30 @@ async function countUnreadBadgeByStoreUsers(args: {
 
 async function sendPushToStore(args: {
   storeId: string;
+  storeUserIds: string[];
   type: NotificationType;
   title: string;
   body: string;
   data: Record<string, any>;
 }) {
+  if (!args.storeUserIds.length) {
+    return { ok: true, sent: 0, invalid: 0 };
+  }
+
   const db = controlDb() as any;
 
   const tokensResult = await db
     .from("merchant_push_tokens")
     .select("expo_push_token,store_user_id")
     .eq("store_id", args.storeId)
-    .eq("enabled", true);
+    .eq("enabled", true)
+    .in("store_user_id", args.storeUserIds);
 
   if (tokensResult.error) {
     throw new Error(tokensResult.error.message);
   }
 
-   const tokenRows: Array<{ token: string; storeUserId: string }> = (
+  const tokenRows: Array<{ token: string; storeUserId: string }> = (
     Array.isArray(tokensResult.data) ? tokensResult.data : []
   )
     .map(
@@ -298,6 +597,43 @@ async function sendPushToStore(args: {
   }));
 
   return sendExpoPushMessages(messages);
+}
+
+function queueEmails(args: {
+  recipients: Recipient[];
+  title: string;
+  body: string;
+  actionPath?: string | null;
+}) {
+  const recipients = args.recipients.filter(
+    (recipient) => recipient.emailEnabled && Boolean(recipient.email),
+  );
+
+  if (!recipients.length) return;
+
+  const actionUrl = merchantActionUrl(args.actionPath);
+
+  after(async () => {
+    const results = await Promise.allSettled(
+      recipients.map((recipient) =>
+        sendMerchantNotificationEmail({
+          to: recipient.email,
+          title: args.title,
+          body: args.body,
+          actionUrl,
+        }),
+      ),
+    );
+
+    for (const result of results) {
+      if (result.status === "rejected" || !result.value.ok) {
+        console.error(
+          "MERCHANT_NOTIFICATION_EMAIL_FAILED",
+          result.status === "rejected" ? result.reason : result.value.error || "EMAIL_FAILED",
+        );
+      }
+    }
+  });
 }
 
 export async function createMerchantNotification(
@@ -361,13 +697,34 @@ export async function createMerchantNotification(
 
   const notificationId = String(insertResult.data.id);
   const createdAt = String(insertResult.data.created_at || "");
-  const storeUserIds = await getStoreUserIds(storeId);
+  const recipients = await getEligibleRecipients({
+    storeId,
+    type: input.type,
+  });
+
+  const recipientIds = recipients.map((recipient) => recipient.id);
 
   await createRecipients({
     storeId,
     notificationId,
-    storeUserIds,
+    storeUserIds: recipientIds,
   });
+
+  await skipStorefrontOutboxDeliveries({
+    notificationId,
+    storeUserIds: recipientIds,
+  });
+
+  const data = {
+    notificationId,
+    type: input.type,
+    entityType: input.entityType,
+    entityId: input.entityId || null,
+    actionPath: input.actionPath || null,
+    priority: input.priority || "normal",
+    createdAt,
+    payload: input.payload || {},
+  };
 
   let push: unknown = null;
 
@@ -375,29 +732,34 @@ export async function createMerchantNotification(
     try {
       push = await sendPushToStore({
         storeId,
+        storeUserIds: recipients
+          .filter((recipient) => recipient.appEnabled)
+          .map((recipient) => recipient.id),
         type: input.type,
         title,
         body,
-        data: {
-          notificationId,
-          type: input.type,
-          entityType: input.entityType,
-          entityId: input.entityId || null,
-          actionPath: input.actionPath || null,
-          priority: input.priority || "normal",
-          createdAt,
-          payload: input.payload || {},
-        },
+        data,
       });
     } catch (error: any) {
       console.error("MERCHANT_PUSH_SEND_FAILED", error);
     }
   }
 
+  // Email delivery uses the exact same eligible recipients and their own
+  // email preference. It runs after the route response and never blocks
+  // checkout, cart, or question submission.
+  queueEmails({
+    recipients,
+    title,
+    body,
+    actionPath: input.actionPath,
+  });
+
   return {
     ok: true,
     id: notificationId,
     duplicated: false,
+    recipients: recipients.length,
     push,
   };
 }
