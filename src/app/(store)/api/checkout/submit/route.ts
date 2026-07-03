@@ -1,6 +1,6 @@
 // FILE: apps/storefront/src/app/(store)/api/checkout/submit/route.ts
 
-import { after, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getOrdersDb } from "@/data/db/orders-db.server";
 import { getStoreDb } from "@/data/db/store-db.server";
 import {
@@ -17,11 +17,7 @@ import {
 import { copyCartOrderOptionsToOrder } from "../lib/order-options";
 import { evaluateCodRestrictions } from "../lib/cod-restrictions";
 import { recordCartOfferRedemptions } from "../lib/cart-offers";
-import {
-  notifyMerchantBankTransferProof,
-  notifyMerchantNewOrder,
-  processMerchantNotificationDeliveryNow,
-} from "@/lib/merchant-notifications.server";
+import { notifyMerchantNewOrder } from "@/lib/merchant-notifications.server";
 export const dynamic = "force-dynamic";
 
 function n(x: any) {
@@ -2656,13 +2652,8 @@ export async function POST(req: Request) {
     console.error("CHECKOUT_CART_CLEANUP_FAILED", cleanupError);
   }
 
-  // الإشعار يأتي بعد نجاح إنشاء الطلب، خصم المخزون، وتحويل السلة إلى converted.
-  // إنشاء سجل الإشعار لا يلغي طلب العميل عند فشله. القنوات الخارجية تُعالج بعد الرد
-  // حتى لا ينتظر العميل إرسال البريد أو Push.
-  const merchantNotificationIds: string[] = [];
-
   try {
-    const orderNotification = await notifyMerchantNewOrder({
+    await notifyMerchantNewOrder({
       storeId: store_id,
       order: {
         id: String(order.id),
@@ -2680,50 +2671,8 @@ export async function POST(req: Request) {
           }
         : null,
     });
-
-    const orderNotificationId = String((orderNotification as any)?.id || "").trim();
-    if (orderNotificationId) merchantNotificationIds.push(orderNotificationId);
-
-    if (bankTransferProof) {
-      const bankTransferNotification = await notifyMerchantBankTransferProof({
-        storeId: store_id,
-        order: {
-          id: String(order.id),
-          order_number: order.order_number ?? null,
-          invoice_no: order.invoice_no ?? null,
-          total_amount: summary.total ?? null,
-          currency: summary.currency ?? null,
-        },
-        proof: {
-          bank_account_id: bankTransferProof.bank_account_id ?? null,
-          sender_account_name: bankTransferProof.sender_account_name ?? null,
-          receipt_url: bankTransferProof.receipt_url ?? null,
-          receipt_filename: bankTransferProof.receipt_filename ?? null,
-        },
-      });
-
-      const bankTransferNotificationId = String((bankTransferNotification as any)?.id || "").trim();
-      if (bankTransferNotificationId) merchantNotificationIds.push(bankTransferNotificationId);
-    }
   } catch (error: any) {
     console.error("MERCHANT_ORDER_NOTIFICATION_FAILED", error?.message || error);
-  }
-
-  const uniqueMerchantNotificationIds = Array.from(new Set(merchantNotificationIds));
-  if (uniqueMerchantNotificationIds.length) {
-    after(async () => {
-      for (const notificationId of uniqueMerchantNotificationIds) {
-        try {
-          await processMerchantNotificationDeliveryNow(notificationId);
-        } catch (error: any) {
-          console.error(
-            "MERCHANT_NOTIFICATION_DELIVERY_AFTER_RESPONSE_FAILED",
-            notificationId,
-            error?.message || error,
-          );
-        }
-      }
-    });
   }
 
   return buildOrderSuccessResponse({
