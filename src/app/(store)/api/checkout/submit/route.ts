@@ -17,7 +17,10 @@ import {
 import { copyCartOrderOptionsToOrder } from "../lib/order-options";
 import { evaluateCodRestrictions } from "../lib/cod-restrictions";
 import { recordCartOfferRedemptions } from "../lib/cart-offers";
-import { notifyMerchantNewOrder } from "@/lib/merchant-notifications.server";
+import {
+  notifyMerchantBankTransferProof,
+  notifyMerchantNewOrder,
+} from "@/lib/merchant-notifications.server";
 export const dynamic = "force-dynamic";
 
 function n(x: any) {
@@ -2652,6 +2655,8 @@ export async function POST(req: Request) {
     console.error("CHECKOUT_CART_CLEANUP_FAILED", cleanupError);
   }
 
+  // الإشعار يأتي بعد نجاح إنشاء الطلب، خصم المخزون، وتحويل السلة إلى converted.
+  // فشل مسار الإشعارات لا يلغي طلب العميل، لكنه يسجل في logs للمعالجة.
   try {
     await notifyMerchantNewOrder({
       storeId: store_id,
@@ -2671,6 +2676,25 @@ export async function POST(req: Request) {
           }
         : null,
     });
+
+    if (bankTransferProof) {
+      await notifyMerchantBankTransferProof({
+        storeId: store_id,
+        order: {
+          id: String(order.id),
+          order_number: order.order_number ?? null,
+          invoice_no: order.invoice_no ?? null,
+          total_amount: summary.total ?? null,
+          currency: summary.currency ?? null,
+        },
+        proof: {
+          bank_account_id: bankTransferProof.bank_account_id ?? null,
+          sender_account_name: bankTransferProof.sender_account_name ?? null,
+          receipt_url: bankTransferProof.receipt_url ?? null,
+          receipt_filename: bankTransferProof.receipt_filename ?? null,
+        },
+      });
+    }
   } catch (error: any) {
     console.error("MERCHANT_ORDER_NOTIFICATION_FAILED", error?.message || error);
   }
