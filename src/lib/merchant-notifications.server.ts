@@ -247,3 +247,57 @@ export async function notifyMerchantCartItemAdded(_input?: unknown) {
   void _input;
   return { ok: true, skipped: true };
 }
+
+
+function merchantDeliveryBaseUrl() {
+  const configured = s(process.env.MERCHANT_INTERNAL_URL).replace(/\/$/, "");
+  if (configured) return configured;
+
+  // التطوير المحلي المعتاد: لوحة التاجر تعمل على 3002.
+  return process.env.NODE_ENV !== "production" ? "http://localhost:3002" : "";
+}
+
+/**
+ * يطلب من لوحة التاجر معالجة deliveries الخاصة بهذا الإشعار فقط.
+ * لا يرسل storefront البريد أو Push بنفسه ولا يبطئ checkout؛ التنفيذ يستدعى عبر after().
+ */
+export async function processMerchantNotificationDeliveryNow(notificationId: unknown) {
+  const id = s(notificationId);
+  const baseUrl = merchantDeliveryBaseUrl();
+  const secret = s(process.env.MERCHANT_DELIVERY_SECRET || process.env.CRON_SECRET);
+
+  if (!id || !baseUrl || !secret) {
+    console.error("MERCHANT_NOTIFICATION_DELIVERY_CONFIG_MISSING", {
+      hasNotificationId: Boolean(id),
+      hasMerchantUrl: Boolean(baseUrl),
+      hasDeliverySecret: Boolean(secret),
+    });
+    return { ok: false, skipped: true };
+  }
+
+  const response = await fetch(
+    `${baseUrl}/api/internal/notification-delivery/process`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${secret}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ notificationId: id }),
+      cache: "no-store",
+    },
+  );
+
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok || !payload?.ok) {
+    console.error("MERCHANT_NOTIFICATION_DELIVERY_PROCESS_FAILED", {
+      notificationId: id,
+      status: response.status,
+      payload,
+    });
+    return { ok: false, status: response.status };
+  }
+
+  return { ok: true, payload };
+}

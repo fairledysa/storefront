@@ -1,6 +1,6 @@
 // FILE: apps/storefront/src/app/(store)/api/checkout/submit/route.ts
 
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { getOrdersDb } from "@/data/db/orders-db.server";
 import { getStoreDb } from "@/data/db/store-db.server";
 import {
@@ -20,6 +20,7 @@ import { recordCartOfferRedemptions } from "../lib/cart-offers";
 import {
   notifyMerchantBankTransferProof,
   notifyMerchantNewOrder,
+  processMerchantNotificationDeliveryNow,
 } from "@/lib/merchant-notifications.server";
 export const dynamic = "force-dynamic";
 
@@ -2656,9 +2657,12 @@ export async function POST(req: Request) {
   }
 
   // الإشعار يأتي بعد نجاح إنشاء الطلب، خصم المخزون، وتحويل السلة إلى converted.
-  // فشل مسار الإشعارات لا يلغي طلب العميل، لكنه يسجل في logs للمعالجة.
+  // إنشاء سجل الإشعار لا يلغي طلب العميل عند فشله. القنوات الخارجية تُعالج بعد الرد
+  // حتى لا ينتظر العميل إرسال البريد أو Push.
+  const merchantNotificationIds: string[] = [];
+
   try {
-    await notifyMerchantNewOrder({
+    const orderNotification = await notifyMerchantNewOrder({
       storeId: store_id,
       order: {
         id: String(order.id),
@@ -2677,8 +2681,11 @@ export async function POST(req: Request) {
         : null,
     });
 
+    const orderNotificationId = String((orderNotification as any)?.id || "").trim();
+    if (orderNotificationId) merchantNotificationIds.push(orderNotificationId);
+
     if (bankTransferProof) {
-      await notifyMerchantBankTransferProof({
+      const bankTransferNotification = await notifyMerchantBankTransferProof({
         storeId: store_id,
         order: {
           id: String(order.id),
@@ -2694,9 +2701,29 @@ export async function POST(req: Request) {
           receipt_filename: bankTransferProof.receipt_filename ?? null,
         },
       });
+
+      const bankTransferNotificationId = String((bankTransferNotification as any)?.id || "").trim();
+      if (bankTransferNotificationId) merchantNotificationIds.push(bankTransferNotificationId);
     }
   } catch (error: any) {
     console.error("MERCHANT_ORDER_NOTIFICATION_FAILED", error?.message || error);
+  }
+
+  const uniqueMerchantNotificationIds = Array.from(new Set(merchantNotificationIds));
+  if (uniqueMerchantNotificationIds.length) {
+    after(async () => {
+      for (const notificationId of uniqueMerchantNotificationIds) {
+        try {
+          await processMerchantNotificationDeliveryNow(notificationId);
+        } catch (error: any) {
+          console.error(
+            "MERCHANT_NOTIFICATION_DELIVERY_AFTER_RESPONSE_FAILED",
+            notificationId,
+            error?.message || error,
+          );
+        }
+      }
+    });
   }
 
   return buildOrderSuccessResponse({
