@@ -86,7 +86,10 @@ const PUSH_NOTIFICATION_TYPES = ["order_new", "question_new"];
 // Keep this manifest aligned with apps/merchant/src/lib/staff/permissions.ts.
 // The storefront must apply the same permission and preference rules before
 // creating internal recipients or sending a mobile/email delivery.
-const NOTIFICATION_DEFINITIONS: Record<NotificationType, NotificationDefinition> = {
+const NOTIFICATION_DEFINITIONS: Record<
+  NotificationType,
+  NotificationDefinition
+> = {
   order_new: {
     permission: "orders.notifications.new",
     defaultAppEnabled: true,
@@ -206,13 +209,17 @@ function pushChannelId(type: NotificationType) {
 }
 
 function escapeHtml(value: string) {
-  return value.replace(/[&<>'"]/g, (char) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    "'": "&#39;",
-    '"': "&quot;",
-  })[char] || char);
+  return value.replace(
+    /[&<>'"]/g,
+    (char) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "'": "&#39;",
+        '"': "&quot;",
+      })[char] || char,
+  );
 }
 
 function safeHttpUrl(value: unknown) {
@@ -249,9 +256,10 @@ function firstHttpUrl(...values: unknown[]) {
 function logoUrlFromValue(value: unknown) {
   if (typeof value === "string") return safeHttpUrl(value);
 
-  const data = value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
+  const data =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
 
   return firstHttpUrl(
     data.logo_url,
@@ -351,7 +359,10 @@ function emailIntro(type: NotificationType) {
   }
 }
 
-function emailDetail(type: NotificationType, payload: Record<string, any> | undefined): EmailDetail {
+function emailDetail(
+  type: NotificationType,
+  payload: Record<string, any> | undefined,
+): EmailDetail {
   const data = payload || {};
 
   if (type === "order_new") {
@@ -370,7 +381,8 @@ function emailDetail(type: NotificationType, payload: Record<string, any> | unde
     return {
       label: "المرسل",
       value: s(data.authorName || data.authorEmail) || "عميل",
-      note: s(data.targetType) === "product" ? "سؤال على أحد منتجات متجرك" : null,
+      note:
+        s(data.targetType) === "product" ? "سؤال على أحد منتجات متجرك" : null,
     };
   }
 
@@ -395,7 +407,11 @@ function notificationMessage(args: {
   payload?: Record<string, any>;
 }) {
   if (args.type === "question_new") {
-    return s(args.payload?.questionText || args.payload?.questionBody || args.body) || "ورد سؤال جديد يحتاج إلى ردك.";
+    return (
+      s(
+        args.payload?.questionText || args.payload?.questionBody || args.body,
+      ) || "ورد سؤال جديد يحتاج إلى ردك."
+    );
   }
 
   return s(args.body) || emailIntro(args.type);
@@ -435,8 +451,16 @@ async function sendMerchantNotificationEmail(args: {
   );
   const currentYear = new Date().getFullYear();
   const logo = args.brand.logoUrl
-    ? `<img src="${escapeHtml(args.brand.logoUrl)}" alt="${brandName}" width="168" style="display:block;max-width:168px;width:auto;max-height:64px;height:auto;border:0;outline:none;text-decoration:none;" />`
-    : `<span style="display:inline-block;color:#0d3b45;font-size:21px;line-height:30px;font-weight:800;">${brandName}</span>`;
+    ? `<img src="${escapeHtml(args.brand.logoUrl)}" alt="${brandName}" style="display:block;margin:0 auto;max-width:190px;width:auto;max-height:78px;height:auto;border:0;outline:none;text-decoration:none;" />`
+    : `<span style="display:inline-block;color:#0d3b45;font-size:26px;line-height:34px;font-weight:800;">${brandName}</span>`;
+
+  const actionButton = action
+    ? `<tr>
+                <td align="center" style="padding:24px 28px 42px;text-align:center;">
+                  <a href="${escapeHtml(action)}" target="_blank" style="display:inline-block;min-width:212px;background:#0d3b45;border:1px solid #08333c;border-radius:10px;padding:15px 26px;color:#ffffff;font-size:17px;line-height:22px;font-weight:800;text-decoration:none;box-shadow:0 8px 16px rgba(13,59,69,0.14);">فتح الإشعار&nbsp;&nbsp;←</a>
+                </td>
+              </tr>`
+    : "";
 
   const html = `<!doctype html>
 <html dir="rtl" lang="ar">
@@ -444,60 +468,114 @@ async function sendMerchantNotificationEmail(args: {
     <meta charSet="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
   </head>
-  <body dir="rtl" style="margin:0;padding:0;background:#f3f6f7;color:#1f2933;font-family:Tahoma,Arial,'Segoe UI',sans-serif;">
+  <body dir="rtl" style="margin:0;padding:0;background:#f5f8f8;color:#1f2933;font-family:Tahoma,Arial,'Segoe UI',sans-serif;">
     <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;line-height:1px;mso-hide:all;">${title}</div>
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;margin:0;padding:0;background:#f3f6f7;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;margin:0;padding:0;border-collapse:collapse;background:#f5f8f8;">
       <tr>
         <td align="center" style="padding:32px 12px;">
-          <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="width:600px;max-width:600px;background:#ffffff;border:1px solid #e1e9e9;border-radius:18px;overflow:hidden;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:640px;margin:0 auto;border-collapse:separate;border-spacing:0;background:#ffffff;border:1px solid #e4eceb;border-radius:20px;overflow:hidden;box-shadow:0 12px 30px rgba(15,47,55,0.08);">
             <tr>
               <td style="height:7px;line-height:7px;font-size:0;background:#0d3b45;">&nbsp;</td>
             </tr>
             <tr>
-              <td dir="rtl" style="padding:28px 34px 24px;text-align:right;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
-                  <tr>
-                    <td align="right" valign="middle" style="text-align:right;">
-                      <p style="margin:0;color:#64748b;font-size:12px;line-height:18px;">إشعار جديد</p>
-                    </td>
-                    <td align="left" valign="middle" style="width:180px;text-align:left;">${logo}</td>
-                  </tr>
-                </table>
+              <td align="center" style="padding:34px 28px 22px;text-align:center;">
+                ${logo}
               </td>
             </tr>
             <tr>
-              <td style="padding:0 34px;"><div style="height:1px;line-height:1px;font-size:0;background:#e8eeee;">&nbsp;</div></td>
-            </tr>
-            <tr>
-              <td dir="rtl" style="padding:34px 34px 12px;text-align:right;">
-                <h1 style="margin:0;color:#0d3b45;font-size:30px;line-height:42px;font-weight:800;letter-spacing:0;">${title}</h1>
-                <p style="margin:10px 0 0;color:#64748b;font-size:16px;line-height:27px;">${intro}</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:18px 34px 0;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f4fbf9;border:1px solid #d7ece5;border-radius:14px;">
+              <td align="center" style="padding:0 28px 26px;text-align:center;">
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;margin:0 auto;">
                   <tr>
-                    <td dir="rtl" style="padding:18px 20px;text-align:right;">
-                      <p style="margin:0 0 5px;color:#64748b;font-size:12px;line-height:18px;">${detailLabel}</p>
-                      <p style="margin:0;color:#0d3b45;font-size:18px;line-height:26px;font-weight:800;">${detailValue}</p>
-                      ${detailNote ? `<p style="margin:7px 0 0;color:#64748b;font-size:13px;line-height:21px;">${detailNote}</p>` : ""}
+                    <td align="center" valign="middle" style="width:70px;height:70px;border-radius:50%;background:#e8f6f0;text-align:center;">
+                      <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;margin:0 auto;">
+                        <tr>
+                          <td align="center" valign="middle" style="width:35px;height:27px;border:2px solid #0d3b45;border-radius:10px;color:#0d3b45;font-size:17px;line-height:19px;font-weight:800;letter-spacing:1px;">•••</td>
+                        </tr>
+                      </table>
                     </td>
                   </tr>
                 </table>
               </td>
             </tr>
             <tr>
-              <td dir="rtl" style="padding:20px 34px 0;text-align:right;">
-                <p style="margin:0 0 7px;color:#0d3b45;font-size:13px;line-height:20px;font-weight:800;">تفاصيل الإشعار</p>
-                <p style="margin:0;color:#475569;font-size:15px;line-height:27px;white-space:pre-line;">${message}</p>
+              <td dir="rtl" align="center" style="padding:0 28px;text-align:center;">
+                <h1 style="margin:0;color:#0d3b45;font-size:32px;line-height:43px;font-weight:800;letter-spacing:0;">${title}</h1>
+                <div style="width:48px;height:4px;line-height:4px;font-size:0;background:#bfe6d8;border-radius:999px;margin:16px auto 18px;">&nbsp;</div>
+                <p style="margin:0 0 5px;color:#64748b;font-size:15px;line-height:25px;">مرحباً،</p>
+                <p style="margin:0;color:#64748b;font-size:16px;line-height:28px;">${intro}</p>
               </td>
             </tr>
-            ${action ? `<tr><td align="center" style="padding:30px 34px 34px;text-align:center;"><a href="${escapeHtml(action)}" target="_blank" style="display:inline-block;background:#0d3b45;border-radius:10px;padding:14px 30px;color:#ffffff;font-size:16px;line-height:20px;font-weight:800;text-decoration:none;">عرض التفاصيل في لوحة التحكم</a></td></tr>` : ""}
             <tr>
-              <td dir="rtl" style="padding:22px 34px 24px;background:#fbfcfc;border-top:1px solid #e8eeee;text-align:center;">
-                <p style="margin:0;color:#94a3b8;font-size:11px;line-height:20px;">هذا إشعار تلقائي. لإدارة تفضيلات الإشعارات، افتح لوحة التحكم.</p>
-                <p style="margin:4px 0 0;color:#94a3b8;font-size:11px;line-height:20px;">© ${currentYear} جميع الحقوق محفوظة.</p>
+              <td style="padding:32px 28px 0;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:separate;border-spacing:0;background:#f4fbf9;border:1px solid #d7ece5;border-radius:14px;overflow:hidden;">
+                  <tr>
+                    <td dir="rtl" style="padding:20px 22px;text-align:right;vertical-align:middle;">
+                      <p style="margin:0 0 7px;color:#0d3b45;font-size:16px;line-height:24px;font-weight:800;">${detailLabel}</p>
+                      <p style="margin:0;color:#0d3b45;font-size:21px;line-height:30px;font-weight:800;word-break:break-word;overflow-wrap:anywhere;">${detailValue}</p>
+                      ${detailNote ? `<p style="margin:7px 0 0;color:#64748b;font-size:13px;line-height:22px;word-break:break-word;overflow-wrap:anywhere;">${detailNote}</p>` : ""}
+                    </td>
+                    <td align="center" valign="middle" style="width:92px;padding:0 18px 0 0;">
+                      <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;margin:0 auto;">
+                        <tr><td align="center" valign="middle" style="width:54px;height:54px;border-radius:50%;background:#dff3ed;color:#0d3b45;font-size:30px;line-height:54px;font-weight:400;">◯</td></tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:18px 28px 0;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:separate;border-spacing:0;background:#ffffff;border:1px solid #e0e8e8;border-radius:14px;overflow:hidden;">
+                  <tr>
+                    <td dir="rtl" style="padding:20px 22px;text-align:right;vertical-align:middle;">
+                      <p style="margin:0 0 7px;color:#0d3b45;font-size:16px;line-height:24px;font-weight:800;">ملخص الإشعار</p>
+                      <p style="margin:0;color:#64748b;font-size:14px;line-height:25px;white-space:pre-line;word-break:break-word;overflow-wrap:anywhere;">${message}</p>
+                    </td>
+                    <td align="center" valign="middle" style="width:92px;padding:0 18px 0 0;">
+                      <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;margin:0 auto;">
+                        <tr><td align="center" valign="middle" style="width:54px;height:54px;border-radius:50%;background:#e8f6f0;color:#0d3b45;font-size:19px;line-height:54px;font-weight:800;letter-spacing:1px;">•••</td></tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td align="center" style="padding:28px 28px 0;text-align:center;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;">
+                  <tr>
+                    <td style="height:1px;line-height:1px;font-size:0;border-top:1px dashed #c7d6d4;">&nbsp;</td>
+                    <td align="center" valign="middle" style="width:40px;height:40px;border-radius:50%;background:#e8f6f0;color:#0d3b45;font-size:17px;line-height:40px;">✉</td>
+                    <td style="height:1px;line-height:1px;font-size:0;border-top:1px dashed #c7d6d4;">&nbsp;</td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            ${actionButton}
+            <tr>
+              <td style="padding:0;background:#f7fcfa;border-top:1px solid #e3efeb;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;table-layout:fixed;border-collapse:collapse;">
+                  <tr>
+                    <td dir="rtl" align="center" style="padding:20px 7px;border-left:1px solid #dceae5;text-align:center;">
+                      <p style="margin:0;color:#0d3b45;font-size:13px;line-height:20px;font-weight:800;">شحن سريع</p><p style="margin:3px 0 0;color:#64748b;font-size:11px;line-height:17px;">إلى جميع المناطق</p>
+                    </td>
+                    <td dir="rtl" align="center" style="padding:20px 7px;border-left:1px solid #dceae5;text-align:center;">
+                      <p style="margin:0;color:#0d3b45;font-size:13px;line-height:20px;font-weight:800;">تسوق آمن</p><p style="margin:3px 0 0;color:#64748b;font-size:11px;line-height:17px;">خصوصيتك محمية</p>
+                    </td>
+                    <td dir="rtl" align="center" style="padding:20px 7px;border-left:1px solid #dceae5;text-align:center;">
+                      <p style="margin:0;color:#0d3b45;font-size:13px;line-height:20px;font-weight:800;">جودة مضمونة</p><p style="margin:3px 0 0;color:#64748b;font-size:11px;line-height:17px;">منتجات مختارة بعناية</p>
+                    </td>
+                    <td dir="rtl" align="center" style="padding:20px 7px;text-align:center;">
+                      <p style="margin:0;color:#0d3b45;font-size:13px;line-height:20px;font-weight:800;">دعم احترافي</p><p style="margin:3px 0 0;color:#64748b;font-size:11px;line-height:17px;">نحن هنا لمساعدتك</p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td dir="rtl" align="center" style="padding:24px 28px 26px;background:#ffffff;text-align:center;">
+                <p style="margin:0;color:#0d3b45;font-size:14px;line-height:23px;font-weight:800;">إيلافيا&nbsp;&nbsp;|&nbsp;&nbsp;لمسة أنيقة... تليق بك.</p>
+                <p style="margin:6px 0 0;color:#94a3b8;font-size:11px;line-height:20px;">© ${currentYear} إيلافيا. جميع الحقوق محفوظة.</p>
               </td>
             </tr>
           </table>
@@ -541,7 +619,9 @@ async function sendMerchantNotificationEmail(args: {
     return {
       ok: false,
       skipped: false,
-      error: s(payload?.message || payload?.name || `RESEND_HTTP_${response.status}`),
+      error: s(
+        payload?.message || payload?.name || `RESEND_HTTP_${response.status}`,
+      ),
     };
   }
 
@@ -622,7 +702,9 @@ async function getEligibleRecipients(args: {
   const userIds = users.map((user: { id: string }) => user.id);
   const ownerIds = new Set(
     users
-      .filter((user: { role: string }) => ["owner", "admin"].includes(user.role))
+      .filter((user: { role: string }) =>
+        ["owner", "admin"].includes(user.role),
+      )
       .map((user: { id: string }) => user.id),
   );
 
@@ -666,7 +748,9 @@ async function getEligibleRecipients(args: {
       throw new Error(permissionResult.error.message);
     }
 
-    for (const row of Array.isArray(permissionResult.data) ? permissionResult.data : []) {
+    for (const row of Array.isArray(permissionResult.data)
+      ? permissionResult.data
+      : []) {
       const roleId = s(row?.role_id);
       const permission = s(row?.permission?.key);
       if (!roleId || !permission) continue;
@@ -689,10 +773,9 @@ async function getEligibleRecipients(args: {
   }
 
   const preferenceByUser = new Map(
-    (Array.isArray(preferencesResult.data) ? preferencesResult.data : []).map((row: any) => [
-      s(row?.store_user_id),
-      row,
-    ]),
+    (Array.isArray(preferencesResult.data) ? preferencesResult.data : []).map(
+      (row: any) => [s(row?.store_user_id), row],
+    ),
   );
 
   return users
@@ -700,7 +783,8 @@ async function getEligibleRecipients(args: {
       if (ownerIds.has(user.id)) return true;
 
       for (const roleId of activeRolesByUser.get(user.id) || []) {
-        if (permissionsByRole.get(roleId)?.has(definition.permission)) return true;
+        if (permissionsByRole.get(roleId)?.has(definition.permission))
+          return true;
       }
 
       return false;
@@ -846,12 +930,10 @@ async function sendPushToStore(args: {
   const tokenRows: Array<{ token: string; storeUserId: string }> = (
     Array.isArray(tokensResult.data) ? tokensResult.data : []
   )
-    .map(
-      (row: any): { token: string; storeUserId: string } => ({
-        token: s(row?.expo_push_token),
-        storeUserId: s(row?.store_user_id),
-      }),
-    )
+    .map((row: any): { token: string; storeUserId: string } => ({
+      token: s(row?.expo_push_token),
+      storeUserId: s(row?.store_user_id),
+    }))
     .filter((row: { token: string; storeUserId: string }) => {
       return Boolean(row.token && row.storeUserId);
     });
@@ -920,7 +1002,9 @@ function queueEmails(args: {
           "MERCHANT_NOTIFICATION_EMAIL_FAILED",
           result.status === "rejected"
             ? result.reason
-            : ("error" in result.value ? result.value.error : "EMAIL_FAILED"),
+            : "error" in result.value
+              ? result.value.error
+              : "EMAIL_FAILED",
         );
       }
     }
@@ -1192,8 +1276,7 @@ export async function notifyMerchantCartItemAdded(input: {
       ? `${actorName} أضاف منتجًا للسلة`
       : "زائر أضاف منتجًا للسلة";
 
-  const body =
-    qtyAdded > 1 ? `${productName} بكمية ${qtyAdded}.` : productName;
+  const body = qtyAdded > 1 ? `${productName} بكمية ${qtyAdded}.` : productName;
 
   return createMerchantNotification({
     storeId,
