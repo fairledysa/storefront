@@ -60,6 +60,17 @@ type Recipient = {
   emailEnabled: boolean;
 };
 
+type StoreEmailBrand = {
+  name: string;
+  logoUrl: string | null;
+};
+
+type EmailDetail = {
+  label: string;
+  value: string;
+  note?: string | null;
+};
+
 const BADGE_NOTIFICATION_TYPES = [
   "order_new",
   "question_new",
@@ -203,6 +214,11 @@ function escapeHtml(value: string) {
   })[char] || char);
 }
 
+function safeHttpUrl(value: unknown) {
+  const url = s(value);
+  return /^https?:\/\//i.test(url) ? url : null;
+}
+
 function merchantActionUrl(actionPath: string | null | undefined) {
   const path = s(actionPath);
   if (!path) return null;
@@ -220,11 +236,106 @@ function merchantActionUrl(actionPath: string | null | undefined) {
   return `${origin.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
+async function getStoreEmailBrand(storeId: string): Promise<StoreEmailBrand> {
+  const fallback: StoreEmailBrand = {
+    name: "متجرك",
+    logoUrl: null,
+  };
+
+  try {
+    const result = await (controlDb() as any)
+      .from("stores")
+      .select("name,logo_url")
+      .eq("id", storeId)
+      .limit(1)
+      .maybeSingle();
+
+    if (result.error || !result.data) return fallback;
+
+    return {
+      name: s(result.data?.name) || fallback.name,
+      logoUrl: safeHttpUrl(result.data?.logo_url),
+    };
+  } catch (error) {
+    console.error("MERCHANT_EMAIL_BRAND_LOAD_FAILED", error);
+    return fallback;
+  }
+}
+
+function emailIntro(type: NotificationType) {
+  switch (type) {
+    case "order_new":
+      return "وردك طلب جديد ويحتاج إلى مراجعتك.";
+    case "bank_transfer_proof_new":
+      return "رفع العميل إيصال تحويل جديد بانتظار المراجعة.";
+    case "question_new":
+      return "وردك سؤال جديد من أحد عملاء متجرك.";
+    case "review_new":
+      return "وردك تقييم جديد من أحد عملاء متجرك.";
+    case "comment_new":
+      return "وردك تعليق جديد يحتاج إلى مراجعتك.";
+    case "stock_low":
+      return "وصل مخزون أحد منتجات متجرك إلى الحد المنخفض.";
+    case "stock_out":
+      return "نفد مخزون أحد منتجات متجرك.";
+    case "customer_registered":
+      return "سجّل عميل جديد في متجرك.";
+    default:
+      return "لديك إشعار جديد يحتاج إلى انتباهك.";
+  }
+}
+
+function emailDetail(type: NotificationType, payload: Record<string, any> | undefined): EmailDetail {
+  const data = payload || {};
+
+  if (type === "order_new") {
+    const orderNumber = s(data.orderNumber || data.invoiceNo || data.orderId);
+    const total = s(data.totalAmount);
+    const currency = s(data.currency) || "SAR";
+
+    return {
+      label: "رقم الطلب",
+      value: orderNumber ? `#${orderNumber}` : "طلب جديد",
+      note: total ? `إجمالي الطلب: ${total} ${currency}` : null,
+    };
+  }
+
+  if (type === "question_new") {
+    return {
+      label: "المرسل",
+      value: s(data.authorName || data.authorEmail) || "عميل",
+      note: s(data.targetType) === "product" ? "سؤال على أحد منتجات متجرك" : null,
+    };
+  }
+
+  if (type === "bank_transfer_proof_new") {
+    return {
+      label: "الحالة",
+      value: "إيصال تحويل جديد",
+      note: "يرجى مراجعة التحويل من لوحة التحكم.",
+    };
+  }
+
+  return {
+    label: "نوع الإشعار",
+    value: "إشعار جديد",
+    note: null,
+  };
+}
+
+function fallbackBrandMark(name: string) {
+  const clean = s(name);
+  return escapeHtml(clean.slice(0, 2) || "م");
+}
+
 async function sendMerchantNotificationEmail(args: {
   to: string;
   title: string;
   body: string;
   actionUrl?: string | null;
+  brand: StoreEmailBrand;
+  notificationType: NotificationType;
+  payload?: Record<string, any>;
 }) {
   const apiKey = s(process.env.RESEND_API_KEY);
   const from = s(process.env.RESEND_FROM_EMAIL || process.env.EMAIL_FROM);
@@ -234,8 +345,110 @@ async function sendMerchantNotificationEmail(args: {
     return { ok: false, skipped: true };
   }
 
-  const action = s(args.actionUrl);
-  const html = `<!doctype html><html dir="rtl" lang="ar"><body style="margin:0;background:#f6f8fa;padding:28px 12px;font-family:Tahoma,Arial,sans-serif;color:#1f2933;"><table role="presentation" width="100%"><tr><td align="center"><table role="presentation" width="600" style="max-width:600px;width:100%;background:#fff;border:1px solid #e2e8f0;border-radius:18px;"><tr><td style="height:7px;background:#0d3b45">&nbsp;</td></tr><tr><td style="padding:28px 32px;text-align:right"><h1 style="margin:0 0 14px;color:#0d3b45;font-size:21px">${escapeHtml(args.title)}</h1><p style="margin:0;color:#334155;font-size:15px;line-height:1.9">${escapeHtml(args.body)}</p>${action ? `<p style="margin:24px 0 0"><a href="${escapeHtml(action)}" style="display:inline-block;padding:12px 18px;border-radius:10px;background:#0d3b45;color:#fff;text-decoration:none;font-weight:700">فتح الإشعار</a></p>` : ""}</td></tr></table></td></tr></table></body></html>`;
+  const action = safeHttpUrl(args.actionUrl);
+  const detail = emailDetail(args.notificationType, args.payload);
+  const brandName = escapeHtml(args.brand.name || "متجرك");
+  const title = escapeHtml(args.title);
+  const body = escapeHtml(args.body);
+  const intro = escapeHtml(emailIntro(args.notificationType));
+  const detailLabel = escapeHtml(detail.label);
+  const detailValue = escapeHtml(detail.value);
+  const detailNote = detail.note ? escapeHtml(detail.note) : "";
+  const currentYear = new Date().getFullYear();
+  const brandLogo = args.brand.logoUrl
+    ? `<img src="${escapeHtml(args.brand.logoUrl)}" alt="${brandName}" width="132" style="display:block;max-width:132px;max-height:56px;width:auto;height:auto;border:0;outline:none;text-decoration:none;" />`
+    : `<span style="display:inline-block;min-width:46px;height:46px;line-height:46px;border-radius:14px;background:#bfe6d8;color:#0d3b45;text-align:center;font-size:20px;font-weight:800;">${fallbackBrandMark(args.brand.name)}</span>`;
+
+  const html = `<!doctype html>
+<html dir="rtl" lang="ar">
+  <head>
+    <meta charSet="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+  </head>
+  <body dir="rtl" style="margin:0;padding:0;background:#f3f6f7;color:#1f2933;font-family:Tahoma,Arial,'Segoe UI',sans-serif;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;line-height:1px;mso-hide:all;">${title} — ${body}</div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;margin:0;padding:0;background:#f3f6f7;">
+      <tr>
+        <td align="center" style="padding:30px 12px;">
+          <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="width:600px;max-width:600px;background:#ffffff;border:1px solid #e4ecec;border-radius:18px;overflow:hidden;box-shadow:0 8px 24px rgba(13,59,69,.08);">
+            <tr>
+              <td style="background:#0d3b45;height:7px;line-height:7px;font-size:0;">&nbsp;</td>
+            </tr>
+            <tr>
+              <td dir="rtl" style="padding:26px 34px 22px;background:#ffffff;text-align:right;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                  <tr>
+                    <td align="right" valign="middle" style="width:72%;text-align:right;">
+                      <p style="margin:0 0 5px;color:#64748b;font-size:12px;line-height:18px;">إشعار من متجرك</p>
+                      <p style="margin:0;color:#0d3b45;font-size:20px;line-height:28px;font-weight:800;">${brandName}</p>
+                    </td>
+                    <td align="left" valign="middle" style="width:28%;text-align:left;">${brandLogo}</td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 34px;">
+                <div style="height:1px;background:#e8eeee;line-height:1px;font-size:0;">&nbsp;</div>
+              </td>
+            </tr>
+            <tr>
+              <td dir="rtl" style="padding:34px 34px 18px;text-align:right;">
+                <span style="display:inline-block;padding:6px 11px;border-radius:999px;background:#edf8f5;color:#0d756c;font-size:12px;font-weight:700;">إشعار جديد</span>
+                <h1 style="margin:16px 0 8px;color:#0d3b45;font-size:29px;line-height:42px;font-weight:800;letter-spacing:0;">${title}</h1>
+                <p style="margin:0;color:#64748b;font-size:16px;line-height:28px;">${intro}</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:10px 34px 0;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f4fbf9;border:1px solid #dcefe9;border-radius:14px;">
+                  <tr>
+                    <td dir="rtl" style="padding:18px 20px;text-align:right;">
+                      <p style="margin:0 0 5px;color:#64748b;font-size:12px;line-height:18px;">${detailLabel}</p>
+                      <p style="margin:0;color:#0d3b45;font-size:18px;line-height:26px;font-weight:800;">${detailValue}</p>
+                      ${detailNote ? `<p style="margin:7px 0 0;color:#64748b;font-size:13px;line-height:21px;">${detailNote}</p>` : ""}
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:14px 34px 0;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#ffffff;border:1px solid #e7eeee;border-radius:14px;">
+                  <tr>
+                    <td dir="rtl" style="padding:17px 20px;text-align:right;">
+                      <p style="margin:0 0 6px;color:#0d3b45;font-size:13px;line-height:20px;font-weight:800;">ملخص الإشعار</p>
+                      <p style="margin:0;color:#475569;font-size:14px;line-height:24px;">${body}</p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            ${action ? `<tr><td align="center" style="padding:28px 34px 34px;text-align:center;"><a href="${escapeHtml(action)}" target="_blank" style="display:inline-block;background:#0d3b45;border:1px solid #0d3b45;border-radius:10px;padding:14px 30px;color:#ffffff;font-size:16px;line-height:20px;font-weight:800;text-decoration:none;">فتح الإشعار</a></td></tr>` : ""}
+            <tr>
+              <td style="padding:0 34px;">
+                <div style="height:1px;background:#e8eeee;line-height:1px;font-size:0;">&nbsp;</div>
+              </td>
+            </tr>
+            <tr>
+              <td dir="rtl" style="padding:20px 26px;background:#fbfcfc;text-align:center;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+                  <tr>
+                    <td style="width:33.33%;padding:0 6px;text-align:center;color:#64748b;font-size:12px;line-height:20px;">إشعارات فورية</td>
+                    <td style="width:33.33%;padding:0 6px;text-align:center;color:#64748b;font-size:12px;line-height:20px;border-right:1px solid #e4ecec;border-left:1px solid #e4ecec;">وصول مباشر</td>
+                    <td style="width:33.33%;padding:0 6px;text-align:center;color:#64748b;font-size:12px;line-height:20px;">إدارة منظمة</td>
+                  </tr>
+                </table>
+                <p style="margin:18px 0 0;color:#94a3b8;font-size:11px;line-height:20px;">هذا إشعار تلقائي من ${brandName}. الرجاء عدم الرد على هذا البريد.</p>
+                <p style="margin:4px 0 0;color:#94a3b8;font-size:11px;line-height:20px;">© ${currentYear} ${brandName}. جميع الحقوق محفوظة.</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -248,9 +461,17 @@ async function sendMerchantNotificationEmail(args: {
       to,
       subject: args.title,
       html,
-      text: [args.title, "", args.body, action ? `فتح الإشعار: ${action}` : ""]
+      text: [
+        args.brand.name,
+        args.title,
+        emailIntro(args.notificationType),
+        `${detail.label}: ${detail.value}`,
+        detail.note || "",
+        args.body,
+        action ? `فتح الإشعار: ${action}` : "",
+      ]
         .filter(Boolean)
-        .join("\n"),
+        .join("\n\n"),
     }),
   });
 
@@ -600,9 +821,12 @@ async function sendPushToStore(args: {
 }
 
 function queueEmails(args: {
+  storeId: string;
   recipients: Recipient[];
+  type: NotificationType;
   title: string;
   body: string;
+  payload?: Record<string, any>;
   actionPath?: string | null;
 }) {
   const recipients = args.recipients.filter(
@@ -614,6 +838,7 @@ function queueEmails(args: {
   const actionUrl = merchantActionUrl(args.actionPath);
 
   after(async () => {
+    const brand = await getStoreEmailBrand(args.storeId);
     const results = await Promise.allSettled(
       recipients.map((recipient) =>
         sendMerchantNotificationEmail({
@@ -621,6 +846,9 @@ function queueEmails(args: {
           title: args.title,
           body: args.body,
           actionUrl,
+          brand,
+          notificationType: args.type,
+          payload: args.payload,
         }),
       ),
     );
@@ -629,7 +857,9 @@ function queueEmails(args: {
       if (result.status === "rejected" || !result.value.ok) {
         console.error(
           "MERCHANT_NOTIFICATION_EMAIL_FAILED",
-          result.status === "rejected" ? result.reason : result.value.error || "EMAIL_FAILED",
+          result.status === "rejected"
+            ? result.reason
+            : ("error" in result.value ? result.value.error : "EMAIL_FAILED"),
         );
       }
     }
@@ -749,9 +979,12 @@ export async function createMerchantNotification(
   // email preference. It runs after the route response and never blocks
   // checkout, cart, or question submission.
   queueEmails({
+    storeId,
     recipients,
+    type: input.type,
     title,
     body,
+    payload: input.payload,
     actionPath: input.actionPath,
   });
 
