@@ -30,8 +30,31 @@ type CreateNotificationInput = {
   actionPath?: string | null;
   priority?: "low" | "normal" | "high" | "urgent";
   dedupeKey?: string | null;
-  payload?: Record<string, unknown>;
+  payload?: Record<string, any>;
+  push?: boolean;
 };
+
+type ExpoMessage = {
+  to: string;
+  title: string;
+  body: string;
+  sound?: "default" | "cash_register_kaching.wav";
+  priority?: "default" | "normal" | "high";
+  channelId?: string;
+  badge?: number;
+  data?: Record<string, any>;
+};
+
+const BADGE_NOTIFICATION_TYPES = [
+  "order_new",
+  "question_new",
+  "bank_transfer_proof_new",
+  "stock_low",
+  "stock_out",
+  "system",
+];
+
+const PUSH_NOTIFICATION_TYPES = ["order_new", "question_new"];
 
 function s(value: unknown) {
   return String(value ?? "").trim();
@@ -47,46 +70,335 @@ function shortId(id: string) {
   return value.length > 8 ? value.slice(0, 8) : value;
 }
 
-/**
- * مصدر الإشعارات واحد لكل التطبيقات:
- * - قاعدة البيانات تحدد الموظفين المستحقين حسب الدور/الصلاحية.
- * - trigger الـoutbox ينشئ إرسال Push/Email وفق تفضيلات كل موظف.
- * - storefront لا يرسل البريد أو الـPush مباشرة ولا يبطئ checkout.
- */
-export async function createMerchantNotification(
-  input: CreateNotificationInput,
-) {
-  const storeId = s(input.storeId);
-  const title = s(input.title);
-  const entityId = s(input.entityId);
-
-  if (!storeId) throw new Error("STORE_ID_REQUIRED");
-  if (!title) throw new Error("NOTIFICATION_TITLE_REQUIRED");
-
-  const result = await (controlDb() as any).rpc(
-    "elyaia_dispatch_merchant_notification",
-    {
-      p_store_id: storeId,
-      p_type: input.type,
-      p_source: "storefront",
-      p_entity_type: input.entityType,
-      p_entity_id: entityId || null,
-      p_title: title,
-      p_body: s(input.body),
-      p_action_path: s(input.actionPath) || null,
-      p_priority: input.priority || "normal",
-      p_payload: input.payload || {},
-      p_dedupe_key: s(input.dedupeKey) || null,
-    },
+function isExpoPushToken(value: string) {
+  return (
+    /^ExponentPushToken\[[^\]]+\]$/.test(value) ||
+    /^ExpoPushToken\[[^\]]+\]$/.test(value)
   );
+}
 
-  if (result.error) {
-    throw new Error(result.error.message || "MERCHANT_NOTIFICATION_DISPATCH_FAILED");
+function chunk<T>(items: T[], size: number) {
+  const out: T[][] = [];
+
+  for (let index = 0; index < items.length; index += size) {
+    out.push(items.slice(index, index + size));
+  }
+
+  return out;
+}
+
+function isActiveStoreUser(row: any) {
+  const status = s(row?.status).toLowerCase();
+
+  if (!status) return true;
+
+  return ["active", "enabled", "owner"].includes(status);
+}
+
+function isBadgeNotificationType(value: unknown) {
+  return BADGE_NOTIFICATION_TYPES.includes(String(value || ""));
+}
+
+function shouldSendPush(type: NotificationType, push?: boolean) {
+  if (!push) return false;
+
+  return PUSH_NOTIFICATION_TYPES.includes(type);
+}
+
+function pushChannelId(type: NotificationType) {
+  if (type === "order_new") return "merchant-orders-payment";
+  if (type === "question_new") return "merchant-questions";
+
+  return "merchant-general";
+}
+
+async function sendExpoPushMessages(messages: ExpoMessage[]) {
+  const valid = messages.filter((message) => isExpoPushToken(message.to));
+
+  if (!valid.length) {
+    return {
+      ok: true,
+      sent: 0,
+      invalid: messages.length,
+    };
+  }
+
+  let sent = 0;
+
+  for (const part of chunk(valid, 100)) {
+    const response = await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Accept-Encoding": "gzip, deflate",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(part),
+    });
+
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      throw new Error(
+        data?.errors?.[0]?.message ||
+          data?.message ||
+          `EXPO_PUSH_FAILED_${response.status}`,
+      );
+    }
+
+    sent += Array.isArray(data?.data) ? data.data.length : part.length;
   }
 
   return {
     ok: true,
-    id: s(result.data),
+    sent,
+    invalid: messages.length - valid.length,
+  };
+}
+
+async function getStoreUserIds(storeId: string) {
+  const db = controlDb() as any;
+
+  const result = await db
+    .from("store_users")
+    .select("id,status")
+    .eq("store_id", storeId);
+
+  if (result.error) {
+    throw new Error(result.error.message);
+  }
+
+  return (Array.isArray(result.data) ? result.data : [])
+    .filter(isActiveStoreUser)
+    .map((row: any) => s(row?.id))
+    .filter(Boolean);
+}
+
+async function createRecipients(args: {
+  storeId: string;
+  notificationId: string;
+  storeUserIds: string[];
+}) {
+  if (!args.storeUserIds.length) return;
+
+  const db = controlDb() as any;
+
+  const rows = args.storeUserIds.map((storeUserId) => ({
+    store_id: args.storeId,
+    notification_id: args.notificationId,
+    store_user_id: storeUserId,
+  }));
+
+  const result = await db
+    .from("merchant_notification_recipients")
+    .upsert(rows, {
+      onConflict: "notification_id,store_user_id",
+      ignoreDuplicates: true,
+    });
+
+  if (result.error) {
+    throw new Error(result.error.message);
+  }
+}
+
+async function countUnreadBadgeByStoreUsers(args: {
+  storeId: string;
+  storeUserIds: string[];
+}) {
+  const out = new Map<string, number>();
+
+  if (!args.storeUserIds.length) return out;
+
+  const db = controlDb() as any;
+
+  const result = await db
+    .from("merchant_notification_recipients")
+    .select(
+      `
+      store_user_id,
+      notification:merchant_notifications!inner (
+        type
+      )
+    `,
+    )
+    .eq("store_id", args.storeId)
+    .in("store_user_id", args.storeUserIds)
+    .is("read_at", null)
+    .is("archived_at", null)
+    .in("notification.type", BADGE_NOTIFICATION_TYPES);
+
+  if (result.error) {
+    throw new Error(result.error.message);
+  }
+
+  for (const row of Array.isArray(result.data) ? result.data : []) {
+    const storeUserId = s(row?.store_user_id);
+    const notification = row?.notification || row?.merchant_notifications || {};
+
+    if (!storeUserId || !isBadgeNotificationType(notification?.type)) continue;
+
+    out.set(storeUserId, (out.get(storeUserId) || 0) + 1);
+  }
+
+  return out;
+}
+
+async function sendPushToStore(args: {
+  storeId: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  data: Record<string, any>;
+}) {
+  const db = controlDb() as any;
+
+  const tokensResult = await db
+    .from("merchant_push_tokens")
+    .select("expo_push_token,store_user_id")
+    .eq("store_id", args.storeId)
+    .eq("enabled", true);
+
+  if (tokensResult.error) {
+    throw new Error(tokensResult.error.message);
+  }
+
+   const tokenRows: Array<{ token: string; storeUserId: string }> = (
+    Array.isArray(tokensResult.data) ? tokensResult.data : []
+  )
+    .map(
+      (row: any): { token: string; storeUserId: string } => ({
+        token: s(row?.expo_push_token),
+        storeUserId: s(row?.store_user_id),
+      }),
+    )
+    .filter((row: { token: string; storeUserId: string }) => {
+      return Boolean(row.token && row.storeUserId);
+    });
+
+  const badgeCounts = await countUnreadBadgeByStoreUsers({
+    storeId: args.storeId,
+    storeUserIds: Array.from(new Set(tokenRows.map((row) => row.storeUserId))),
+  });
+
+  const channelId = pushChannelId(args.type);
+
+  const messages: ExpoMessage[] = tokenRows.map((row) => ({
+    to: row.token,
+    title: args.title,
+    body: args.body || args.title,
+    sound: args.type === "order_new" ? "cash_register_kaching.wav" : "default",
+    priority: "high",
+    channelId,
+    badge: badgeCounts.get(row.storeUserId) || 0,
+    data: {
+      ...args.data,
+      channelId,
+      countsInBadge: isBadgeNotificationType(args.type),
+    },
+  }));
+
+  return sendExpoPushMessages(messages);
+}
+
+export async function createMerchantNotification(
+  input: CreateNotificationInput,
+) {
+  const db = controlDb() as any;
+
+  const storeId = s(input.storeId);
+  const title = s(input.title);
+  const body = s(input.body);
+
+  if (!storeId) throw new Error("STORE_ID_REQUIRED");
+  if (!title) throw new Error("NOTIFICATION_TITLE_REQUIRED");
+
+  if (input.dedupeKey) {
+    const existing = await db
+      .from("merchant_notifications")
+      .select("id")
+      .eq("store_id", storeId)
+      .eq("dedupe_key", input.dedupeKey)
+      .limit(1)
+      .maybeSingle();
+
+    if (existing.error) {
+      throw new Error(existing.error.message);
+    }
+
+    if (existing.data?.id) {
+      return {
+        ok: true,
+        id: String(existing.data.id),
+        duplicated: true,
+        push: null,
+      };
+    }
+  }
+
+  const insertResult = await db
+    .from("merchant_notifications")
+    .insert({
+      store_id: storeId,
+      type: input.type,
+      source: "storefront",
+      entity_type: input.entityType,
+      entity_id: input.entityId || null,
+      title,
+      body,
+      action_path: input.actionPath || null,
+      priority: input.priority || "normal",
+      dedupe_key: input.dedupeKey || null,
+      payload: input.payload || {},
+    })
+    .select("id,created_at")
+    .single();
+
+  if (insertResult.error || !insertResult.data?.id) {
+    throw new Error(
+      insertResult.error?.message || "FAILED_TO_CREATE_NOTIFICATION",
+    );
+  }
+
+  const notificationId = String(insertResult.data.id);
+  const createdAt = String(insertResult.data.created_at || "");
+  const storeUserIds = await getStoreUserIds(storeId);
+
+  await createRecipients({
+    storeId,
+    notificationId,
+    storeUserIds,
+  });
+
+  let push: unknown = null;
+
+  if (shouldSendPush(input.type, input.push)) {
+    try {
+      push = await sendPushToStore({
+        storeId,
+        type: input.type,
+        title,
+        body,
+        data: {
+          notificationId,
+          type: input.type,
+          entityType: input.entityType,
+          entityId: input.entityId || null,
+          actionPath: input.actionPath || null,
+          priority: input.priority || "normal",
+          createdAt,
+          payload: input.payload || {},
+        },
+      });
+    } catch (error: any) {
+      console.error("MERCHANT_PUSH_SEND_FAILED", error);
+    }
+  }
+
+  return {
+    ok: true,
+    id: notificationId,
+    duplicated: false,
+    push,
   };
 }
 
@@ -108,7 +420,7 @@ export async function notifyMerchantNewOrder(input: {
 }) {
   const orderId = s(input.order?.id);
 
-  if (!s(input.storeId) || !orderId) return null;
+  if (!input.storeId || !orderId) return null;
 
   const orderNo =
     s(input.order?.order_number) ||
@@ -117,7 +429,7 @@ export async function notifyMerchantNewOrder(input: {
 
   const customerName = s(input.customer?.full_name) || "عميل";
   const totalAmount = n(input.order?.total_amount);
-  const currency = s(input.order?.currency) || "SAR";
+  const totalText = `${totalAmount.toFixed(2)} ${s(input.order?.currency) || "SAR"}`;
 
   return createMerchantNotification({
     storeId: input.storeId,
@@ -125,7 +437,7 @@ export async function notifyMerchantNewOrder(input: {
     entityType: "order",
     entityId: orderId,
     title: `طلب جديد #${orderNo}`,
-    body: `وصل طلب جديد من ${customerName} بقيمة ${totalAmount.toFixed(2)} ${currency}.`,
+    body: `وصلك طلب جديد بقيمة ${totalText}`,
     actionPath: `/orders/${orderId}`,
     priority: "high",
     dedupeKey: `order_new:${orderId}`,
@@ -140,59 +452,7 @@ export async function notifyMerchantNewOrder(input: {
       customerPhone: input.customer?.phone ?? null,
       customerEmail: input.customer?.email ?? null,
     },
-  });
-}
-
-export async function notifyMerchantBankTransferProof(input: {
-  storeId: string;
-  order: {
-    id: string;
-    order_number?: string | number | null;
-    invoice_no?: string | number | null;
-    total_amount?: string | number | null;
-    currency?: string | null;
-  };
-  proof: {
-    bank_account_id?: string | null;
-    sender_account_name?: string | null;
-    receipt_url?: string | null;
-    receipt_filename?: string | null;
-  };
-}) {
-  const orderId = s(input.order?.id);
-
-  if (!s(input.storeId) || !orderId) return null;
-
-  const orderNo =
-    s(input.order?.order_number) ||
-    s(input.order?.invoice_no) ||
-    shortId(orderId);
-
-  const totalAmount = n(input.order?.total_amount);
-  const currency = s(input.order?.currency) || "SAR";
-  const senderName = s(input.proof?.sender_account_name) || "غير محدد";
-
-  return createMerchantNotification({
-    storeId: input.storeId,
-    type: "bank_transfer_proof_new",
-    entityType: "order",
-    entityId: orderId,
-    title: `إثبات تحويل بنكي لطلب #${orderNo}`,
-    body: `تم رفع إيصال تحويل من ${senderName} لطلب بقيمة ${totalAmount.toFixed(2)} ${currency}.`,
-    actionPath: `/orders/${orderId}`,
-    priority: "high",
-    dedupeKey: `bank_transfer_proof_new:${orderId}`,
-    payload: {
-      orderId,
-      orderNumber: orderNo,
-      invoiceNo: input.order?.invoice_no ?? null,
-      totalAmount: input.order?.total_amount ?? null,
-      currency: input.order?.currency ?? null,
-      bankAccountId: input.proof?.bank_account_id ?? null,
-      senderAccountName: input.proof?.sender_account_name ?? null,
-      receiptUrl: input.proof?.receipt_url ?? null,
-      receiptFilename: input.proof?.receipt_filename ?? null,
-    },
+    push: true,
   });
 }
 
@@ -211,7 +471,7 @@ export async function notifyMerchantNewQuestion(input: {
 }) {
   const questionId = s(input.question?.id);
 
-  if (!s(input.storeId) || !questionId) return null;
+  if (!input.storeId || !questionId) return null;
 
   const authorName = s(input.question?.author_name) || "عميل";
   const questionText =
@@ -224,7 +484,7 @@ export async function notifyMerchantNewQuestion(input: {
     entityId: questionId,
     title: "سؤال جديد من عميل",
     body: `${authorName}: ${questionText}`,
-    actionPath: "/feedback",
+    actionPath: "/(app)/feedback",
     priority: "normal",
     dedupeKey: `question_new:${questionId}`,
     payload: {
@@ -235,69 +495,68 @@ export async function notifyMerchantNewQuestion(input: {
       authorEmail: input.question?.author_email ?? null,
       status: input.question?.status ?? null,
     },
+    push: true,
   });
 }
 
-/**
- * لا ننشئ إشعارًا عند كل إضافة للسلة:
- * هذا حدث عالي التكرار ولا يصح أن يزعج التاجر أو يرفع عداد الجرس.
- * السلة المتروكة لها job مستقل لاحقًا عند تحقق شروطها الفعلية.
- */
-export async function notifyMerchantCartItemAdded(_input?: unknown) {
-  void _input;
-  return { ok: true, skipped: true };
-}
+export async function notifyMerchantCartItemAdded(input: {
+  storeId: string;
+  cart: {
+    id: string;
+    user_id?: string | null;
+  };
+  product: {
+    id: string;
+    name?: string | null;
+    image_url?: string | null;
+  };
+  actor: {
+    type: "customer" | "visitor";
+    name?: string | null;
+  };
+  qtyAdded: number;
+  qtyInCart: number;
+}) {
+  const storeId = s(input.storeId);
+  const cartId = s(input.cart?.id);
+  const productId = s(input.product?.id);
 
+  if (!storeId || !cartId || !productId) return null;
 
-function merchantDeliveryBaseUrl() {
-  const configured = s(process.env.MERCHANT_INTERNAL_URL).replace(/\/$/, "");
-  if (configured) return configured;
+  const actorName =
+    s(input.actor?.name) ||
+    (input.actor?.type === "customer" ? "عميل" : "زائر");
 
-  // التطوير المحلي المعتاد: لوحة التاجر تعمل على 3002.
-  return process.env.NODE_ENV !== "production" ? "http://localhost:3002" : "";
-}
+  const productName = s(input.product?.name) || "منتج";
+  const qtyAdded = Math.max(1, Math.floor(n(input.qtyAdded)));
 
-/**
- * يطلب من لوحة التاجر معالجة deliveries الخاصة بهذا الإشعار فقط.
- * لا يرسل storefront البريد أو Push بنفسه ولا يبطئ checkout؛ التنفيذ يستدعى عبر after().
- */
-export async function processMerchantNotificationDeliveryNow(notificationId: unknown) {
-  const id = s(notificationId);
-  const baseUrl = merchantDeliveryBaseUrl();
-  const secret = s(process.env.MERCHANT_DELIVERY_SECRET || process.env.CRON_SECRET);
+  const title =
+    input.actor?.type === "customer"
+      ? `${actorName} أضاف منتجًا للسلة`
+      : "زائر أضاف منتجًا للسلة";
 
-  if (!id || !baseUrl || !secret) {
-    console.error("MERCHANT_NOTIFICATION_DELIVERY_CONFIG_MISSING", {
-      hasNotificationId: Boolean(id),
-      hasMerchantUrl: Boolean(baseUrl),
-      hasDeliverySecret: Boolean(secret),
-    });
-    return { ok: false, skipped: true };
-  }
+  const body =
+    qtyAdded > 1 ? `${productName} بكمية ${qtyAdded}.` : productName;
 
-  const response = await fetch(
-    `${baseUrl}/api/internal/notification-delivery/process`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${secret}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ notificationId: id }),
-      cache: "no-store",
+  return createMerchantNotification({
+    storeId,
+    type: "cart_item_added",
+    entityType: "product",
+    entityId: productId,
+    title,
+    body,
+    actionPath: "/(app)/marketing/abandoned-carts",
+    priority: "low",
+    payload: {
+      cartId,
+      productId,
+      productName,
+      productImageUrl: input.product?.image_url ?? null,
+      actorType: input.actor?.type,
+      actorName,
+      qtyAdded,
+      qtyInCart: input.qtyInCart,
     },
-  );
-
-  const payload = await response.json().catch(() => null);
-
-  if (!response.ok || !payload?.ok) {
-    console.error("MERCHANT_NOTIFICATION_DELIVERY_PROCESS_FAILED", {
-      notificationId: id,
-      status: response.status,
-      payload,
-    });
-    return { ok: false, status: response.status };
-  }
-
-  return { ok: true, payload };
+    push: false,
+  });
 }
