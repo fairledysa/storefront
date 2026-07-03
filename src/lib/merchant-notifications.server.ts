@@ -331,21 +331,21 @@ async function getStoreEmailBrand(storeId: string): Promise<StoreEmailBrand> {
 function emailIntro(type: NotificationType) {
   switch (type) {
     case "order_new":
-      return "وردك طلب جديد ويحتاج إلى مراجعتك.";
+      return "ورد طلب جديد يحتاج إلى مراجعتك.";
     case "bank_transfer_proof_new":
       return "رفع العميل إيصال تحويل جديد بانتظار المراجعة.";
     case "question_new":
-      return "وردك سؤال جديد من أحد عملاء متجرك.";
+      return "وردك سؤال جديد من أحد العملاء.";
     case "review_new":
-      return "وردك تقييم جديد من أحد عملاء متجرك.";
+      return "وردك تقييم جديد من أحد العملاء.";
     case "comment_new":
-      return "وردك تعليق جديد يحتاج إلى مراجعتك.";
+      return "ورد تعليق جديد يحتاج إلى مراجعتك.";
     case "stock_low":
-      return "وصل مخزون أحد منتجات متجرك إلى الحد المنخفض.";
+      return "وصل مخزون أحد المنتجات إلى الحد المنخفض.";
     case "stock_out":
-      return "نفد مخزون أحد منتجات متجرك.";
+      return "نفد مخزون أحد المنتجات.";
     case "customer_registered":
-      return "سجّل عميل جديد في متجرك.";
+      return "سجّل عميل جديد.";
     default:
       return "لديك إشعار جديد يحتاج إلى انتباهك.";
   }
@@ -458,8 +458,7 @@ async function sendMerchantNotificationEmail(args: {
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
                   <tr>
                     <td align="right" valign="middle" style="text-align:right;">
-                      <p style="margin:0 0 5px;color:#64748b;font-size:12px;line-height:18px;">تنبيه من متجرك</p>
-                      <p style="margin:0;color:#0d3b45;font-size:18px;line-height:26px;font-weight:800;">${brandName}</p>
+                      <p style="margin:0;color:#64748b;font-size:12px;line-height:18px;">إشعار جديد</p>
                     </td>
                     <td align="left" valign="middle" style="width:180px;text-align:left;">${logo}</td>
                   </tr>
@@ -471,7 +470,6 @@ async function sendMerchantNotificationEmail(args: {
             </tr>
             <tr>
               <td dir="rtl" style="padding:34px 34px 12px;text-align:right;">
-                <p style="margin:0 0 10px;color:#0d756c;font-size:13px;line-height:20px;font-weight:800;">يتطلب انتباهك</p>
                 <h1 style="margin:0;color:#0d3b45;font-size:30px;line-height:42px;font-weight:800;letter-spacing:0;">${title}</h1>
                 <p style="margin:10px 0 0;color:#64748b;font-size:16px;line-height:27px;">${intro}</p>
               </td>
@@ -498,8 +496,8 @@ async function sendMerchantNotificationEmail(args: {
             ${action ? `<tr><td align="center" style="padding:30px 34px 34px;text-align:center;"><a href="${escapeHtml(action)}" target="_blank" style="display:inline-block;background:#0d3b45;border-radius:10px;padding:14px 30px;color:#ffffff;font-size:16px;line-height:20px;font-weight:800;text-decoration:none;">عرض التفاصيل في لوحة التحكم</a></td></tr>` : ""}
             <tr>
               <td dir="rtl" style="padding:22px 34px 24px;background:#fbfcfc;border-top:1px solid #e8eeee;text-align:center;">
-                <p style="margin:0;color:#94a3b8;font-size:11px;line-height:20px;">تم إرسال هذا البريد لأن إشعاراتك البريدية مفعّلة في ${brandName}.</p>
-                <p style="margin:4px 0 0;color:#94a3b8;font-size:11px;line-height:20px;">© ${currentYear} ${brandName}. جميع الحقوق محفوظة.</p>
+                <p style="margin:0;color:#94a3b8;font-size:11px;line-height:20px;">هذا إشعار تلقائي. لإدارة تفضيلات الإشعارات، افتح لوحة التحكم.</p>
+                <p style="margin:4px 0 0;color:#94a3b8;font-size:11px;line-height:20px;">© ${currentYear} جميع الحقوق محفوظة.</p>
               </td>
             </tr>
           </table>
