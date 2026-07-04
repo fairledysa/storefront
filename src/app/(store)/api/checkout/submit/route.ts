@@ -153,6 +153,131 @@ function buildOrderProcessingResponse(order: any) {
   );
 }
 
+
+const ACTIVE_CHECKOUT_GRACE_MS = 4_000;
+
+type CheckoutFailureContext = {
+  stage: string;
+  store_id: string;
+  cart_id?: string | null;
+  order_id?: string | null;
+  request_id?: string | null;
+  error?: any;
+};
+
+function checkoutErrorDetails(error: any) {
+  return {
+    code: toStr(error?.code) || null,
+    message: toStr(error?.message) || null,
+    details: toStr(error?.details) || null,
+    hint: toStr(error?.hint) || null,
+    constraint: toStr(error?.constraint) || null,
+  };
+}
+
+function logCheckoutFailure(context: CheckoutFailureContext) {
+  console.error("CHECKOUT_SUBMIT_FAILED", {
+    stage: context.stage,
+    store_id: context.store_id,
+    cart_id: context.cart_id ?? null,
+    order_id: context.order_id ?? null,
+    request_id: context.request_id ?? null,
+    error: checkoutErrorDetails(context.error),
+  });
+}
+
+function orderAgeMs(order: any) {
+  const createdAt = new Date(order?.created_at ?? 0).getTime();
+  if (!Number.isFinite(createdAt) || createdAt <= 0) return Number.POSITIVE_INFINITY;
+  return Math.max(0, Date.now() - createdAt);
+}
+
+async function cleanupFailedOrder(args: {
+  sb: any;
+  store_id: string;
+  order_id: string;
+  stage: string;
+  cart_id?: string | null;
+  request_id?: string | null;
+}) {
+  const { sb, store_id, order_id, stage, cart_id, request_id } = args;
+
+  const proofDelete = await sb
+    .from("order_bank_transfer_proofs")
+    .delete()
+    .eq("order_id", order_id);
+
+  if (proofDelete.error) {
+    logCheckoutFailure({
+      stage: `${stage}:proof_cleanup`,
+      store_id,
+      cart_id,
+      order_id,
+      request_id,
+      error: proofDelete.error,
+    });
+
+    return { ok: false as const, error: proofDelete.error };
+  }
+
+  const answersDelete = await sb
+    .from("order_option_answers")
+    .delete()
+    .eq("order_id", order_id);
+
+  if (answersDelete.error) {
+    logCheckoutFailure({
+      stage: `${stage}:answers_cleanup`,
+      store_id,
+      cart_id,
+      order_id,
+      request_id,
+      error: answersDelete.error,
+    });
+
+    return { ok: false as const, error: answersDelete.error };
+  }
+
+  const itemsDelete = await sb
+    .from("order_items")
+    .delete()
+    .eq("order_id", order_id);
+
+  if (itemsDelete.error) {
+    logCheckoutFailure({
+      stage: `${stage}:items_cleanup`,
+      store_id,
+      cart_id,
+      order_id,
+      request_id,
+      error: itemsDelete.error,
+    });
+
+    return { ok: false as const, error: itemsDelete.error };
+  }
+
+  const orderDelete = await sb
+    .from("orders")
+    .delete()
+    .eq("id", order_id)
+    .eq("store_id", store_id);
+
+  if (orderDelete.error) {
+    logCheckoutFailure({
+      stage: `${stage}:order_cleanup`,
+      store_id,
+      cart_id,
+      order_id,
+      request_id,
+      error: orderDelete.error,
+    });
+
+    return { ok: false as const, error: orderDelete.error };
+  }
+
+  return { ok: true as const };
+}
+
 function paymentValidationError(args: {
   error: string;
   message_ar: string;
@@ -2062,6 +2187,10 @@ async function buildOrderItemStockModeMap(
 /* ---------------------------------- POST ---------------------------------- */
 
 export async function POST(req: Request) {
+  const request_id =
+    toStr(req.headers.get("x-vercel-id")) ||
+    toStr(req.headers.get("x-request-id")) ||
+    null;
   const store_id = await getStoreIdOrThrow();
 
   const sb: any = await Promise.resolve(getOrdersDb(store_id) as any);
@@ -2116,15 +2245,47 @@ export async function POST(req: Request) {
         });
       }
 
-      return buildOrderProcessingResponse(existingOrder);
+      // لا نحذف طلبًا حديثًا جدًا؛ قد تكون طلبية متزامنة ما زالت داخل نفس المعالجة.
+      if (orderAgeMs(existingOrder) < ACTIVE_CHECKOUT_GRACE_MS) {
+        return buildOrderProcessingResponse(existingOrder);
+      }
+
+      // أي طلب قديم بلا stock_decremented_at هو محاولة فاشلة/منقطعة، وليس طلبًا صالحًا.
+      // تنظيفه هنا يمنع شاشة «قيد المعالجة» من حبس العميل بعد خطأ سابق.
+      const staleCleanup = await cleanupFailedOrder({
+        sb,
+        store_id,
+        order_id: String(existingOrder.id),
+        stage: "stale_order_before_retry",
+        cart_id: String(cart.id),
+        request_id,
+      });
+
+      if (!staleCleanup.ok) {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "STALE_ORDER_CLEANUP_FAILED",
+            message_ar: "تعذر تجهيز الطلب للمحاولة مرة أخرى. حدّث الصفحة وحاول بعد لحظات.",
+          },
+          { status: 500 },
+        );
+      }
     }
   } catch (e: any) {
+    logCheckoutFailure({
+      stage: "existing_order_check",
+      store_id,
+      cart_id: String(cart.id),
+      request_id,
+      error: e,
+    });
+
     return NextResponse.json(
       {
         ok: false,
         error: "ORDER_DUPLICATE_CHECK_FAILED",
         message_ar: "تعذر التحقق من حالة الطلب. حاول مرة أخرى.",
-        debug: toStr(e?.message),
       },
       { status: 500 },
     );
@@ -2349,6 +2510,7 @@ export async function POST(req: Request) {
     );
   }
 
+  try {
   const ciR = await sb
     .from("cart_items")
     .select("line_key,selected_option_value_ids,selected_options")
@@ -2356,10 +2518,26 @@ export async function POST(req: Request) {
     .eq("store_id", store_id);
 
   if (ciR.error) {
-    await sb.from("orders").delete().eq("id", order.id).eq("store_id", store_id);
+    await cleanupFailedOrder({
+      sb,
+      store_id,
+      order_id: String(order.id),
+      stage: "read_cart_item_options",
+      cart_id: String(cart.id),
+      request_id,
+    });
+
+    logCheckoutFailure({
+      stage: "read_cart_item_options",
+      store_id,
+      cart_id: String(cart.id),
+      order_id: String(order.id),
+      request_id,
+      error: ciR.error,
+    });
 
     return NextResponse.json(
-      { ok: false, error: ciR.error.message },
+      { ok: false, error: "ORDER_ITEM_SNAPSHOT_FAILED", message_ar: "تعذر تجهيز تفاصيل الطلب. حاول مرة أخرى." },
       { status: 500 },
     );
   }
@@ -2458,10 +2636,26 @@ export async function POST(req: Request) {
   const oiIns = await sb.from("order_items").insert(oi);
 
   if (oiIns.error) {
-    await sb.from("orders").delete().eq("id", order.id).eq("store_id", store_id);
+    await cleanupFailedOrder({
+      sb,
+      store_id,
+      order_id: String(order.id),
+      stage: "insert_order_items",
+      cart_id: String(cart.id),
+      request_id,
+    });
+
+    logCheckoutFailure({
+      stage: "insert_order_items",
+      store_id,
+      cart_id: String(cart.id),
+      order_id: String(order.id),
+      request_id,
+      error: oiIns.error,
+    });
 
     return NextResponse.json(
-      { ok: false, error: oiIns.error.message },
+      { ok: false, error: "ORDER_ITEMS_CREATE_FAILED", message_ar: "تعذر حفظ منتجات الطلب. حاول مرة أخرى." },
       { status: 500 },
     );
   }
@@ -2480,8 +2674,23 @@ export async function POST(req: Request) {
   });
 
   if (!copyOptions.ok) {
-    await sb.from("order_items").delete().eq("order_id", order.id);
-    await sb.from("orders").delete().eq("id", order.id).eq("store_id", store_id);
+    await cleanupFailedOrder({
+      sb,
+      store_id,
+      order_id: String(order.id),
+      stage: "copy_order_options",
+      cart_id: String(cart.id),
+      request_id,
+    });
+
+    logCheckoutFailure({
+      stage: "copy_order_options",
+      store_id,
+      cart_id: String(cart.id),
+      order_id: String(order.id),
+      request_id,
+      error: { message: copyOptions.error || "ORDER_OPTIONS_COPY_FAILED" },
+    });
 
     return NextResponse.json(
       {
@@ -2508,44 +2717,86 @@ export async function POST(req: Request) {
     });
 
     if (proofIns.error) {
-      await sb.from("order_option_answers").delete().eq("order_id", order.id);
-      await sb.from("order_items").delete().eq("order_id", order.id);
-      await sb
-        .from("orders")
-        .delete()
-        .eq("id", order.id)
-        .eq("store_id", store_id);
+      await cleanupFailedOrder({
+        sb,
+        store_id,
+        order_id: String(order.id),
+        stage: "insert_bank_transfer_proof",
+        cart_id: String(cart.id),
+        request_id,
+      });
+
+      logCheckoutFailure({
+        stage: "insert_bank_transfer_proof",
+        store_id,
+        cart_id: String(cart.id),
+        order_id: String(order.id),
+        request_id,
+        error: proofIns.error,
+      });
 
       return NextResponse.json(
         {
           ok: false,
           error: "BANK_TRANSFER_PROOF_INSERT_FAILED",
           message_ar: "تعذر حفظ إيصال التحويل البنكي. حاول مرة أخرى.",
-          debug: proofIns.error.message,
         },
         { status: 500 },
       );
     }
   }
 
-  const decR = await sb.rpc("checkout_decrement_stock", {
-    p_order_id: order.id,
-    p_store_id: store_id,
-  });
+  let decR: any;
 
-  if (decR.error) {
+  try {
+    decR = await sb.rpc("checkout_decrement_stock", {
+      p_order_id: order.id,
+      p_store_id: store_id,
+    });
+  } catch (error: any) {
+    decR = { error };
+  }
+
+  if (decR?.error) {
+    const decrementError = decR.error;
     const debugMsg =
-      (decR as any)?.error?.message ||
-      (decR as any)?.error?.details ||
-      (decR as any)?.error?.hint ||
+      toStr(decrementError?.message) ||
+      toStr(decrementError?.details) ||
+      toStr(decrementError?.hint) ||
       "RPC_FAILED";
 
-    const stockIssue = await buildStockIssuePayload(sb, debugMsg);
+    logCheckoutFailure({
+      stage: "checkout_decrement_stock",
+      store_id,
+      cart_id: String(cart.id),
+      order_id: String(order.id),
+      request_id,
+      error: decrementError,
+    });
 
-    await sb.from("order_bank_transfer_proofs").delete().eq("order_id", order.id);
-    await sb.from("order_option_answers").delete().eq("order_id", order.id);
-    await sb.from("order_items").delete().eq("order_id", order.id);
-    await sb.from("orders").delete().eq("id", order.id).eq("store_id", store_id);
+    let stockIssue: StockIssuePayload | null = null;
+
+    try {
+      stockIssue = await buildStockIssuePayload(sb, debugMsg);
+    } catch (stockIssueError: any) {
+      logCheckoutFailure({
+        stage: "build_stock_issue_payload",
+        store_id,
+        cart_id: String(cart.id),
+        order_id: String(order.id),
+        request_id,
+        error: stockIssueError,
+      });
+    }
+
+    await cleanupFailedOrder({
+      sb,
+      store_id,
+      order_id: String(order.id),
+      stage: "checkout_decrement_stock",
+      cart_id: String(cart.id),
+      request_id,
+    });
 
     if (stockIssue) {
       return NextResponse.json(
@@ -2563,10 +2814,9 @@ export async function POST(req: Request) {
       {
         ok: false,
         error: "CHECKOUT_DECREMENT_FAILED",
-        message_ar: "فشل التحقق من المخزون عند إنهاء الطلب.",
-        debug: debugMsg,
+        message_ar: "تعذر اعتماد الطلب بسبب خطأ في تحديث المخزون. حاول مرة أخرى.",
       },
-      { status: 400 },
+      { status: 500 },
     );
   }
 
@@ -2679,4 +2929,34 @@ export async function POST(req: Request) {
     order,
     session_id,
   });
+  } catch (error: any) {
+    logCheckoutFailure({
+      stage: "post_order_create_unhandled",
+      store_id,
+      cart_id: String(cart.id),
+      order_id: order?.id ? String(order.id) : null,
+      request_id,
+      error,
+    });
+
+    if (order?.id) {
+      await cleanupFailedOrder({
+        sb,
+        store_id,
+        order_id: String(order.id),
+        stage: "post_order_create_unhandled",
+        cart_id: String(cart.id),
+        request_id,
+      });
+    }
+
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "CHECKOUT_SUBMIT_FAILED",
+        message_ar: "تعذر إتمام الطلب. حاول مرة أخرى.",
+      },
+      { status: 500 },
+    );
+  }
 }
