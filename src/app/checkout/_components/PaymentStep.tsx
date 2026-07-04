@@ -29,10 +29,6 @@ export type PaymentStepProps = {
   confirmedId?: string;
 };
 
-type SaveOptions = {
-  submitAfter?: boolean;
-};
-
 type BankTransferReceipt = {
   url: string;
   filename: string;
@@ -92,8 +88,8 @@ function setBankTransferPayload(payload: BankTransferPayload | null) {
   dispatchCheckoutEvent("checkout:bankTransferPayload", { payload });
 }
 
-function requestSubmitOrder() {
-  dispatchCheckoutEvent("checkout:submitOrder");
+function requestOrderReview() {
+  dispatchCheckoutEvent("checkout:openSummary");
 }
 
 function patchPaymentSummary(option: PaymentOption) {
@@ -398,14 +394,14 @@ export default function PaymentStep({
     setSubmitEnabled(canSubmitPaymentOption(row));
   }
 
-  async function saveSelectedPayment(nextId: string, opts?: SaveOptions) {
+  async function saveSelectedPayment(nextId: string): Promise<boolean> {
     const row = options.find((x) => x.id === nextId);
 
     if (!row || row.disabled) {
       setSavingId("");
       setSubmitSaving(false);
       setSubmitEnabled(false);
-      return;
+      return false;
     }
 
     const seq = ++saveSeqRef.current;
@@ -415,7 +411,7 @@ export default function PaymentStep({
     saveAbortRef.current = ac;
 
     setSavingId(nextId);
-    setSubmitSaving(Boolean(opts?.submitAfter));
+    setSubmitSaving(true);
     setErrorMsg("");
 
     const patchKey = paymentPatchKey(row);
@@ -427,26 +423,21 @@ export default function PaymentStep({
     try {
       const result = await persistPaymentMethod(nextId, ac.signal);
 
-      if (!mountedRef.current || seq !== saveSeqRef.current) return;
+      if (!mountedRef.current || seq !== saveSeqRef.current) return false;
 
       if (!result?.ok) {
         setErrorMsg("تعذر حفظ طريقة الدفع. حاول مرة أخرى.");
         setSubmitEnabled(false);
         refreshSummary();
-        return;
+        return false;
       }
 
       await onConfirm(result);
       setSubmitEnabled(canSubmitPaymentOption(row));
-
-      if (opts?.submitAfter) {
-        window.setTimeout(() => {
-          requestSubmitOrder();
-        }, 80);
-      }
+      return true;
     } catch (e: any) {
-      if (e?.name === "AbortError") return;
-      if (!mountedRef.current || seq !== saveSeqRef.current) return;
+      if (e?.name === "AbortError") return false;
+      if (!mountedRef.current || seq !== saveSeqRef.current) return false;
 
       const rollbackId = lastSyncedRef.current || "";
       const rollbackOption = options.find((x) => x.id === rollbackId);
@@ -464,6 +455,8 @@ export default function PaymentStep({
         clearPaymentSummaryPatch();
         refreshSummary();
       }
+
+      return false;
     } finally {
       if (mountedRef.current && seq === saveSeqRef.current) {
         setSavingId("");
@@ -472,7 +465,7 @@ export default function PaymentStep({
     }
   }
 
-  async function confirmPaymentAndSubmit() {
+  async function confirmPaymentAndContinue() {
     if (isLocked || !isActive || loading || submitSaving) return;
 
     const selected = options.find((x) => x.id === method);
@@ -498,11 +491,19 @@ export default function PaymentStep({
     setSubmitEnabled(canSubmitPaymentOption(selected));
 
     if (lastSyncedRef.current === method) {
-      requestSubmitOrder();
+      await onConfirm({
+        ok: true,
+        state: { payment_method: method },
+      });
+      requestOrderReview();
       return;
     }
 
-    await saveSelectedPayment(method, { submitAfter: true });
+    const saved = await saveSelectedPayment(method);
+
+    if (saved) {
+      requestOrderReview();
+    }
   }
 
   useEffect(() => {
@@ -744,11 +745,11 @@ export default function PaymentStep({
           className="co-payment-final-btn"
           disabled={submitDisabled}
           onClick={() => {
-            void confirmPaymentAndSubmit();
+            void confirmPaymentAndContinue();
           }}
         >
           {submitSaving ? <Loader2 className="co-spin" size={16} /> : null}
-          {submitSaving ? "جاري تجهيز الدفع..." : "تأكيد الدفع"}
+          {submitSaving ? "جاري حفظ طريقة الدفع..." : "متابعة لمراجعة الطلب"}
         </button>
       ) : null}
     </StepShell>

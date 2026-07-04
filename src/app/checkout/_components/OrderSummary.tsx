@@ -980,6 +980,11 @@ export default function OrderSummary({
       setBankTransferPayload(e?.detail?.payload ?? null);
     };
 
+    const onOpenSummary = () => {
+      if (actionLockRef.current) return;
+      openDrawer();
+    };
+
     window.addEventListener("checkout:refresh", onRefresh as EventListener);
     window.addEventListener(
       "checkout:summaryPatch",
@@ -993,6 +998,7 @@ export default function OrderSummary({
       "checkout:bankTransferPayload",
       onBankTransferPayload as EventListener,
     );
+    window.addEventListener("checkout:openSummary", onOpenSummary);
 
     return () => {
       mountedRef.current = false;
@@ -1010,11 +1016,12 @@ export default function OrderSummary({
         "checkout:bankTransferPayload",
         onBankTransferPayload as EventListener,
       );
+      window.removeEventListener("checkout:openSummary", onOpenSummary);
 
       clearQueuedPrepare();
       clearDrawerCloseTimer();
     };
-  }, [clearDrawerCloseTimer, fetchPrepare, schedulePrepare]);
+  }, [clearDrawerCloseTimer, fetchPrepare, openDrawer, schedulePrepare]);
 
   useEffect(() => {
     if (!summary?.cart_id) return;
@@ -1676,7 +1683,7 @@ export default function OrderSummary({
                 ]
                   .filter(Boolean)
                   .join(" ")}
-                disabled={loading || submitBusy || couponBusy || !hasTotals}
+                disabled={loading || submitBusy || couponBusy || !hasTotals || !canSubmit}
                 onClick={submitOrder}
               >
                 {submitBusy || loading || couponBusy ? (
