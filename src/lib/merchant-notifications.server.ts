@@ -383,7 +383,7 @@ function emailDetail(
 
     return {
       label: "معلومات العميل",
-      value: `الزائر: ${sender}`,
+      value: ` ${sender}`,
       note:
         s(data.targetType) === "product" ? "سؤال على أحد منتجات متجرك" : null,
     };
