@@ -193,6 +193,16 @@ function orderAgeMs(order: any) {
   return Math.max(0, Date.now() - createdAt);
 }
 
+/**
+ * لا نحذف طلبًا فشل بعد إنشائه.
+ *
+ * orders مرتبط بجداول أخرى وقد تمنع مفاتيح FK حذف الصف حتى بعد حذف
+ * order_items والإيصال. الحذف كان يترك cart_id مربوطًا بالطلب القديم،
+ * فيبقى العميل محبوسًا في «قيد المعالجة» على الجوال.
+ *
+ * الحل الآمن: نعلّم المحاولة فاشلة ونفصلها عن السلة. السجل يبقى للمراجعة
+ * الداخلية، لكن السلة تصبح متاحة مباشرة لمحاولة جديدة.
+ */
 async function cleanupFailedOrder(args: {
   sb: any;
   store_id: string;
@@ -202,81 +212,86 @@ async function cleanupFailedOrder(args: {
   request_id?: string | null;
 }) {
   const { sb, store_id, order_id, stage, cart_id, request_id } = args;
+  const now = new Date().toISOString();
 
-  const proofDelete = await sb
-    .from("order_bank_transfer_proofs")
-    .delete()
-    .eq("order_id", order_id);
-
-  if (proofDelete.error) {
-    logCheckoutFailure({
-      stage: `${stage}:proof_cleanup`,
-      store_id,
-      cart_id,
-      order_id,
-      request_id,
-      error: proofDelete.error,
-    });
-
-    return { ok: false as const, error: proofDelete.error };
-  }
-
-  const answersDelete = await sb
-    .from("order_option_answers")
-    .delete()
-    .eq("order_id", order_id);
-
-  if (answersDelete.error) {
-    logCheckoutFailure({
-      stage: `${stage}:answers_cleanup`,
-      store_id,
-      cart_id,
-      order_id,
-      request_id,
-      error: answersDelete.error,
-    });
-
-    return { ok: false as const, error: answersDelete.error };
-  }
-
-  const itemsDelete = await sb
-    .from("order_items")
-    .delete()
-    .eq("order_id", order_id);
-
-  if (itemsDelete.error) {
-    logCheckoutFailure({
-      stage: `${stage}:items_cleanup`,
-      store_id,
-      cart_id,
-      order_id,
-      request_id,
-      error: itemsDelete.error,
-    });
-
-    return { ok: false as const, error: itemsDelete.error };
-  }
-
-  const orderDelete = await sb
+  const releaseR = await sb
     .from("orders")
-    .delete()
+    .update({
+      status: "failed",
+      payment_status: "failed",
+      cart_id: null,
+      status_note: "فشلت محاولة إنشاء الطلب قبل إتمامه وتم تحرير السلة لإعادة المحاولة.",
+      status_updated_at: now,
+      updated_at: now,
+    })
     .eq("id", order_id)
-    .eq("store_id", store_id);
+    .eq("store_id", store_id)
+    .is("stock_decremented_at", null)
+    .select("id")
+    .maybeSingle();
 
-  if (orderDelete.error) {
+  if (releaseR.error) {
     logCheckoutFailure({
-      stage: `${stage}:order_cleanup`,
+      stage: `${stage}:release_failed_order`,
       store_id,
       cart_id,
       order_id,
       request_id,
-      error: orderDelete.error,
+      error: releaseR.error,
     });
 
-    return { ok: false as const, error: orderDelete.error };
+    return { ok: false as const, error: releaseR.error, completedOrder: null };
   }
 
-  return { ok: true as const };
+  if (releaseR.data?.id) {
+    return { ok: true as const, error: null, completedOrder: null };
+  }
+
+  // إذا انتهت معالجة طلب متزامن في اللحظة نفسها، لا نفصل طلبًا مكتملًا.
+  const currentR = await sb
+    .from("orders")
+    .select("id,order_number,public_token,invoice_no,stock_decremented_at")
+    .eq("id", order_id)
+    .eq("store_id", store_id)
+    .maybeSingle();
+
+  if (currentR.error) {
+    logCheckoutFailure({
+      stage: `${stage}:release_verify`,
+      store_id,
+      cart_id,
+      order_id,
+      request_id,
+      error: currentR.error,
+    });
+
+    return { ok: false as const, error: currentR.error, completedOrder: null };
+  }
+
+  if (currentR.data?.stock_decremented_at) {
+    return { ok: true as const, error: null, completedOrder: currentR.data };
+  }
+
+  // تم حذف الطلب بالفعل من مسار آخر؛ السلة لم تعد محجوزة.
+  if (!currentR.data?.id) {
+    return { ok: true as const, error: null, completedOrder: null };
+  }
+
+  const error = {
+    code: "ORDER_RELEASE_NOT_APPLIED",
+    message: "Failed checkout order could not be released for retry.",
+  };
+
+  logCheckoutFailure({
+    stage: `${stage}:release_not_applied`,
+    store_id,
+    cart_id,
+    order_id,
+    request_id,
+    error,
+  });
+
+  return { ok: false as const, error, completedOrder: null };
 }
 
 function paymentValidationError(args: {
@@ -2381,11 +2396,19 @@ export async function POST(req: Request) {
         return NextResponse.json(
           {
             ok: false,
-            error: "STALE_ORDER_CLEANUP_FAILED",
+            error: "STALE_ORDER_RELEASE_FAILED",
             message_ar: "تعذر تجهيز الطلب للمحاولة مرة أخرى. حدّث الصفحة وحاول بعد لحظات.",
           },
           { status: 500 },
         );
+      }
+
+      if (staleCleanup.completedOrder?.id) {
+        return buildOrderSuccessResponse({
+          order: staleCleanup.completedOrder,
+          session_id,
+          duplicate: true,
+        });
       }
     }
   } catch (e: any) {
