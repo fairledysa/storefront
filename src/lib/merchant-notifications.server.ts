@@ -232,14 +232,15 @@ function merchantActionUrl(actionPath: string | null | undefined) {
   if (!path) return null;
   if (/^https?:\/\//i.test(path)) return path;
 
+  // A real admin URL must always be available in email. Environment values win
+  // in development and production; the platform domain is only a safe fallback.
   const origin = s(
     process.env.MERCHANT_APP_URL ||
       process.env.APP_PUBLIC_URL ||
       process.env.NEXT_PUBLIC_APP_URL ||
-      process.env.APP_URL,
+      process.env.APP_URL ||
+      "https://e.elyaia.com",
   );
-
-  if (!origin) return null;
 
   return `${origin.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
 }
@@ -378,9 +379,11 @@ function emailDetail(
   }
 
   if (type === "question_new") {
+    const sender = s(data.authorName || data.authorEmail) || "عميل";
+
     return {
-      label: "المرسل",
-      value: s(data.authorName || data.authorEmail) || "عميل",
+      label: "معلومات العميل",
+      value: `الزائر: ${sender}`,
       note:
         s(data.targetType) === "product" ? "سؤال على أحد منتجات متجرك" : null,
     };
@@ -407,14 +410,23 @@ function notificationMessage(args: {
   payload?: Record<string, any>;
 }) {
   if (args.type === "question_new") {
-    return (
-      s(
-        args.payload?.questionText || args.payload?.questionBody || args.body,
-      ) || "ورد سؤال جديد يحتاج إلى ردك."
+    const question = s(
+      args.payload?.questionText || args.payload?.questionBody,
     );
+    if (question) return question;
+
+    // The notification body may include "اسم العميل: السؤال". Keep it only
+    // when there is no separately stored question body.
+    return s(args.body) || "ورد سؤال جديد يحتاج إلى ردك.";
   }
 
   return s(args.body) || emailIntro(args.type);
+}
+
+function emailActionLabel(_type: NotificationType) {
+  // Keep the CTA consistent across notification emails and aligned with the
+  // approved branded template.
+  return "فتح الإشعار";
 }
 
 async function sendMerchantNotificationEmail(args: {
@@ -449,15 +461,18 @@ async function sendMerchantNotificationEmail(args: {
       payload: args.payload,
     }),
   );
+  const actionLabel = escapeHtml(emailActionLabel(args.notificationType));
   const currentYear = new Date().getFullYear();
   const logo = args.brand.logoUrl
-    ? `<img src="${escapeHtml(args.brand.logoUrl)}" alt="${brandName}" style="display:block;margin:0 auto;max-width:190px;width:auto;max-height:78px;height:auto;border:0;outline:none;text-decoration:none;" />`
-    : `<span style="display:inline-block;color:#0d3b45;font-size:26px;line-height:34px;font-weight:800;">${brandName}</span>`;
+    ? `<img src="${escapeHtml(args.brand.logoUrl)}" alt="${brandName}" width="190" style="display:block;width:auto;max-width:190px;height:auto;max-height:88px;margin:0 auto;border:0;outline:none;text-decoration:none;" />`
+    : `<span style="display:inline-block;color:#0d3b45;font-size:28px;line-height:36px;font-weight:800;">${brandName}</span>`;
 
+  // The main admin button must exist for every email. The URL is produced by
+  // merchantActionUrl, so action is expected for all notification types with a path.
   const actionButton = action
     ? `<tr>
-                <td align="center" style="padding:24px 28px 42px;text-align:center;">
-                  <a href="${escapeHtml(action)}" target="_blank" style="display:inline-block;min-width:212px;background:#0d3b45;border:1px solid #08333c;border-radius:10px;padding:15px 26px;color:#ffffff;font-size:17px;line-height:22px;font-weight:800;text-decoration:none;box-shadow:0 8px 16px rgba(13,59,69,0.14);">فتح الإشعار&nbsp;&nbsp;←</a>
+                <td align="center" style="padding:26px 28px 40px;text-align:center;">
+                  <a href="${escapeHtml(action)}" target="_blank" style="display:inline-block;background:#0d3b45;border:1px solid #08343d;border-radius:12px;padding:16px 28px;color:#ffffff;font-size:16px;line-height:22px;font-weight:800;text-decoration:none;box-shadow:0 8px 18px rgba(13,59,69,0.16);">${actionLabel}&nbsp;&nbsp;←</a>
                 </td>
               </tr>`
     : "";
@@ -468,12 +483,12 @@ async function sendMerchantNotificationEmail(args: {
     <meta charSet="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
   </head>
-  <body dir="rtl" style="margin:0;padding:0;background:#f5f8f8;color:#1f2933;font-family:Tahoma,Arial,'Segoe UI',sans-serif;">
+  <body dir="rtl" style="margin:0;padding:0;background:#f4f7f7;color:#1f2933;font-family:Tahoma,Arial,'Segoe UI',sans-serif;">
     <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;line-height:1px;mso-hide:all;">${title}</div>
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;margin:0;padding:0;border-collapse:collapse;background:#f5f8f8;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;margin:0;padding:0;border-collapse:collapse;background:#f4f7f7;">
       <tr>
         <td align="center" style="padding:32px 12px;">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:640px;margin:0 auto;border-collapse:separate;border-spacing:0;background:#ffffff;border:1px solid #e4eceb;border-radius:20px;overflow:hidden;box-shadow:0 12px 30px rgba(15,47,55,0.08);">
+          <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:600px;margin:0 auto;border-collapse:separate;border-spacing:0;background:#ffffff;border:1px solid #dfe9e7;border-radius:20px;overflow:hidden;box-shadow:0 12px 30px rgba(15,47,55,0.08);">
             <tr>
               <td style="height:7px;line-height:7px;font-size:0;background:#0d3b45;">&nbsp;</td>
             </tr>
@@ -483,13 +498,13 @@ async function sendMerchantNotificationEmail(args: {
               </td>
             </tr>
             <tr>
-              <td align="center" style="padding:0 28px 26px;text-align:center;">
+              <td align="center" style="padding:0 28px 28px;text-align:center;">
                 <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;margin:0 auto;">
                   <tr>
-                    <td align="center" valign="middle" style="width:70px;height:70px;border-radius:50%;background:#e8f6f0;text-align:center;">
+                    <td align="center" valign="middle" style="width:72px;height:72px;border-radius:36px;background:#e8f6f0;text-align:center;">
                       <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;margin:0 auto;">
                         <tr>
-                          <td align="center" valign="middle" style="width:35px;height:27px;border:2px solid #0d3b45;border-radius:10px;color:#0d3b45;font-size:17px;line-height:19px;font-weight:800;letter-spacing:1px;">•••</td>
+                          <td align="center" valign="middle" style="width:34px;height:25px;border:2px solid #0d3b45;border-radius:9px;color:#0d3b45;font-size:16px;line-height:18px;font-weight:800;letter-spacing:1px;">•••</td>
                         </tr>
                       </table>
                     </td>
@@ -499,25 +514,30 @@ async function sendMerchantNotificationEmail(args: {
             </tr>
             <tr>
               <td dir="rtl" align="center" style="padding:0 28px;text-align:center;">
-                <h1 style="margin:0;color:#0d3b45;font-size:32px;line-height:43px;font-weight:800;letter-spacing:0;">${title}</h1>
-                <div style="width:48px;height:4px;line-height:4px;font-size:0;background:#bfe6d8;border-radius:999px;margin:16px auto 18px;">&nbsp;</div>
-                <p style="margin:0 0 5px;color:#64748b;font-size:15px;line-height:25px;">مرحباً،</p>
+                <h1 style="margin:0;color:#0d3b45;font-size:31px;line-height:42px;font-weight:800;letter-spacing:0;">${title}</h1>
+                <div style="width:44px;height:4px;line-height:4px;font-size:0;background:#bfe6d8;border-radius:999px;margin:16px auto 18px;">&nbsp;</div>
+                <p style="margin:0 0 6px;color:#64748b;font-size:15px;line-height:25px;">مرحباً،</p>
                 <p style="margin:0;color:#64748b;font-size:16px;line-height:28px;">${intro}</p>
               </td>
             </tr>
             <tr>
               <td style="padding:32px 28px 0;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:separate;border-spacing:0;background:#f4fbf9;border:1px solid #d7ece5;border-radius:14px;overflow:hidden;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:separate;border-spacing:0;background:#f5fbf9;border:1px solid #d6ebe4;border-radius:14px;overflow:hidden;">
                   <tr>
-                    <td dir="rtl" style="padding:20px 22px;text-align:right;vertical-align:middle;">
+                    <td align="center" valign="middle" style="width:82px;padding:0 0 0 14px;">
+                      <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;margin:0 auto;">
+                        <tr>
+                          <td align="center" valign="middle" style="width:54px;height:54px;border-radius:27px;background:#dff3ed;text-align:center;">
+                            <div style="width:10px;height:10px;border:2px solid #0d3b45;border-radius:50%;margin:0 auto 4px;"></div>
+                            <div style="width:22px;height:11px;border:2px solid #0d3b45;border-bottom:0;border-radius:14px 14px 0 0;margin:0 auto;"></div>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                    <td dir="rtl" style="padding:21px 22px 21px 10px;text-align:right;vertical-align:middle;">
                       <p style="margin:0 0 7px;color:#0d3b45;font-size:16px;line-height:24px;font-weight:800;">${detailLabel}</p>
                       <p style="margin:0;color:#0d3b45;font-size:21px;line-height:30px;font-weight:800;word-break:break-word;overflow-wrap:anywhere;">${detailValue}</p>
                       ${detailNote ? `<p style="margin:7px 0 0;color:#64748b;font-size:13px;line-height:22px;word-break:break-word;overflow-wrap:anywhere;">${detailNote}</p>` : ""}
-                    </td>
-                    <td align="center" valign="middle" style="width:92px;padding:0 18px 0 0;">
-                      <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;margin:0 auto;">
-                        <tr><td align="center" valign="middle" style="width:54px;height:54px;border-radius:50%;background:#dff3ed;color:#0d3b45;font-size:30px;line-height:54px;font-weight:400;">◯</td></tr>
-                      </table>
                     </td>
                   </tr>
                 </table>
@@ -527,14 +547,16 @@ async function sendMerchantNotificationEmail(args: {
               <td style="padding:18px 28px 0;">
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:separate;border-spacing:0;background:#ffffff;border:1px solid #e0e8e8;border-radius:14px;overflow:hidden;">
                   <tr>
-                    <td dir="rtl" style="padding:20px 22px;text-align:right;vertical-align:middle;">
-                      <p style="margin:0 0 7px;color:#0d3b45;font-size:16px;line-height:24px;font-weight:800;">ملخص الإشعار</p>
-                      <p style="margin:0;color:#64748b;font-size:14px;line-height:25px;white-space:pre-line;word-break:break-word;overflow-wrap:anywhere;">${message}</p>
-                    </td>
-                    <td align="center" valign="middle" style="width:92px;padding:0 18px 0 0;">
+                    <td align="center" valign="middle" style="width:82px;padding:0 0 0 14px;">
                       <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;margin:0 auto;">
-                        <tr><td align="center" valign="middle" style="width:54px;height:54px;border-radius:50%;background:#e8f6f0;color:#0d3b45;font-size:19px;line-height:54px;font-weight:800;letter-spacing:1px;">•••</td></tr>
+                        <tr>
+                          <td align="center" valign="middle" style="width:54px;height:54px;border-radius:27px;background:#e8f6f0;color:#0d3b45;font-size:18px;line-height:54px;font-weight:800;letter-spacing:1px;">•••</td>
+                        </tr>
                       </table>
+                    </td>
+                    <td dir="rtl" style="padding:21px 22px 21px 10px;text-align:right;vertical-align:middle;">
+                      <p style="margin:0 0 8px;color:#0d3b45;font-size:16px;line-height:24px;font-weight:800;">ملخص السؤال</p>
+                      <p style="margin:0;color:#64748b;font-size:14px;line-height:25px;white-space:pre-line;word-break:break-word;overflow-wrap:anywhere;">${message}</p>
                     </td>
                   </tr>
                 </table>
@@ -545,7 +567,7 @@ async function sendMerchantNotificationEmail(args: {
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;">
                   <tr>
                     <td style="height:1px;line-height:1px;font-size:0;border-top:1px dashed #c7d6d4;">&nbsp;</td>
-                    <td align="center" valign="middle" style="width:40px;height:40px;border-radius:50%;background:#e8f6f0;color:#0d3b45;font-size:17px;line-height:40px;">✉</td>
+                    <td align="center" valign="middle" style="width:42px;height:42px;border-radius:21px;background:#e8f6f0;color:#0d3b45;font-size:17px;line-height:42px;">✉</td>
                     <td style="height:1px;line-height:1px;font-size:0;border-top:1px dashed #c7d6d4;">&nbsp;</td>
                   </tr>
                 </table>
@@ -556,17 +578,17 @@ async function sendMerchantNotificationEmail(args: {
               <td style="padding:0;background:#f7fcfa;border-top:1px solid #e3efeb;">
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;table-layout:fixed;border-collapse:collapse;">
                   <tr>
-                    <td dir="rtl" align="center" style="padding:20px 7px;border-left:1px solid #dceae5;text-align:center;">
-                      <p style="margin:0;color:#0d3b45;font-size:13px;line-height:20px;font-weight:800;">شحن سريع</p><p style="margin:3px 0 0;color:#64748b;font-size:11px;line-height:17px;">إلى جميع المناطق</p>
+                    <td dir="rtl" align="center" style="padding:17px 5px;border-left:1px solid #dceae5;text-align:center;">
+                      <p style="margin:0;color:#0d3b45;font-size:15px;line-height:18px;">⌁</p><p style="margin:5px 0 0;color:#0d3b45;font-size:12px;line-height:18px;font-weight:800;">شحن سريع</p><p style="margin:2px 0 0;color:#64748b;font-size:10px;line-height:15px;">إلى جميع المناطق</p>
                     </td>
-                    <td dir="rtl" align="center" style="padding:20px 7px;border-left:1px solid #dceae5;text-align:center;">
-                      <p style="margin:0;color:#0d3b45;font-size:13px;line-height:20px;font-weight:800;">تسوق آمن</p><p style="margin:3px 0 0;color:#64748b;font-size:11px;line-height:17px;">خصوصيتك محمية</p>
+                    <td dir="rtl" align="center" style="padding:17px 5px;border-left:1px solid #dceae5;text-align:center;">
+                      <p style="margin:0;color:#0d3b45;font-size:15px;line-height:18px;">◈</p><p style="margin:5px 0 0;color:#0d3b45;font-size:12px;line-height:18px;font-weight:800;">تسوق آمن</p><p style="margin:2px 0 0;color:#64748b;font-size:10px;line-height:15px;">خصوصيتك محمية</p>
                     </td>
-                    <td dir="rtl" align="center" style="padding:20px 7px;border-left:1px solid #dceae5;text-align:center;">
-                      <p style="margin:0;color:#0d3b45;font-size:13px;line-height:20px;font-weight:800;">جودة مضمونة</p><p style="margin:3px 0 0;color:#64748b;font-size:11px;line-height:17px;">منتجات مختارة بعناية</p>
+                    <td dir="rtl" align="center" style="padding:17px 5px;border-left:1px solid #dceae5;text-align:center;">
+                      <p style="margin:0;color:#0d3b45;font-size:15px;line-height:18px;">✧</p><p style="margin:5px 0 0;color:#0d3b45;font-size:12px;line-height:18px;font-weight:800;">جودة مضمونة</p><p style="margin:2px 0 0;color:#64748b;font-size:10px;line-height:15px;">منتجات مختارة بعناية</p>
                     </td>
-                    <td dir="rtl" align="center" style="padding:20px 7px;text-align:center;">
-                      <p style="margin:0;color:#0d3b45;font-size:13px;line-height:20px;font-weight:800;">دعم احترافي</p><p style="margin:3px 0 0;color:#64748b;font-size:11px;line-height:17px;">نحن هنا لمساعدتك</p>
+                    <td dir="rtl" align="center" style="padding:17px 5px;text-align:center;">
+                      <p style="margin:0;color:#0d3b45;font-size:15px;line-height:18px;">◍</p><p style="margin:5px 0 0;color:#0d3b45;font-size:12px;line-height:18px;font-weight:800;">دعم احترافي</p><p style="margin:2px 0 0;color:#64748b;font-size:10px;line-height:15px;">نحن هنا لمساعدتك</p>
                     </td>
                   </tr>
                 </table>
@@ -1224,7 +1246,7 @@ export async function notifyMerchantNewQuestion(input: {
     entityId: questionId,
     title: "سؤال جديد من عميل",
     body: `${authorName}: ${questionText}`,
-    actionPath: "/(app)/feedback",
+    actionPath: "/feedback",
     priority: "normal",
     dedupeKey: `question_new:${questionId}`,
     payload: {
