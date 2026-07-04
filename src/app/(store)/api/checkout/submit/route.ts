@@ -153,63 +153,6 @@ function buildOrderProcessingResponse(order: any) {
   );
 }
 
-const INCOMPLETE_ORDER_RECOVERY_AFTER_MS = 45_000;
-
-function isIncompleteOrderRecoverable(order: any) {
-  if (!order || order.stock_decremented_at) return false;
-
-  const createdAt = new Date(order.created_at ?? 0).getTime();
-
-  if (!Number.isFinite(createdAt) || createdAt <= 0) return true;
-
-  return Date.now() - createdAt >= INCOMPLETE_ORDER_RECOVERY_AFTER_MS;
-}
-
-async function removeIncompleteOrderForRetry(args: {
-  sb: any;
-  store_id: string;
-  order_id: string;
-}) {
-  const { sb, store_id, order_id } = args;
-
-  if (!order_id) return;
-
-  const [proofsR, answersR, itemsR] = await Promise.all([
-    sb
-      .from("order_bank_transfer_proofs")
-      .delete()
-      .eq("store_id", store_id)
-      .eq("order_id", order_id),
-    sb
-      .from("order_option_answers")
-      .delete()
-      .eq("store_id", store_id)
-      .eq("order_id", order_id),
-    sb
-      .from("order_items")
-      .delete()
-      .eq("store_id", store_id)
-      .eq("order_id", order_id),
-  ]);
-
-  const cleanupError = proofsR.error || answersR.error || itemsR.error;
-
-  if (cleanupError) {
-    throw new Error(cleanupError.message || "ORDER_RECOVERY_CLEANUP_FAILED");
-  }
-
-  const orderR = await sb
-    .from("orders")
-    .delete()
-    .eq("store_id", store_id)
-    .eq("id", order_id)
-    .is("stock_decremented_at", null);
-
-  if (orderR.error) {
-    throw new Error(orderR.error.message || "ORDER_RECOVERY_DELETE_FAILED");
-  }
-}
-
 function paymentValidationError(args: {
   error: string;
   message_ar: string;
@@ -871,18 +814,6 @@ async function insertOrderWithRetry(args: {
       });
 
       if (existingOrder?.id) {
-        if (
-          !existingOrder.stock_decremented_at &&
-          isIncompleteOrderRecoverable(existingOrder)
-        ) {
-          await removeIncompleteOrderForRetry({
-            sb,
-            store_id,
-            order_id: String(existingOrder.id),
-          });
-          continue;
-        }
-
         return { order: existingOrder, existing: true };
       }
 
@@ -2185,15 +2116,7 @@ export async function POST(req: Request) {
         });
       }
 
-      if (!isIncompleteOrderRecoverable(existingOrder)) {
-        return buildOrderProcessingResponse(existingOrder);
-      }
-
-      await removeIncompleteOrderForRetry({
-        sb,
-        store_id,
-        order_id: String(existingOrder.id),
-      });
+      return buildOrderProcessingResponse(existingOrder);
     }
   } catch (e: any) {
     return NextResponse.json(
