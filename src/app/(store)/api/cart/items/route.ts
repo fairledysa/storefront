@@ -4,7 +4,6 @@ import { NextResponse } from "next/server";
 import { getOrdersDb } from "@/data/db/orders-db.server";
 import { getStoreDb } from "@/data/db/store-db.server";
 import { isProductVisibleInWeb } from "@/data/catalog/products";
-import { notifyMerchantCartItemAdded } from "@/lib/merchant-notifications.server";
 import {
   cartSessionCookie,
   getCartSessionId,
@@ -1526,31 +1525,6 @@ const productImageUrl = await readProductPrimaryImageUrl({
     }
 
   const cartCount = await syncCartActivityAndCount(ordersDb, cart.id);
-
-try {
-  const actor = await readCartActor({
-    storeDb,
-    cart,
-  });
-
-  await notifyMerchantCartItemAdded({
-    storeId: store_id,
-    cart: {
-      id: String(cart.id),
-      user_id: cart.user_id ? String(cart.user_id) : null,
-    },
- product: {
-  id: product_id,
-  name: prodR.data?.name ?? null,
-  image_url: productImageUrl,
-},
-    actor,
-    qtyAdded: canAddNow,
-    qtyInCart: finalQty,
-  });
-} catch (error: any) {
-  console.error("MERCHANT_CART_ITEM_NOTIFICATION_FAILED", error?.message || error);
-}
 
 const isPartial = canAddNow < qtyToAdd;
 
