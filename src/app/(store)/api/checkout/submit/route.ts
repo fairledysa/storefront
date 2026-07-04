@@ -3,10 +3,11 @@
 import { NextResponse } from "next/server";
 import { getOrdersDb } from "@/data/db/orders-db.server";
 import { getStoreDb } from "@/data/db/store-db.server";
+import { cookies } from "next/headers";
+import { verifySession } from "@/lib/auth/session";
 import {
   cartSessionCookie,
   getCartSessionId,
-  getOrCreateOpenCart,
   getStoreIdOrThrow,
   buildLineKey,
 } from "../../_cart/cart.server";
@@ -313,6 +314,79 @@ const BANK_TRANSFER_RECEIPT_MIMES = new Set([
 function readProviderCode(method: string) {
   if (!isProviderPaymentMethod(method)) return "";
   return toStr(method.slice("provider:".length)).toLowerCase();
+}
+
+async function getCheckoutCustomerIdForStore(args: {
+  sb: any;
+  store_id: string;
+}): Promise<string | null> {
+  const jar = await cookies();
+  const token =
+    toStr(jar.get("elyaia_session")?.value) ||
+    toStr(jar.get("session")?.value) ||
+    toStr(jar.get("elyaiaSession")?.value);
+
+  if (!token) return null;
+
+  let session: any = null;
+
+  try {
+    session = await Promise.resolve(verifySession(token) as any);
+  } catch {
+    return null;
+  }
+
+  const customer_id = toStr(session?.customer_id);
+
+  if (!isUuid(customer_id)) return null;
+
+  const linkR = await args.sb
+    .from("store_customers")
+    .select("customer_id")
+    .eq("store_id", args.store_id)
+    .eq("customer_id", customer_id)
+    .limit(1)
+    .maybeSingle();
+
+  if (linkR.error) {
+    throw new Error(linkR.error.message || "STORE_CUSTOMER_LOOKUP_FAILED");
+  }
+
+  return linkR.data?.customer_id ? customer_id : null;
+}
+
+/*
+  صفحة checkout تبني الملخص من cart العميل المفتوح.
+  لا يجوز لمس cart الجلسة هنا أو دمجه وقت الإرسال؛ لأن الجوال يحمل
+  darb_cart_session مختلفًا عن الكمبيوتر وقد يؤدي الدمج إلى تنفيذ الطلب
+  على cart غير الظاهر للعميل.
+*/
+async function getExactCheckoutCart(args: {
+  sb: any;
+  store_id: string;
+  cart_id: string;
+}) {
+  const customer_id = await getCheckoutCustomerIdForStore({
+    sb: args.sb,
+    store_id: args.store_id,
+  });
+
+  if (!customer_id) return null;
+
+  const cartR = await args.sb
+    .from("carts")
+    .select("*")
+    .eq("id", args.cart_id)
+    .eq("store_id", args.store_id)
+    .eq("user_id", customer_id)
+    .eq("status", "open")
+    .maybeSingle();
+
+  if (cartR.error) {
+    throw new Error(cartR.error.message || "CHECKOUT_CART_LOOKUP_FAILED");
+  }
+
+  return cartR.data?.id ? cartR.data : null;
 }
 
 async function readExistingOrderForCart(args: {
@@ -2213,19 +2287,61 @@ export async function POST(req: Request) {
   }
 
   const session_id = await getCartSessionId();
-  const cart = await getOrCreateOpenCart({ store_id, session_id });
-
   const body = await req.json().catch(() => ({}));
   const bodyPaymentMethod = normalizePaymentMethodId(body?.payment_method);
+  const requestedCartId = toStr(body?.cart_id);
 
-  if (String(cart.status) !== "open") {
+  /*
+    نستخدم cart_id الذي بُني منه ملخص صفحة الدفع نفسها.
+    لا نستدعي getOrCreateOpenCart هنا، لأن هذا يدمج session cart الخاص بالجهاز
+    داخل cart العميل أثناء تأكيد الطلب، وهو سبب اختلاف سلوك الآيفون عن الكمبيوتر.
+  */
+  if (!isUuid(requestedCartId)) {
     return NextResponse.json(
       {
         ok: false,
-        error: "CART_NOT_OPEN",
-        message_ar: "السلة غير قابلة للدفع.",
+        error: "CHECKOUT_CART_CONTEXT_REQUIRED",
+        message_ar: "انتهت جلسة صفحة الدفع. حدّث الصفحة ثم حاول مرة أخرى.",
       },
-      { status: 400 },
+      { status: 409 },
+    );
+  }
+
+  let cart: any = null;
+
+  try {
+    cart = await getExactCheckoutCart({
+      sb,
+      store_id,
+      cart_id: requestedCartId,
+    });
+  } catch (error: any) {
+    logCheckoutFailure({
+      stage: "resolve_exact_checkout_cart",
+      store_id,
+      cart_id: requestedCartId,
+      request_id,
+      error,
+    });
+
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "CHECKOUT_CART_LOOKUP_FAILED",
+        message_ar: "تعذر التحقق من سلة الطلب. حدّث الصفحة وحاول مرة أخرى.",
+      },
+      { status: 500 },
+    );
+  }
+
+  if (!cart?.id || String(cart.status) !== "open") {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "CHECKOUT_CART_CONTEXT_CHANGED",
+        message_ar: "تغيرت سلة الطلب. حدّث الصفحة ثم حاول مرة أخرى.",
+      },
+      { status: 409 },
     );
   }
 

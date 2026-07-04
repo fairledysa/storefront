@@ -1197,6 +1197,11 @@ export default function OrderSummary({
         cache: "no-store",
         credentials: "same-origin",
         body: JSON.stringify({
+          /*
+            نرسل cart_id الذي بُني منه الملخص الظاهر للعميل.
+            الخادم يستخدمه لتأكيد نفس cart بدل دمج cart جلسة هذا الجهاز.
+          */
+          cart_id: summary?.cart_id ?? null,
           payment_method: summary?.payment_method ?? null,
           ...(bankTransferPayload
             ? { bankTransfer: bankTransferPayload }
