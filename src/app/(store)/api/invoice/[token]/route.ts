@@ -4,7 +4,7 @@
 // it never accepts a numeric order id or order number.
 
 import { ImageResponse } from "next/og";
-import { createElement, type ReactNode } from "react";
+import { createElement, type ReactElement, type ReactNode } from "react";
 import { deflateSync, inflateSync } from "node:zlib";
 
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
@@ -518,7 +518,7 @@ function invoicePage(args: {
   showOrderDetails: boolean;
   showTotals: boolean;
   images: Map<string, string>;
-}): ReactNode {
+}): ReactElement {
   const { model, items, pageNumber, pageCount, showOrderDetails, showTotals, images } = args;
   const { settings, order, store } = model;
   const primaryWeight = settings.primaryFontWeight === "bold" ? 700 : 400;
@@ -1349,7 +1349,7 @@ async function loadInvoice(token: string): Promise<InvoiceModel | null> {
       qty: Math.max(1, Math.floor(n(item.qty) || 1)),
       unitPrice: round2(item.unit_price),
       totalPrice: round2(item.total_price),
-      currency: firstText(item.currency, order.currency, ctx.store.default_currency, "SAR"),
+      currency: firstText(item.currency, order.currency, ctx.store?.default_currency, "SAR"),
       description,
       sku: firstText(item.sku, variant.sku),
       gtin: firstText(variant.gtin),
