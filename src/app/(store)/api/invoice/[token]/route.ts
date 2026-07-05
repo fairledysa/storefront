@@ -1,15 +1,18 @@
 // FILE: apps/storefront/src/app/(store)/api/invoice/[token]/route.ts
-// Public invoice download for the thank-you page.
-// The route is deliberately protected by the unpredictable order public_token;
-// it never accepts a numeric order id or order number.
+// Public PDF invoice generated from the real order and merchant invoice settings.
+// Important: this route deliberately does not use ImageResponse/Satori. It draws
+// Arabic glyph outlines into the PDF with the store's existing Lusail WOFF2 fonts.
 
-import { ImageResponse } from "next/og";
-import { createElement, type ReactElement, type ReactNode } from "react";
 import { deflateSync, inflateSync } from "node:zlib";
 
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
 import { getOrdersDb } from "@/data/db/orders-db.server";
 import { getStoreDb } from "@/data/db/store-db.server";
+
+// fontkit parses WOFF2 and performs Arabic shaping (ligatures/right-to-left).
+// It is intentionally a direct production dependency, not a dev dependency.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const fontkit: any = require("fontkit");
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,7 +20,7 @@ export const maxDuration = 60;
 
 type DbRecord = Record<string, any>;
 type InvoiceSettings = {
-  issueMode: "elyaia" | "custom";
+  issueMode: "platform" | "custom";
   customStoreTitle: string;
   showStoreTitle: boolean;
   showLogo: boolean;
@@ -91,24 +94,43 @@ type InvoiceModel = {
   settings: InvoiceSettings;
 };
 
-type PngPage = {
+type PdfImage = {
+  kind: "rgb" | "jpeg";
   width: number;
   height: number;
-  rgb: Buffer;
+  data: Buffer;
+};
+
+type PageImage = {
+  name: string;
+  image: PdfImage;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  opacity: number;
+};
+
+type PdfPage = {
+  commands: string[];
+  images: PageImage[];
+};
+
+type InvoiceFonts = {
+  regular: any;
+  bold: any;
 };
 
 const SETTINGS_SLUG = "invoice_settings";
-const PAGE_WIDTH = 1240;
-const PAGE_HEIGHT = 1754;
-const PDF_WIDTH = 595.28;
-const PDF_HEIGHT = 841.89;
-const FONT_URLS = [
-  "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosansarabic/NotoSansArabic%5Bwdth%2Cwght%5D.ttf",
-  "https://raw.githubusercontent.com/google/fonts/main/ofl/notosansarabic/NotoSansArabic%5Bwdth%2Cwght%5D.ttf",
-];
+const PAGE_WIDTH = 595.28;
+const PAGE_HEIGHT = 841.89;
+const MARGIN = 38;
+const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
+const MAX_REMOTE_IMAGE_BYTES = 2_500_000;
+const MAX_IMAGE_PIXELS = 1_400_000;
 
 const DEFAULT_INVOICE_SETTINGS: InvoiceSettings = {
-  issueMode: "elyaia",
+  issueMode: "platform",
   customStoreTitle: "",
   showStoreTitle: true,
   showLogo: true,
@@ -131,10 +153,10 @@ const DEFAULT_INVOICE_SETTINGS: InvoiceSettings = {
   stampUrl: "",
   stampOpacity: 35,
   stampPosition: "bottom-right",
-  footerText: "شكراً لتسوقك من متجرنا، نتمنى لك يوماً رائعاً.",
+  footerText: "شكراً لتسوقك من متجرنا.",
 };
 
-let arabicFontPromise: Promise<ArrayBuffer> | null = null;
+let fontsPromise: Promise<InvoiceFonts> | null = null;
 
 function s(value: unknown) {
   return String(value ?? "").trim();
@@ -150,19 +172,13 @@ function round2(value: unknown) {
 }
 
 function safeObject(value: unknown): DbRecord {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    return value as DbRecord;
-  }
-
+  if (value && typeof value === "object" && !Array.isArray(value)) return value as DbRecord;
   if (typeof value === "string") {
     try {
       const parsed = JSON.parse(value);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        return parsed as DbRecord;
-      }
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as DbRecord;
     } catch {}
   }
-
   return {};
 }
 
@@ -175,7 +191,6 @@ function firstText(...values: unknown[]) {
     const text = s(value);
     if (text) return text;
   }
-
   return "";
 }
 
@@ -192,21 +207,19 @@ function clamp(value: unknown, min: number, max: number, fallback: number) {
   return Math.min(max, Math.max(min, parsed));
 }
 
-function oneOf<T extends string>(
-  value: unknown,
-  allowed: readonly T[],
-  fallback: T,
-): T {
+function oneOf<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
   const text = s(value) as T;
   return allowed.includes(text) ? text : fallback;
 }
 
+function isHexColor(value: string) {
+  return /^#[0-9a-f]{3,8}$/i.test(value);
+}
+
 function normalizeInvoiceSettings(value: unknown): InvoiceSettings {
   const raw = safeObject(value);
-  const issueMode = s(raw.issueMode);
-
   return {
-    issueMode: issueMode === "custom" ? "custom" : "elyaia",
+    issueMode: s(raw.issueMode) === "custom" ? "custom" : "platform",
     customStoreTitle: s(raw.customStoreTitle).slice(0, 120),
     showStoreTitle: bool(raw.showStoreTitle, true),
     showLogo: bool(raw.showLogo, true),
@@ -228,25 +241,13 @@ function normalizeInvoiceSettings(value: unknown): InvoiceSettings {
     watermarkOpacity: clamp(raw.watermarkOpacity, 0, 100, 20),
     stampUrl: s(raw.stampUrl).slice(0, 1000),
     stampOpacity: clamp(raw.stampOpacity, 0, 100, 35),
-    stampPosition: oneOf(
-      raw.stampPosition,
-      ["bottom-right", "bottom-center", "bottom-left"],
-      "bottom-right",
-    ),
+    stampPosition: oneOf(raw.stampPosition, ["bottom-right", "bottom-center", "bottom-left"], "bottom-right"),
     footerText: s(raw.footerText || DEFAULT_INVOICE_SETTINGS.footerText).slice(0, 300),
   };
 }
 
-function isHexColor(value: string) {
-  return /^#[0-9a-f]{3,8}$/i.test(value);
-}
-
 function stripHtml(value: unknown, max = 180) {
-  return s(value)
-    .replace(/<[^>]*>/g, " ")
-    .replace(/\s+/g, " ")
-    .slice(0, max)
-    .trim();
+  return s(value).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").slice(0, max).trim();
 }
 
 function selectedOptionsText(value: unknown) {
@@ -272,16 +273,10 @@ function money(value: number, currency: string) {
 function dateText(value: unknown) {
   const raw = s(value);
   if (!raw) return "-";
-
   const date = new Date(raw);
   if (Number.isNaN(date.getTime())) return raw;
-
-  return new Intl.DateTimeFormat("ar-SA-u-ca-gregory", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
+  return new Intl.DateTimeFormat("en-GB", {
+    year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
   }).format(date);
 }
 
@@ -304,44 +299,15 @@ function paymentStatusLabel(status: unknown) {
 
 function formatAddress(source: unknown) {
   const value = safeObject(source);
-  const direct = firstText(
-    value.full_address,
-    value.fullAddress,
-    value.address,
-    value.address_line1,
-    value.addressLine1,
-    value.location,
-  );
-
-  const parts = [
-    direct,
-    firstText(value.district, value.district_name, value.districtName),
-    firstText(value.city, value.city_name, value.cityName),
-    firstText(value.country, value.country_name, value.countryName),
-  ].filter(Boolean);
-
+  const direct = firstText(value.full_address, value.fullAddress, value.address, value.address_line1, value.addressLine1, value.location);
+  const parts = [direct, firstText(value.district, value.district_name, value.districtName), firstText(value.city, value.city_name, value.cityName), firstText(value.country, value.country_name, value.countryName)].filter(Boolean);
   return Array.from(new Set(parts)).join("، ");
 }
 
 function profileAddress(profile: DbRecord) {
-  const direct = firstText(
-    profile.address,
-    profile.full_address,
-    profile.fullAddress,
-    profile.address_line1,
-    profile.addressLine1,
-    profile.location,
-  );
-
+  const direct = firstText(profile.address, profile.full_address, profile.fullAddress, profile.address_line1, profile.addressLine1, profile.location);
   if (direct) return direct;
-
-  return [
-    firstText(profile.district, profile.district_name, profile.districtName),
-    firstText(profile.city, profile.city_name, profile.cityName),
-    firstText(profile.country, profile.country_name, profile.countryName),
-  ]
-    .filter(Boolean)
-    .join("، ");
+  return [firstText(profile.district, profile.district_name, profile.districtName), firstText(profile.city, profile.city_name, profile.cityName), firstText(profile.country, profile.country_name, profile.countryName)].filter(Boolean).join("، ");
 }
 
 function safeHttpUrl(value: unknown) {
@@ -349,847 +315,549 @@ function safeHttpUrl(value: unknown) {
   return /^https?:\/\//i.test(url) ? url : "";
 }
 
-async function loadArabicFont() {
-  if (!arabicFontPromise) {
-    arabicFontPromise = (async () => {
-      let lastError: unknown = null;
-
-      for (const url of FONT_URLS) {
-        try {
-          const response = await fetch(url, { cache: "force-cache" });
-          if (!response.ok) throw new Error(`FONT_HTTP_${response.status}`);
-
-          const font = await response.arrayBuffer();
-          if (font.byteLength > 0) return font;
-        } catch (error) {
-          lastError = error;
-        }
-      }
-
-      throw lastError || new Error("INVOICE_FONT_UNAVAILABLE");
+async function loadFonts(request: Request): Promise<InvoiceFonts> {
+  if (!fontsPromise) {
+    fontsPromise = (async () => {
+      const regularUrl = new URL("/fonts/lusail/Lusail-Regular.woff2", request.url);
+      const boldUrl = new URL("/fonts/lusail/Lusail-Bold.woff2", request.url);
+      const [regularR, boldR] = await Promise.all([
+        fetch(regularUrl, { cache: "force-cache" }),
+        fetch(boldUrl, { cache: "force-cache" }),
+      ]);
+      if (!regularR.ok || !boldR.ok) throw new Error("INVOICE_FONT_UNAVAILABLE");
+      const [regularBytes, boldBytes] = await Promise.all([regularR.arrayBuffer(), boldR.arrayBuffer()]);
+      return {
+        regular: fontkit.create(Buffer.from(regularBytes)),
+        bold: fontkit.create(Buffer.from(boldBytes)),
+      };
     })();
   }
-
-  return await arabicFontPromise;
+  return fontsPromise;
 }
 
-async function toEmbeddedImage(value: unknown) {
-  const url = safeHttpUrl(value);
-  if (!url) return "";
+function pdfNumber(value: number) {
+  return String(Math.round(value * 1000) / 1000);
+}
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 7000);
+function hexRgb(value: string): [number, number, number] {
+  let hex = s(value).replace("#", "");
+  if (hex.length === 3) hex = hex.split("").map((char) => `${char}${char}`).join("");
+  if (!/^[0-9a-f]{6}$/i.test(hex)) return [0.06, 0.09, 0.16];
+  return [0, 2, 4].map((offset) => Math.round((Number.parseInt(hex.slice(offset, offset + 2), 16) / 255) * 1000) / 1000) as [number, number, number];
+}
 
-  try {
-    const response = await fetch(url, { signal: controller.signal });
-    if (!response.ok) return "";
+function rgbFill(value: string) {
+  const [r, g, b] = hexRgb(value);
+  return `${pdfNumber(r)} ${pdfNumber(g)} ${pdfNumber(b)} rg\n`;
+}
 
-    const type = s(response.headers.get("content-type")).toLowerCase();
-    if (!type.startsWith("image/")) return "";
+function rgbStroke(value: string) {
+  const [r, g, b] = hexRgb(value);
+  return `${pdfNumber(r)} ${pdfNumber(g)} ${pdfNumber(b)} RG\n`;
+}
 
-    const declaredLength = n(response.headers.get("content-length"));
-    if (declaredLength > 2_500_000) return "";
+function measureText(font: any, value: string, size: number) {
+  const run = font.layout(String(value || " "));
+  const scale = size / font.unitsPerEm;
+  return run.positions.reduce((sum: number, position: any) => sum + n(position.xAdvance) * scale, 0);
+}
 
-    const bytes = Buffer.from(await response.arrayBuffer());
-    if (!bytes.length || bytes.length > 2_500_000) return "";
-
-    return `data:${type.split(";")[0]};base64,${bytes.toString("base64")}`;
-  } catch {
-    return "";
-  } finally {
-    clearTimeout(timeout);
+function glyphPathPdf(glyph: any, x: number, y: number, scale: number) {
+  let output = "";
+  let cx = 0;
+  let cy = 0;
+  for (const command of glyph.path.commands as Array<{ command: string; args: number[] }>) {
+    const a = command.args || [];
+    if (command.command === "moveTo") {
+      cx = a[0]; cy = a[1];
+      output += `${pdfNumber(x + cx * scale)} ${pdfNumber(y + cy * scale)} m\n`;
+    } else if (command.command === "lineTo") {
+      cx = a[0]; cy = a[1];
+      output += `${pdfNumber(x + cx * scale)} ${pdfNumber(y + cy * scale)} l\n`;
+    } else if (command.command === "bezierCurveTo") {
+      output += `${pdfNumber(x + a[0] * scale)} ${pdfNumber(y + a[1] * scale)} ${pdfNumber(x + a[2] * scale)} ${pdfNumber(y + a[3] * scale)} ${pdfNumber(x + a[4] * scale)} ${pdfNumber(y + a[5] * scale)} c\n`;
+      cx = a[4]; cy = a[5];
+    } else if (command.command === "quadraticCurveTo") {
+      const qx = a[0]; const qy = a[1]; const ex = a[2]; const ey = a[3];
+      const c1x = cx + (2 / 3) * (qx - cx);
+      const c1y = cy + (2 / 3) * (qy - cy);
+      const c2x = ex + (2 / 3) * (qx - ex);
+      const c2y = ey + (2 / 3) * (qy - ey);
+      output += `${pdfNumber(x + c1x * scale)} ${pdfNumber(y + c1y * scale)} ${pdfNumber(x + c2x * scale)} ${pdfNumber(y + c2y * scale)} ${pdfNumber(x + ex * scale)} ${pdfNumber(y + ey * scale)} c\n`;
+      cx = ex; cy = ey;
+    } else if (command.command === "closePath") {
+      output += "h\n";
+    }
   }
+  return output;
 }
 
-function barcode(value: string, small = false): ReactNode | null {
+function drawText(page: PdfPage, font: any, value: string, x: number, baseline: number, size: number, color: string, align: "right" | "left" | "center" = "right") {
+  const text = s(value) || "-";
+  const run = font.layout(text);
+  const scale = size / font.unitsPerEm;
+  const width = run.positions.reduce((sum: number, position: any) => sum + n(position.xAdvance) * scale, 0);
+  let penX = align === "right" ? x - width : align === "center" ? x - width / 2 : x;
+  let penY = baseline;
+  let command = rgbFill(color);
+  for (let index = 0; index < run.glyphs.length; index += 1) {
+    const glyph = run.glyphs[index];
+    const position = run.positions[index] || {};
+    const gx = penX + n(position.xOffset) * scale;
+    const gy = penY + n(position.yOffset) * scale;
+    command += glyphPathPdf(glyph, gx, gy, scale);
+    command += "f\n";
+    penX += n(position.xAdvance) * scale;
+    penY += n(position.yAdvance) * scale;
+  }
+  page.commands.push(command);
+  return width;
+}
+
+function splitText(font: any, value: string, size: number, maxWidth: number, maxLines = 3) {
   const clean = s(value);
-  if (!clean) return null;
-
-  let seed = 0;
-  for (const char of clean) seed = (seed * 31 + char.charCodeAt(0)) >>> 0;
-
-  const bars = Array.from({ length: small ? 30 : 42 }, (_, index) => {
-    seed = (seed * 1664525 + 1013904223) >>> 0;
-    return {
-      width: 2 + (seed % 4),
-      visible: index < 3 || index > (small ? 26 : 38) || seed % 5 !== 0,
-    };
-  });
-
-  return createElement(
-    "div",
-    {
-      style: {
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: 4,
-        direction: "ltr",
-      },
-    },
-    [
-      createElement(
-        "div",
-        {
-          key: "bars",
-          style: { display: "flex", height: small ? 24 : 36, alignItems: "stretch" },
-        },
-        bars.map((bar, index) =>
-          createElement("span", {
-            key: index,
-            style: {
-              display: "flex",
-              width: bar.width,
-              backgroundColor: bar.visible ? "#111827" : "transparent",
-            },
-          }),
-        ),
-      ),
-      createElement(
-        "span",
-        {
-          key: "value",
-          style: { fontSize: small ? 11 : 13, color: "#475569", letterSpacing: 1 },
-        },
-        clean,
-      ),
-    ],
-  );
-}
-
-function keyValue(label: string, value: string, key: string) {
-  if (!s(value)) return null;
-
-  return createElement(
-    "div",
-    {
-      key,
-      style: {
-        display: "flex",
-        flexDirection: "column",
-        gap: 4,
-        minWidth: 0,
-      },
-    },
-    [
-      createElement(
-        "span",
-        { key: "label", style: { color: "#64748b", fontSize: 17 } },
-        label,
-      ),
-      createElement(
-        "span",
-        {
-          key: "value",
-          style: { color: "#0f172a", fontSize: 18, fontWeight: 700, overflow: "hidden" },
-        },
-        value,
-      ),
-    ],
-  );
-}
-
-function splitItems(items: InvoiceItem[], settings: InvoiceSettings) {
-  const rowWeight = settings.showProductImage ? 1.45 : settings.showProductDescription ? 1.18 : 1;
-  const firstWithTotals = Math.max(3, Math.floor(6 / rowWeight));
-  const firstWithoutTotals = Math.max(5, Math.floor(9 / rowWeight));
-  const laterWithTotals = Math.max(4, Math.floor(7 / rowWeight));
-  const middleCapacity = Math.max(6, Math.floor(12 / rowWeight));
-
-  if (items.length <= firstWithTotals) return [items];
-
-  const pages: InvoiceItem[][] = [];
-  let remaining = [...items];
-  pages.push(remaining.splice(0, firstWithoutTotals));
-
-  while (remaining.length > laterWithTotals) {
-    pages.push(remaining.splice(0, middleCapacity));
+  if (!clean) return [] as string[];
+  const words = clean.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (!current || measureText(font, candidate, size) <= maxWidth) {
+      current = candidate;
+      continue;
+    }
+    lines.push(current);
+    current = word;
+    if (lines.length >= maxLines) break;
   }
-
-  pages.push(remaining);
-  return pages;
+  if (lines.length < maxLines && current) lines.push(current);
+  if (lines.length === maxLines && words.length > 0) {
+    const consumed = lines.join(" ").split(/\s+/).length;
+    if (consumed < words.length) {
+      let last = lines[lines.length - 1];
+      while (last && measureText(font, `${last}…`, size) > maxWidth) last = last.slice(0, -1);
+      lines[lines.length - 1] = `${last}…`;
+    }
+  }
+  return lines;
 }
 
-function invoicePage(args: {
-  model: InvoiceModel;
-  items: InvoiceItem[];
-  pageNumber: number;
-  pageCount: number;
-  showOrderDetails: boolean;
-  showTotals: boolean;
-  images: Map<string, string>;
-}): ReactElement {
-  const { model, items, pageNumber, pageCount, showOrderDetails, showTotals, images } = args;
-  const { settings, order, store } = model;
-  const primaryWeight = settings.primaryFontWeight === "bold" ? 700 : 400;
-  const secondaryWeight = settings.secondaryFontWeight === "bold" ? 700 : 400;
-  const invoiceStoreName =
-    settings.issueMode === "custom" && settings.customStoreTitle
-      ? settings.customStoreTitle
-      : store.name;
-  const logo = images.get("logo") || "";
-  const watermark = images.get("watermark") || "";
-  const stamp = images.get("stamp") || "";
-
-  const logoPosition =
-    settings.logoPosition === "right"
-      ? "flex-end"
-      : settings.logoPosition === "left"
-        ? "flex-start"
-        : "center";
-
-  const heading = (text: string, key: string) =>
-    createElement(
-      "div",
-      {
-        key,
-        style: {
-          display: "flex",
-          fontSize: 22,
-          fontWeight: primaryWeight,
-          color: settings.textColor,
-          marginBottom: 14,
-        },
-      },
-      text,
-    );
-
-  const itemRows = items.map((item, index) => {
-    const image = images.get(`item:${item.id}`) || "";
-    const meta = [
-      settings.showSku && item.sku ? `SKU: ${item.sku}` : "",
-      settings.showGtin && item.gtin ? `GTIN: ${item.gtin}` : "",
-      settings.showMpn && item.mpn ? `MPN: ${item.mpn}` : "",
-    ]
-      .filter(Boolean)
-      .join("  •  ");
-
-    return createElement(
-      "div",
-      {
-        key: item.id || `${item.name}-${index}`,
-        style: {
-          display: "flex",
-          width: "100%",
-          padding: "16px 0",
-          borderBottom: "1px solid #e2e8f0",
-          alignItems: "center",
-          direction: "rtl",
-          minHeight: settings.showProductImage ? 92 : 72,
-        },
-      },
-      [
-        createElement(
-          "div",
-          {
-            key: "product",
-            style: {
-              display: "flex",
-              width: "54%",
-              alignItems: "center",
-              gap: 14,
-              minWidth: 0,
-            },
-          },
-          [
-            settings.showProductImage && image
-              ? createElement("img", {
-                  key: "image",
-                  src: image,
-                  width: 62,
-                  height: 62,
-                  style: {
-                    display: "flex",
-                    width: 62,
-                    height: 62,
-                    objectFit: "cover",
-                    borderRadius: 10,
-                    border: "1px solid #e2e8f0",
-                    flexShrink: 0,
-                  },
-                })
-              : null,
-            createElement(
-              "div",
-              {
-                key: "text",
-                style: {
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 4,
-                  minWidth: 0,
-                  flex: 1,
-                },
-              },
-              [
-                createElement(
-                  "span",
-                  {
-                    key: "name",
-                    style: { fontSize: 19, fontWeight: primaryWeight, color: settings.textColor },
-                  },
-                  item.name || "منتج",
-                ),
-                settings.showProductDescription && item.description
-                  ? createElement(
-                      "span",
-                      {
-                        key: "description",
-                        style: { fontSize: 14, color: "#64748b", lineHeight: 1.4 },
-                      },
-                      item.description,
-                    )
-                  : null,
-                meta
-                  ? createElement(
-                      "span",
-                      {
-                        key: "meta",
-                        style: { fontSize: 12, color: "#475569", direction: "ltr" },
-                      },
-                      meta,
-                    )
-                  : null,
-                settings.showProductBarcode && item.barcode
-                  ? createElement(
-                      "div",
-                      { key: "barcode", style: { display: "flex", marginTop: 3, alignSelf: "flex-start" } },
-                      barcode(item.barcode, true),
-                    )
-                  : null,
-              ].filter(Boolean),
-            ),
-          ].filter(Boolean),
-        ),
-        createElement(
-          "div",
-          {
-            key: "qty",
-            style: { display: "flex", width: "12%", justifyContent: "center", fontSize: 17, color: settings.textColor },
-          },
-          String(item.qty),
-        ),
-        createElement(
-          "div",
-          {
-            key: "unit",
-            style: { display: "flex", width: "16%", justifyContent: "center", fontSize: 16, color: settings.textColor, direction: "ltr" },
-          },
-          money(item.unitPrice, item.currency || order.currency),
-        ),
-        createElement(
-          "div",
-          {
-            key: "total",
-            style: { display: "flex", width: "18%", justifyContent: "flex-end", fontSize: 17, fontWeight: primaryWeight, color: settings.textColor, direction: "ltr" },
-          },
-          money(item.totalPrice, item.currency || order.currency),
-        ),
-      ],
-    );
-  });
-
-  const totals = [
-    ["الإجمالي الفرعي", order.subtotal, false],
-    ["الشحن", order.shipping, order.shipping <= 0],
-    ["الخصم", order.discount, order.discount <= 0],
-    [store.taxLabel || "ضريبة القيمة المضافة", order.tax, order.tax <= 0 && !settings.showZeroTaxFields],
-  ].filter(([, , hidden]) => !hidden) as Array<[string, number, boolean]>;
-
-  const stampStyle: DbRecord = {
-    position: "absolute",
-    bottom: 86,
-    width: 110,
-    height: 110,
-    objectFit: "contain",
-    opacity: settings.stampOpacity / 100,
-  };
-
-  if (settings.stampPosition === "bottom-left") stampStyle.left = 54;
-  else if (settings.stampPosition === "bottom-center") stampStyle.left = 565;
-  else stampStyle.right = 54;
-
-  return createElement(
-    "div",
-    {
-      style: {
-        display: "flex",
-        flexDirection: "column",
-        width: "100%",
-        height: "100%",
-        padding: "54px",
-        position: "relative",
-        backgroundColor: "#ffffff",
-        color: settings.textColor,
-        fontFamily: "InvoiceArabic",
-        direction: "rtl",
-      },
-    },
-    [
-      watermark
-        ? createElement("img", {
-            key: "watermark",
-            src: watermark,
-            width: 560,
-            height: 560,
-            style: {
-              position: "absolute",
-              display: "flex",
-              top: 420,
-              left: 340,
-              width: 560,
-              height: 560,
-              objectFit: "contain",
-              opacity: settings.watermarkOpacity / 100,
-            },
-          })
-        : null,
-      createElement(
-        "div",
-        {
-          key: "content",
-          style: {
-            display: "flex",
-            flexDirection: "column",
-            width: "100%",
-            height: "100%",
-            position: "relative",
-          },
-        },
-        [
-          createElement(
-            "header",
-            {
-              key: "header",
-              style: {
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                paddingBottom: 22,
-                borderBottom: "2px solid #e2e8f0",
-              },
-            },
-            [
-              createElement(
-                "div",
-                {
-                  key: "store",
-                  style: { display: "flex", flexDirection: "column", gap: 7, flex: 1, minWidth: 0 },
-                },
-                [
-                  settings.showStoreTitle
-                    ? createElement(
-                        "div",
-                        { key: "name", style: { display: "flex", fontSize: 26, fontWeight: primaryWeight } },
-                        invoiceStoreName,
-                      )
-                    : null,
-                  createElement(
-                    "div",
-                    { key: "title", style: { display: "flex", fontSize: 17, color: "#64748b" } },
-                    "فاتورة مبيعات",
-                  ),
-                  store.taxNumber
-                    ? createElement(
-                        "div",
-                        { key: "tax", style: { display: "flex", fontSize: 14, color: "#475569", direction: "ltr" } },
-                        `${store.taxLabel}: ${store.taxNumber}`,
-                      )
-                    : null,
-                ].filter(Boolean),
-              ),
-              settings.showLogo
-                ? createElement(
-                    "div",
-                    {
-                      key: "logoWrap",
-                      style: { display: "flex", width: 220, justifyContent: logoPosition, alignItems: "center" },
-                    },
-                    logo
-                      ? createElement("img", {
-                          src: logo,
-                          width: Math.max(72, settings.logoSize * 3),
-                          height: Math.max(72, settings.logoSize * 3),
-                          style: {
-                            display: "flex",
-                            width: Math.max(72, settings.logoSize * 3),
-                            height: Math.max(72, settings.logoSize * 3),
-                            objectFit: "contain",
-                          },
-                        })
-                      : createElement(
-                          "div",
-                          {
-                            style: {
-                              display: "flex",
-                              width: Math.max(72, settings.logoSize * 3),
-                              height: Math.max(72, settings.logoSize * 3),
-                              alignItems: "center",
-                              justifyContent: "center",
-                              borderRadius: 14,
-                              backgroundColor: "#0f172a",
-                              color: "#ffffff",
-                              fontWeight: primaryWeight,
-                              fontSize: 18,
-                            },
-                          },
-                          invoiceStoreName.slice(0, 2),
-                        ),
-                  )
-                : null,
-            ].filter(Boolean),
-          ),
-          createElement(
-            "section",
-            {
-              key: "invoiceMeta",
-              style: {
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-                padding: "24px 0",
-                gap: 22,
-              },
-            },
-            [
-              createElement(
-                "div",
-                { key: "date", style: { display: "flex", flexDirection: "column", gap: 7, width: "48%" } },
-                [
-                  createElement("span", { key: "label", style: { fontSize: 16, color: "#64748b" } }, "تاريخ الطلب"),
-                  createElement("strong", { key: "value", style: { fontSize: 18, fontWeight: primaryWeight } }, dateText(order.createdAt)),
-                ],
-              ),
-              createElement(
-                "div",
-                { key: "numbers", style: { display: "flex", flexDirection: "column", gap: 6, width: "52%", alignItems: "flex-end" } },
-                [
-                  createElement("strong", { key: "invoice", style: { fontSize: 22, fontWeight: primaryWeight, direction: "ltr" } }, `INV-${order.invoiceNo}`),
-                  createElement("span", { key: "order", style: { fontSize: 16, color: "#475569", direction: "ltr" } }, `ORDER #${order.orderNo}`),
-                  settings.showInvoiceBarcode
-                    ? createElement("div", { key: "barcode", style: { display: "flex", marginTop: 3 } }, barcode(`INV-${order.invoiceNo}`))
-                    : null,
-                ].filter(Boolean),
-              ),
-            ],
-          ),
-          showOrderDetails
-            ? createElement(
-                "section",
-                {
-                  key: "parties",
-                  style: { display: "flex", gap: 18, padding: "18px 0 24px", borderTop: "1px solid #e2e8f0" },
-                },
-                [
-                  createElement(
-                    "div",
-                    {
-                      key: "from",
-                      style: { display: "flex", flexDirection: "column", gap: 8, width: "50%", padding: 18, borderRadius: 14, backgroundColor: "#f8fafc" },
-                    },
-                    [
-                      heading("مصدره من", "heading"),
-                      settings.showStoreTitle ? keyValue("المتجر", invoiceStoreName, "name") : null,
-                      settings.showStoreAddress && store.address ? keyValue("العنوان", store.address, "address") : null,
-                      store.email ? keyValue("البريد الإلكتروني", store.email, "email") : null,
-                      store.phone ? keyValue("الجوال", store.phone, "phone") : null,
-                    ].filter(Boolean),
-                  ),
-                  createElement(
-                    "div",
-                    {
-                      key: "to",
-                      style: { display: "flex", flexDirection: "column", gap: 8, width: "50%", padding: 18, borderRadius: 14, backgroundColor: "#f8fafc" },
-                    },
-                    [
-                      heading("مصدره إلى", "heading"),
-                      keyValue("العميل", order.customerName || "-", "customer"),
-                      order.shippingAddress ? keyValue("عنوان الشحن", order.shippingAddress, "shipping") : null,
-                      order.customerEmail ? keyValue("البريد الإلكتروني", order.customerEmail, "email") : null,
-                      order.customerPhone ? keyValue("الجوال", order.customerPhone, "phone") : null,
-                    ].filter(Boolean),
-                  ),
-                ],
-              )
-            : null,
-          createElement(
-            "section",
-            { key: "items", style: { display: "flex", flexDirection: "column", flex: 1, paddingTop: 8 } },
-            [
-              createElement(
-                "div",
-                {
-                  key: "thead",
-                  style: {
-                    display: "flex",
-                    width: "100%",
-                    padding: "13px 0",
-                    backgroundColor: "#f1f5f9",
-                    borderTop: "1px solid #e2e8f0",
-                    borderBottom: "1px solid #e2e8f0",
-                    color: "#334155",
-                    fontSize: 16,
-                    fontWeight: primaryWeight,
-                    direction: "rtl",
-                  },
-                },
-                [
-                  createElement("span", { key: "product", style: { display: "flex", width: "54%", paddingRight: 10 } }, "المنتج"),
-                  createElement("span", { key: "qty", style: { display: "flex", width: "12%", justifyContent: "center" } }, "الكمية"),
-                  createElement("span", { key: "price", style: { display: "flex", width: "16%", justifyContent: "center" } }, "السعر"),
-                  createElement("span", { key: "total", style: { display: "flex", width: "18%", justifyContent: "flex-end", paddingLeft: 10 } }, "المجموع"),
-                ],
-              ),
-              ...itemRows,
-            ],
-          ),
-          showTotals
-            ? createElement(
-                "section",
-                {
-                  key: "totals",
-                  style: { display: "flex", justifyContent: "space-between", gap: 24, paddingTop: 24 },
-                },
-                [
-                  createElement(
-                    "div",
-                    { key: "info", style: { display: "flex", flexDirection: "column", gap: 7, width: "50%", color: "#475569", fontSize: 15 } },
-                    [
-                      createElement("span", { key: "payment" }, `طريقة الدفع: ${paymentMethodLabel(order.paymentMethod)}`),
-                      createElement("span", { key: "paymentStatus" }, `حالة الدفع: ${paymentStatusLabel(order.paymentStatus)}`),
-                      order.shippingCarrier
-                        ? createElement("span", { key: "shipping" }, `شركة الشحن: ${order.shippingCarrier}`)
-                        : null,
-                    ].filter(Boolean),
-                  ),
-                  createElement(
-                    "div",
-                    { key: "rows", style: { display: "flex", flexDirection: "column", width: "50%", gap: 8 } },
-                    [
-                      ...totals.map(([label, value], index) =>
-                        createElement(
-                          "div",
-                          {
-                            key: `${label}-${index}`,
-                            style: { display: "flex", justifyContent: "space-between", color: "#334155", fontSize: 17 },
-                          },
-                          [
-                            createElement("span", { key: "label" }, label),
-                            createElement("strong", { key: "value", style: { direction: "ltr", fontWeight: secondaryWeight } },
-                              label === "الخصم" ? `- ${money(value, order.currency)}` : value <= 0 && label === "الشحن" ? "مجاني" : money(value, order.currency),
-                            ),
-                          ],
-                        ),
-                      ),
-                      createElement(
-                        "div",
-                        {
-                          key: "final",
-                          style: {
-                            display: "flex",
-                            justifyContent: "space-between",
-                            marginTop: 5,
-                            paddingTop: 12,
-                            borderTop: "2px solid #0f172a",
-                            color: settings.textColor,
-                            fontSize: 22,
-                            fontWeight: primaryWeight,
-                          },
-                        },
-                        [
-                          createElement("span", { key: "label" }, "الإجمالي"),
-                          createElement("strong", { key: "value", style: { direction: "ltr", fontWeight: primaryWeight } }, money(order.total, order.currency)),
-                        ],
-                      ),
-                    ],
-                  ),
-                ],
-              )
-            : null,
-          createElement(
-            "footer",
-            {
-              key: "footer",
-              style: {
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginTop: 22,
-                paddingTop: 16,
-                borderTop: "1px solid #e2e8f0",
-                color: "#64748b",
-                fontSize: 14,
-              },
-            },
-            [
-              createElement("span", { key: "text" }, settings.footerText || DEFAULT_INVOICE_SETTINGS.footerText),
-              createElement("span", { key: "page", style: { direction: "ltr" } }, `${pageNumber} / ${pageCount}`),
-            ],
-          ),
-        ].filter(Boolean),
-      ),
-      stamp
-        ? createElement("img", {
-            key: "stamp",
-            src: stamp,
-            width: 110,
-            height: 110,
-            style: { display: "flex", ...stampStyle },
-          })
-        : null,
-    ].filter(Boolean),
-  );
+function drawParagraph(page: PdfPage, font: any, value: string, x: number, topBaseline: number, size: number, color: string, maxWidth: number, lineHeight: number, maxLines = 3, align: "right" | "left" | "center" = "right") {
+  const lines = splitText(font, value, size, maxWidth, maxLines);
+  lines.forEach((line, index) => drawText(page, font, line, x, topBaseline - index * lineHeight, size, color, align));
+  return lines.length * lineHeight;
 }
 
-function readPng(buffer: Buffer): PngPage {
+function drawRect(page: PdfPage, x: number, y: number, width: number, height: number, color: string) {
+  page.commands.push(`q\n${rgbFill(color)}${pdfNumber(x)} ${pdfNumber(y)} ${pdfNumber(width)} ${pdfNumber(height)} re\nf\nQ\n`);
+}
+
+function drawLine(page: PdfPage, x1: number, y1: number, x2: number, y2: number, color = "#e2e8f0", thickness = 0.8) {
+  page.commands.push(`q\n${rgbStroke(color)}${pdfNumber(thickness)} w\n${pdfNumber(x1)} ${pdfNumber(y1)} m\n${pdfNumber(x2)} ${pdfNumber(y2)} l\nS\nQ\n`);
+}
+
+function addImage(page: PdfPage, image: PdfImage | null | undefined, x: number, y: number, width: number, height: number, opacity = 1) {
+  if (!image || width <= 0 || height <= 0) return;
+  const name = `Im${page.images.length + 1}`;
+  page.images.push({ name, image, x, y, width, height, opacity: Math.max(0, Math.min(1, opacity)) });
+}
+
+function downsampleRgb(image: PdfImage): PdfImage {
+  if (image.kind !== "rgb" || image.width * image.height <= MAX_IMAGE_PIXELS) return image;
+  const factor = Math.sqrt(MAX_IMAGE_PIXELS / (image.width * image.height));
+  const width = Math.max(1, Math.floor(image.width * factor));
+  const height = Math.max(1, Math.floor(image.height * factor));
+  const data = Buffer.alloc(width * height * 3);
+  for (let y = 0; y < height; y += 1) {
+    const sourceY = Math.min(image.height - 1, Math.floor((y / height) * image.height));
+    for (let x = 0; x < width; x += 1) {
+      const sourceX = Math.min(image.width - 1, Math.floor((x / width) * image.width));
+      const sourceOffset = (sourceY * image.width + sourceX) * 3;
+      const targetOffset = (y * width + x) * 3;
+      data[targetOffset] = image.data[sourceOffset];
+      data[targetOffset + 1] = image.data[sourceOffset + 1];
+      data[targetOffset + 2] = image.data[sourceOffset + 2];
+    }
+  }
+  return { kind: "rgb", width, height, data };
+}
+
+function readUint32(buffer: Buffer, offset: number) {
+  return buffer.readUInt32BE(offset);
+}
+
+function paeth(a: number, b: number, c: number) {
+  const p = a + b - c;
+  const pa = Math.abs(p - a);
+  const pb = Math.abs(p - b);
+  const pc = Math.abs(p - c);
+  return pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
+}
+
+function decodePng(buffer: Buffer): PdfImage | null {
   const signature = "89504e470d0a1a0a";
-  if (buffer.subarray(0, 8).toString("hex") !== signature) {
-    throw new Error("INVOICE_IMAGE_INVALID");
-  }
-
+  if (buffer.length < 33 || buffer.subarray(0, 8).toString("hex") !== signature) return null;
   let offset = 8;
-  let width = 0;
-  let height = 0;
-  let bitDepth = 0;
-  let colorType = -1;
-  let interlace = 0;
-  const idat: Buffer[] = [];
-
+  let width = 0; let height = 0; let bitDepth = 0; let colorType = 0; let interlace = 0;
+  const dataParts: Buffer[] = [];
   while (offset + 12 <= buffer.length) {
-    const length = buffer.readUInt32BE(offset);
-    const type = buffer.subarray(offset + 4, offset + 8).toString("ascii");
-    const dataStart = offset + 8;
-    const dataEnd = dataStart + length;
-    if (dataEnd + 4 > buffer.length) throw new Error("INVOICE_IMAGE_TRUNCATED");
-
-    const chunk = buffer.subarray(dataStart, dataEnd);
+    const length = readUint32(buffer, offset); offset += 4;
+    const type = buffer.subarray(offset, offset + 4).toString("ascii"); offset += 4;
+    if (offset + length + 4 > buffer.length) return null;
+    const chunk = buffer.subarray(offset, offset + length); offset += length + 4;
     if (type === "IHDR") {
-      width = chunk.readUInt32BE(0);
-      height = chunk.readUInt32BE(4);
-      bitDepth = chunk[8];
-      colorType = chunk[9];
-      interlace = chunk[12];
-    } else if (type === "IDAT") {
-      idat.push(chunk);
-    } else if (type === "IEND") {
-      break;
-    }
-
-    offset = dataEnd + 4;
+      width = readUint32(chunk, 0); height = readUint32(chunk, 4); bitDepth = chunk[8]; colorType = chunk[9]; interlace = chunk[12];
+    } else if (type === "IDAT") dataParts.push(chunk);
+    else if (type === "IEND") break;
   }
-
-  if (!width || !height || bitDepth !== 8 || interlace !== 0 || ![2, 6].includes(colorType)) {
-    throw new Error("INVOICE_IMAGE_UNSUPPORTED");
-  }
-
+  if (!width || !height || bitDepth !== 8 || interlace !== 0 || ![2, 6].includes(colorType)) return null;
   const channels = colorType === 6 ? 4 : 3;
-  const raw = inflateSync(Buffer.concat(idat));
   const stride = width * channels;
-  const expected = height * (stride + 1);
-  if (raw.length < expected) throw new Error("INVOICE_IMAGE_TRUNCATED");
-
-  const scanlines = Buffer.alloc(height * stride);
-  let sourceOffset = 0;
-
+  let raw: Buffer;
+  try { raw = inflateSync(Buffer.concat(dataParts)); } catch { return null; }
+  if (raw.length < (stride + 1) * height) return null;
+  const scan = Buffer.alloc(stride * height);
+  let inputOffset = 0;
   for (let row = 0; row < height; row += 1) {
-    const filter = raw[sourceOffset++];
-    const rowOffset = row * stride;
-
-    for (let x = 0; x < stride; x += 1) {
-      const value = raw[sourceOffset++];
-      const left = x >= channels ? scanlines[rowOffset + x - channels] : 0;
-      const up = row > 0 ? scanlines[rowOffset - stride + x] : 0;
-      const upLeft = row > 0 && x >= channels ? scanlines[rowOffset - stride + x - channels] : 0;
-
-      if (filter === 0) scanlines[rowOffset + x] = value;
-      else if (filter === 1) scanlines[rowOffset + x] = (value + left) & 255;
-      else if (filter === 2) scanlines[rowOffset + x] = (value + up) & 255;
-      else if (filter === 3) scanlines[rowOffset + x] = (value + Math.floor((left + up) / 2)) & 255;
-      else if (filter === 4) {
-        const p = left + up - upLeft;
-        const pa = Math.abs(p - left);
-        const pb = Math.abs(p - up);
-        const pc = Math.abs(p - upLeft);
-        const predictor = pa <= pb && pa <= pc ? left : pb <= pc ? up : upLeft;
-        scanlines[rowOffset + x] = (value + predictor) & 255;
-      } else {
-        throw new Error("INVOICE_IMAGE_FILTER_UNSUPPORTED");
-      }
+    const filter = raw[inputOffset++];
+    const targetOffset = row * stride;
+    for (let col = 0; col < stride; col += 1) {
+      const value = raw[inputOffset++];
+      const left = col >= channels ? scan[targetOffset + col - channels] : 0;
+      const up = row > 0 ? scan[targetOffset - stride + col] : 0;
+      const upLeft = row > 0 && col >= channels ? scan[targetOffset - stride + col - channels] : 0;
+      if (filter === 0) scan[targetOffset + col] = value;
+      else if (filter === 1) scan[targetOffset + col] = (value + left) & 255;
+      else if (filter === 2) scan[targetOffset + col] = (value + up) & 255;
+      else if (filter === 3) scan[targetOffset + col] = (value + Math.floor((left + up) / 2)) & 255;
+      else if (filter === 4) scan[targetOffset + col] = (value + paeth(left, up, upLeft)) & 255;
+      else return null;
     }
   }
-
   const rgb = Buffer.alloc(width * height * 3);
   for (let pixel = 0, output = 0; pixel < width * height; pixel += 1, output += 3) {
-    const input = pixel * channels;
-    const alpha = channels === 4 ? scanlines[input + 3] : 255;
-    rgb[output] = Math.round((scanlines[input] * alpha + 255 * (255 - alpha)) / 255);
-    rgb[output + 1] = Math.round((scanlines[input + 1] * alpha + 255 * (255 - alpha)) / 255);
-    rgb[output + 2] = Math.round((scanlines[input + 2] * alpha + 255 * (255 - alpha)) / 255);
+    const source = pixel * channels;
+    const alpha = channels === 4 ? scan[source + 3] : 255;
+    rgb[output] = Math.round((scan[source] * alpha + 255 * (255 - alpha)) / 255);
+    rgb[output + 1] = Math.round((scan[source + 1] * alpha + 255 * (255 - alpha)) / 255);
+    rgb[output + 2] = Math.round((scan[source + 2] * alpha + 255 * (255 - alpha)) / 255);
   }
-
-  return { width, height, rgb };
+  return downsampleRgb({ kind: "rgb", width, height, data: rgb });
 }
 
-function buildPdf(pages: PngPage[]) {
-  const buffers: Buffer[] = [];
-  const offsets: number[] = [];
-  let position = 0;
-
-  const push = (value: Buffer | string) => {
-    const buffer = Buffer.isBuffer(value) ? value : Buffer.from(value, "binary");
-    buffers.push(buffer);
-    position += buffer.length;
-  };
-
-  const object = (id: number, body: Buffer | string) => {
-    offsets[id] = position;
-    push(`${id} 0 obj\n`);
-    push(body);
-    push("\nendobj\n");
-  };
-
-  const pageIds = pages.map((_, index) => 3 + index * 3);
-  push("%PDF-1.4\n%\xE2\xE3\xCF\xD3\n");
-  object(1, "<< /Type /Catalog /Pages 2 0 R >>");
-  object(2, `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pages.length} >>`);
-
-  pages.forEach((page, index) => {
-    const pageId = 3 + index * 3;
-    const contentsId = pageId + 1;
-    const imageId = pageId + 2;
-    const imageName = `Im${index + 1}`;
-    const contents = Buffer.from(
-      `q\n${PDF_WIDTH} 0 0 ${PDF_HEIGHT} 0 0 cm\n/${imageName} Do\nQ\n`,
-      "ascii",
-    );
-    const compressed = deflateSync(page.rgb, { level: 9 });
-
-    object(
-      pageId,
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PDF_WIDTH} ${PDF_HEIGHT}] /Resources << /XObject << /${imageName} ${imageId} 0 R >> >> /Contents ${contentsId} 0 R >>`,
-    );
-    object(contentsId, Buffer.concat([Buffer.from(`<< /Length ${contents.length} >>\nstream\n`, "ascii"), contents, Buffer.from("endstream", "ascii")]));
-    object(
-      imageId,
-      Buffer.concat([
-        Buffer.from(
-          `<< /Type /XObject /Subtype /Image /Width ${page.width} /Height ${page.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length ${compressed.length} >>\nstream\n`,
-          "ascii",
-        ),
-        compressed,
-        Buffer.from("\nendstream", "ascii"),
-      ]),
-    );
-  });
-
-  const xrefOffset = position;
-  push(`xref\n0 ${offsets.length}\n`);
-  push("0000000000 65535 f \n");
-  for (let id = 1; id < offsets.length; id += 1) {
-    push(`${String(offsets[id]).padStart(10, "0")} 00000 n \n`);
+function decodeJpeg(buffer: Buffer): PdfImage | null {
+  if (buffer.length < 4 || buffer[0] !== 0xff || buffer[1] !== 0xd8) return null;
+  let offset = 2;
+  while (offset + 9 < buffer.length) {
+    if (buffer[offset] !== 0xff) { offset += 1; continue; }
+    while (buffer[offset] === 0xff) offset += 1;
+    const marker = buffer[offset++];
+    if (marker === 0xd8 || marker === 0xd9) continue;
+    const length = buffer.readUInt16BE(offset); offset += 2;
+    if (length < 2 || offset + length - 2 > buffer.length) return null;
+    const sof = marker >= 0xc0 && marker <= 0xc3;
+    if (sof) {
+      const height = buffer.readUInt16BE(offset + 1);
+      const width = buffer.readUInt16BE(offset + 3);
+      const components = buffer[offset + 5];
+      if (!width || !height || components !== 3) return null;
+      return { kind: "jpeg", width, height, data: buffer };
+    }
+    offset += length - 2;
   }
-  push(`trailer\n<< /Size ${offsets.length} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`);
+  return null;
+}
 
+async function fetchPdfImage(value: string) {
+  const url = safeHttpUrl(value);
+  if (!url) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 7000);
+  try {
+    const response = await fetch(url, { signal: controller.signal, cache: "force-cache" });
+    if (!response.ok) return null;
+    const length = n(response.headers.get("content-length"));
+    if (length > MAX_REMOTE_IMAGE_BYTES) return null;
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (!bytes.length || bytes.length > MAX_REMOTE_IMAGE_BYTES) return null;
+    return decodePng(bytes) || decodeJpeg(bytes);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function fitImage(image: PdfImage, maxWidth: number, maxHeight: number) {
+  const ratio = Math.min(maxWidth / image.width, maxHeight / image.height, 1);
+  return { width: image.width * ratio, height: image.height * ratio };
+}
+
+function barcodeBars(value: string, count = 42) {
+  let seed = 0;
+  for (const char of value) seed = (seed * 31 + char.charCodeAt(0)) >>> 0;
+  return Array.from({ length: count }, (_, index) => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return { width: 1 + (seed % 3), active: index < 3 || index > count - 4 || seed % 5 !== 0 };
+  });
+}
+
+function drawBarcode(page: PdfPage, font: any, value: string, x: number, y: number, width: number, height: number) {
+  const clean = s(value);
+  if (!clean) return;
+  const bars = barcodeBars(clean);
+  const total = bars.reduce((sum, bar) => sum + bar.width, 0);
+  const scale = Math.min(1.8, width / total);
+  let cursor = x + (width - total * scale) / 2;
+  for (const bar of bars) {
+    if (bar.active) drawRect(page, cursor, y + 12, bar.width * scale, height - 12, "#111827");
+    cursor += bar.width * scale;
+  }
+  drawText(page, font, clean, x + width / 2, y + 2, 7.5, "#475569", "center");
+}
+
+function drawInfoLine(page: PdfPage, labelsFont: any, valuesFont: any, label: string, value: string, x: number, baseline: number, width: number, textColor: string) {
+  if (!s(value)) return 0;
+  drawText(page, labelsFont, label, x, baseline, 9.3, "#64748b", "right");
+  const height = drawParagraph(page, valuesFont, value, x, baseline - 13, 10.5, textColor, width, 13, 2, "right");
+  return 13 + height + 4;
+}
+
+function itemHeight(item: InvoiceItem, settings: InvoiceSettings, font: any) {
+  const titleLines = splitText(font, item.name, 11.5, settings.showProductImage ? 205 : 270, 2).length || 1;
+  const descLines = settings.showProductDescription && item.description ? splitText(font, item.description, 8.6, settings.showProductImage ? 205 : 270, 2).length : 0;
+  const meta = [settings.showSku && item.sku, settings.showGtin && item.gtin, settings.showMpn && item.mpn].filter(Boolean).length;
+  const barcodeSpace = settings.showProductBarcode && item.barcode ? 30 : 0;
+  return Math.max(settings.showProductImage ? 66 : 46, 16 + titleLines * 14 + descLines * 11 + (meta ? 11 : 0) + barcodeSpace);
+}
+
+function splitItemsForPages(items: InvoiceItem[], settings: InvoiceSettings, font: any) {
+  const rows = items.length ? items : [{ id: "empty", name: "لا توجد منتجات في الطلب", qty: 0, unitPrice: 0, totalPrice: 0, currency: "SAR", description: "", sku: "", gtin: "", mpn: "", barcode: "", imageUrl: "" }];
+  const chunks: InvoiceItem[][] = [];
+  let index = 0;
+  let first = true;
+  while (index < rows.length) {
+    const available = first ? 210 : 395;
+    let used = 0;
+    const chunk: InvoiceItem[] = [];
+    while (index < rows.length) {
+      const height = itemHeight(rows[index], settings, font);
+      if (chunk.length && used + height > available) break;
+      chunk.push(rows[index]); used += height; index += 1;
+    }
+    chunks.push(chunk);
+    first = false;
+  }
+  return chunks;
+}
+
+function drawPage(model: InvoiceModel, fonts: InvoiceFonts, images: Map<string, PdfImage>, items: InvoiceItem[], pageNo: number, pageCount: number) {
+  const page: PdfPage = { commands: [], images: [] };
+  const settings = model.settings;
+  const titleFont = settings.primaryFontWeight === "bold" ? fonts.bold : fonts.regular;
+  const bodyFont = settings.secondaryFontWeight === "bold" ? fonts.bold : fonts.regular;
+  const textColor = settings.textColor;
+  const invoiceStoreName = settings.issueMode === "custom" && settings.customStoreTitle ? settings.customStoreTitle : model.store.name;
+  const isFirst = pageNo === 1;
+  const isLast = pageNo === pageCount;
+
+  const watermark = images.get("watermark");
+  if (watermark) {
+    const fit = fitImage(watermark, 270, 270);
+    addImage(page, watermark, (PAGE_WIDTH - fit.width) / 2, (PAGE_HEIGHT - fit.height) / 2, fit.width, fit.height, settings.watermarkOpacity / 100);
+  }
+
+  let cursor = PAGE_HEIGHT - MARGIN;
+  const logo = images.get("logo");
+  const logoBox = settings.showLogo ? Math.max(44, Math.min(78, settings.logoSize * 1.45)) : 0;
+  let logoX = 0;
+  if (settings.logoPosition === "right") logoX = PAGE_WIDTH - MARGIN - logoBox;
+  else if (settings.logoPosition === "left") logoX = MARGIN;
+  else logoX = (PAGE_WIDTH - logoBox) / 2;
+  if (settings.showLogo && logo) {
+    const fit = fitImage(logo, logoBox, logoBox);
+    addImage(page, logo, logoX + (logoBox - fit.width) / 2, cursor - fit.height, fit.width, fit.height);
+  }
+
+  const titleX = settings.logoPosition === "right" && settings.showLogo ? PAGE_WIDTH - MARGIN - logoBox - 16 : PAGE_WIDTH - MARGIN;
+  const idX = MARGIN;
+  if (settings.showStoreTitle) drawText(page, titleFont, invoiceStoreName, titleX, cursor - 5, 18, textColor, "right");
+  drawText(page, bodyFont, "فاتورة مبيعات", titleX, cursor - 25, 10.8, "#64748b", "right");
+  drawText(page, titleFont, "رقم الفاتورة", idX, cursor - 6, 10.3, "#64748b", "left");
+  drawText(page, titleFont, `INV-${model.order.invoiceNo}`, idX, cursor - 24, 13, textColor, "left");
+  cursor -= Math.max(logoBox, 48) + 14;
+  drawLine(page, MARGIN, cursor, PAGE_WIDTH - MARGIN, cursor, "#dbe4ee", 1.1);
+  cursor -= 20;
+
+  drawText(page, bodyFont, "تاريخ الطلب", PAGE_WIDTH - MARGIN, cursor, 9.5, "#64748b", "right");
+  drawText(page, bodyFont, dateText(model.order.createdAt), PAGE_WIDTH - MARGIN - 108, cursor, 10, textColor, "right");
+  drawText(page, bodyFont, "رقم الطلب", MARGIN, cursor, 9.5, "#64748b", "left");
+  drawText(page, bodyFont, `#${model.order.orderNo}`, MARGIN + 56, cursor, 10, textColor, "left");
+  cursor -= 18;
+
+  if (settings.showInvoiceBarcode && isFirst) {
+    drawBarcode(page, bodyFont, `INV-${model.order.invoiceNo}`, PAGE_WIDTH - MARGIN - 130, cursor - 32, 130, 30);
+    cursor -= 39;
+  }
+
+  if (isFirst) {
+    const cardHeight = 134;
+    const gap = 12;
+    const cardWidth = (CONTENT_WIDTH - gap) / 2;
+    const rightX = PAGE_WIDTH - MARGIN - cardWidth;
+    const leftX = MARGIN;
+    drawRect(page, rightX, cursor - cardHeight, cardWidth, cardHeight, "#f8fafc");
+    drawRect(page, leftX, cursor - cardHeight, cardWidth, cardHeight, "#f8fafc");
+    drawText(page, titleFont, "مصدره من", rightX + cardWidth - 13, cursor - 18, 12, textColor, "right");
+    drawText(page, titleFont, "مصدره إلى", leftX + cardWidth - 13, cursor - 18, 12, textColor, "right");
+    let rightY = cursor - 37;
+    if (settings.showStoreTitle) rightY -= drawInfoLine(page, bodyFont, titleFont, "المتجر", invoiceStoreName, rightX + cardWidth - 13, rightY, cardWidth - 24, textColor);
+    if (settings.showStoreAddress && model.store.address) rightY -= drawInfoLine(page, bodyFont, bodyFont, "العنوان", model.store.address, rightX + cardWidth - 13, rightY, cardWidth - 24, textColor);
+    if (model.store.email) rightY -= drawInfoLine(page, bodyFont, bodyFont, "البريد الإلكتروني", model.store.email, rightX + cardWidth - 13, rightY, cardWidth - 24, textColor);
+    if (model.store.phone) drawInfoLine(page, bodyFont, bodyFont, "الجوال", model.store.phone, rightX + cardWidth - 13, rightY, cardWidth - 24, textColor);
+    let leftY = cursor - 37;
+    leftY -= drawInfoLine(page, bodyFont, titleFont, "العميل", model.order.customerName || "-", leftX + cardWidth - 13, leftY, cardWidth - 24, textColor);
+    if (model.order.shippingAddress) leftY -= drawInfoLine(page, bodyFont, bodyFont, "عنوان الشحن", model.order.shippingAddress, leftX + cardWidth - 13, leftY, cardWidth - 24, textColor);
+    if (model.order.customerEmail) leftY -= drawInfoLine(page, bodyFont, bodyFont, "البريد الإلكتروني", model.order.customerEmail, leftX + cardWidth - 13, leftY, cardWidth - 24, textColor);
+    if (model.order.customerPhone) drawInfoLine(page, bodyFont, bodyFont, "الجوال", model.order.customerPhone, leftX + cardWidth - 13, leftY, cardWidth - 24, textColor);
+    cursor -= cardHeight + 18;
+  }
+
+  const columns = {
+    total: MARGIN,
+    price: MARGIN + 96,
+    qty: MARGIN + 192,
+    product: MARGIN + 282,
+  };
+  const headHeight = 26;
+  drawRect(page, MARGIN, cursor - headHeight, CONTENT_WIDTH, headHeight, "#eef2f7");
+  drawText(page, titleFont, "المنتج", PAGE_WIDTH - MARGIN - 10, cursor - 18, 10.4, "#334155", "right");
+  drawText(page, titleFont, "الكمية", columns.qty + 28, cursor - 18, 10.4, "#334155", "center");
+  drawText(page, titleFont, "السعر", columns.price + 38, cursor - 18, 10.4, "#334155", "center");
+  drawText(page, titleFont, "المجموع", MARGIN + 37, cursor - 18, 10.4, "#334155", "center");
+  cursor -= headHeight;
+
+  for (const item of items) {
+    const row = itemHeight(item, settings, titleFont);
+    const bottom = cursor - row;
+    drawLine(page, MARGIN, bottom, PAGE_WIDTH - MARGIN, bottom, "#e2e8f0", 0.65);
+    const image = images.get(`item:${item.id}`);
+    const productRight = PAGE_WIDTH - MARGIN - 10;
+    let productTextRight = productRight;
+    if (settings.showProductImage && image) {
+      const fit = fitImage(image, 48, 48);
+      addImage(page, image, productRight - 48, bottom + (row - 48) / 2, fit.width, fit.height);
+      productTextRight = productRight - 58;
+    }
+    const productWidth = settings.showProductImage && image ? 198 : 268;
+    const titleLines = splitText(titleFont, item.name || "منتج", 11.5, productWidth, 2);
+    titleLines.forEach((line, index) => drawText(page, titleFont, line, productTextRight, cursor - 16 - index * 14, 11.5, textColor, "right"));
+    let metaY = cursor - 16 - titleLines.length * 14;
+    if (settings.showProductDescription && item.description) {
+      const descLines = splitText(bodyFont, item.description, 8.6, productWidth, 2);
+      descLines.forEach((line, index) => drawText(page, bodyFont, line, productTextRight, metaY - 2 - index * 11, 8.6, "#64748b", "right"));
+      metaY -= descLines.length * 11 + 2;
+    }
+    const meta = [settings.showSku && item.sku ? `SKU ${item.sku}` : "", settings.showGtin && item.gtin ? `GTIN ${item.gtin}` : "", settings.showMpn && item.mpn ? `MPN ${item.mpn}` : ""].filter(Boolean).join(" · ");
+    if (meta) drawText(page, bodyFont, meta, productTextRight, metaY - 2, 7.8, "#64748b", "right");
+    if (settings.showProductBarcode && item.barcode) drawBarcode(page, bodyFont, item.barcode, productTextRight - 92, bottom + 7, 92, 25);
+    const middle = bottom + row / 2 + 4;
+    drawText(page, bodyFont, String(item.qty), columns.qty + 28, middle, 10.6, textColor, "center");
+    drawText(page, bodyFont, money(item.unitPrice, item.currency || model.order.currency), columns.price + 76, middle, 9.2, textColor, "right");
+    drawText(page, titleFont, money(item.totalPrice, item.currency || model.order.currency), MARGIN + 80, middle, 9.6, textColor, "right");
+    cursor = bottom;
+  }
+
+  if (isLast) {
+    cursor -= 18;
+    const infoWidth = 250;
+    drawText(page, bodyFont, "تفاصيل الدفع", PAGE_WIDTH - MARGIN, cursor, 11, textColor, "right");
+    cursor -= 15;
+    drawText(page, bodyFont, `طريقة الدفع: ${paymentMethodLabel(model.order.paymentMethod)}`, PAGE_WIDTH - MARGIN, cursor, 9.4, "#475569", "right");
+    cursor -= 14;
+    drawText(page, bodyFont, `حالة الدفع: ${paymentStatusLabel(model.order.paymentStatus)}`, PAGE_WIDTH - MARGIN, cursor, 9.4, "#475569", "right");
+    if (model.order.shippingCarrier) { cursor -= 14; drawText(page, bodyFont, `شركة الشحن: ${model.order.shippingCarrier}`, PAGE_WIDTH - MARGIN, cursor, 9.4, "#475569", "right"); }
+    const totalsX = MARGIN;
+    let totalY = cursor + 14;
+    const rows: Array<[string, string, boolean]> = [
+      ["الإجمالي الفرعي", money(model.order.subtotal, model.order.currency), true],
+      ["الشحن", model.order.shipping > 0 ? money(model.order.shipping, model.order.currency) : "مجاني", true],
+      ["الخصم", `- ${money(model.order.discount, model.order.currency)}`, model.order.discount > 0],
+      [model.store.taxLabel || "ضريبة القيمة المضافة", money(model.order.tax, model.order.currency), model.order.tax > 0 || settings.showZeroTaxFields],
+    ];
+    for (const [label, value, visible] of rows) {
+      if (!visible) continue;
+      drawText(page, bodyFont, label, totalsX + 184, totalY, 10.2, "#475569", "right");
+      drawText(page, bodyFont, value, totalsX, totalY, 10.2, textColor, "left");
+      totalY -= 17;
+    }
+    drawLine(page, totalsX, totalY + 5, totalsX + 184, totalY + 5, "#0f172a", 1.35);
+    drawText(page, titleFont, "الإجمالي", totalsX + 184, totalY - 13, 14, textColor, "right");
+    drawText(page, titleFont, money(model.order.total, model.order.currency), totalsX, totalY - 13, 14, textColor, "left");
+  }
+
+  const stamp = images.get("stamp");
+  if (stamp) {
+    const fit = fitImage(stamp, 78, 78);
+    const stampX = settings.stampPosition === "bottom-left" ? MARGIN : settings.stampPosition === "bottom-center" ? (PAGE_WIDTH - fit.width) / 2 : PAGE_WIDTH - MARGIN - fit.width;
+    addImage(page, stamp, stampX, 62, fit.width, fit.height, settings.stampOpacity / 100);
+  }
+  drawLine(page, MARGIN, 42, PAGE_WIDTH - MARGIN, 42, "#e2e8f0", 0.75);
+  drawText(page, bodyFont, settings.footerText || DEFAULT_INVOICE_SETTINGS.footerText, PAGE_WIDTH / 2, 25, 8.8, "#64748b", "center");
+  drawText(page, bodyFont, `${pageNo} / ${pageCount}`, MARGIN, 25, 8, "#94a3b8", "left");
+  return page;
+}
+
+function buildPdf(pages: PdfPage[]) {
+  let nextId = 3;
+  const pageEntries = pages.map((page) => {
+    const pageId = nextId++;
+    const contentsId = nextId++;
+    const imageEntries = page.images.map((image) => ({ ...image, objectId: nextId++ }));
+    const opacityValues = Array.from(new Set(imageEntries.map((image) => Math.round(image.opacity * 1000) / 1000).filter((value) => value < 1)));
+    const opacityIds = new Map<number, number>();
+    for (const value of opacityValues) opacityIds.set(value, nextId++);
+    return { page, pageId, contentsId, imageEntries, opacityIds };
+  });
+  const size = nextId;
+  const objects = new Map<number, Buffer | string>();
+  objects.set(1, "<< /Type /Catalog /Pages 2 0 R >>");
+  objects.set(2, `<< /Type /Pages /Kids [${pageEntries.map((entry) => `${entry.pageId} 0 R`).join(" ")}] /Count ${pageEntries.length} >>`);
+  for (const entry of pageEntries) {
+    const content = entry.page.commands.join("") + entry.imageEntries.map((image) => {
+      const opacity = Math.round(image.opacity * 1000) / 1000;
+      const gs = entry.opacityIds.get(opacity);
+      return `q\n${gs ? `/GS${Math.round(opacity * 1000)} gs\n` : ""}${pdfNumber(image.width)} 0 0 ${pdfNumber(image.height)} ${pdfNumber(image.x)} ${pdfNumber(image.y)} cm\n/${image.name} Do\nQ\n`;
+    }).join("");
+    const contentBuffer = Buffer.from(content, "ascii");
+    objects.set(entry.contentsId, Buffer.concat([Buffer.from(`<< /Length ${contentBuffer.length} >>\nstream\n`, "ascii"), contentBuffer, Buffer.from("endstream", "ascii")]));
+    const xObjects = entry.imageEntries.map((image) => `/${image.name} ${image.objectId} 0 R`).join(" ");
+    const extGs = Array.from(entry.opacityIds.entries()).map(([opacity, objectId]) => `/GS${Math.round(opacity * 1000)} ${objectId} 0 R`).join(" ");
+    objects.set(entry.pageId, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}] /Resources << ${xObjects ? `/XObject << ${xObjects} >>` : ""} ${extGs ? `/ExtGState << ${extGs} >>` : ""} >> /Contents ${entry.contentsId} 0 R >>`);
+    for (const image of entry.imageEntries) {
+      const body = image.image.kind === "jpeg"
+        ? Buffer.concat([Buffer.from(`<< /Type /XObject /Subtype /Image /Width ${image.image.width} /Height ${image.image.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${image.image.data.length} >>\nstream\n`, "ascii"), image.image.data, Buffer.from("\nendstream", "ascii")])
+        : (() => {
+            const compressed = deflateSync(image.image.data, { level: 9 });
+            return Buffer.concat([Buffer.from(`<< /Type /XObject /Subtype /Image /Width ${image.image.width} /Height ${image.image.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length ${compressed.length} >>\nstream\n`, "ascii"), compressed, Buffer.from("\nendstream", "ascii")]);
+          })();
+      objects.set(image.objectId, body);
+    }
+    for (const [opacity, objectId] of entry.opacityIds) objects.set(objectId, `<< /Type /ExtGState /ca ${pdfNumber(opacity)} /CA ${pdfNumber(opacity)} >>`);
+  }
+  const buffers: Buffer[] = [];
+  const offsets: number[] = new Array(size).fill(0);
+  let position = 0;
+  const push = (value: Buffer | string) => { const buffer = Buffer.isBuffer(value) ? value : Buffer.from(value, "binary"); buffers.push(buffer); position += buffer.length; };
+  push("%PDF-1.4\n%\xE2\xE3\xCF\xD3\n");
+  for (let id = 1; id < size; id += 1) {
+    offsets[id] = position;
+    push(`${id} 0 obj\n`); push(objects.get(id) || "<< >>"); push("\nendobj\n");
+  }
+  const xref = position;
+  push(`xref\n0 ${size}\n0000000000 65535 f \n`);
+  for (let id = 1; id < size; id += 1) push(`${String(offsets[id]).padStart(10, "0")} 00000 n \n`);
+  push(`trailer\n<< /Size ${size} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`);
   return Buffer.concat(buffers);
 }
 
@@ -1401,104 +1069,48 @@ async function loadInvoice(token: string): Promise<InvoiceModel | null> {
   };
 }
 
+
+
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ token?: string }> },
 ) {
   try {
     const params = await context.params;
     const token = s(params?.token);
-
-    // Checkout currently creates public order tokens with six characters.
-    // Keep accepting future longer tokens too, while rejecting malformed paths.
-    if (!/^[A-Za-z0-9_-]{5,160}$/.test(token)) {
-      return new Response("Not found", { status: 404 });
-    }
-
+    if (!/^[A-Za-z0-9_-]{5,160}$/.test(token)) return new Response("Not found", { status: 404 });
     const model = await loadInvoice(token);
     if (!model) return new Response("Not found", { status: 404 });
 
-    const imageRequests: Array<[string, string]> = [];
-    if (model.settings.showLogo && model.store.logoUrl) imageRequests.push(["logo", model.store.logoUrl]);
-    if (model.settings.watermarkUrl) imageRequests.push(["watermark", model.settings.watermarkUrl]);
-    if (model.settings.stampUrl) imageRequests.push(["stamp", model.settings.stampUrl]);
+    const [fonts, logo, watermark, stamp] = await Promise.all([
+      loadFonts(request),
+      model.settings.showLogo ? fetchPdfImage(model.store.logoUrl) : Promise.resolve(null),
+      model.settings.watermarkUrl ? fetchPdfImage(model.settings.watermarkUrl) : Promise.resolve(null),
+      model.settings.stampUrl ? fetchPdfImage(model.settings.stampUrl) : Promise.resolve(null),
+    ]);
+    const images = new Map<string, PdfImage>();
+    if (logo) images.set("logo", logo);
+    if (watermark) images.set("watermark", watermark);
+    if (stamp) images.set("stamp", stamp);
     if (model.settings.showProductImage) {
+      const unique = Array.from(new Map(model.items.filter((item) => item.imageUrl).map((item) => [item.imageUrl, item.imageUrl])).keys());
+      const fetched = await Promise.all(unique.map(async (url) => [url, await fetchPdfImage(url)] as const));
+      const byUrl = new Map(fetched);
       for (const item of model.items) {
-        if (item.imageUrl) imageRequests.push([`item:${item.id}`, item.imageUrl]);
+        const image = byUrl.get(item.imageUrl);
+        if (image) images.set(`item:${item.id}`, image);
       }
     }
-
-    const embeddedImages = new Map<string, string>();
-    await Promise.all(
-      imageRequests.map(async ([key, url]) => {
-        const embedded = await toEmbeddedImage(url);
-        if (embedded) embeddedImages.set(key, embedded);
-      }),
-    );
-
-    const font = await loadArabicFont();
-    const itemPages = splitItems(model.items.length ? model.items : [
-      {
-        id: "empty",
-        name: "لا توجد منتجات في الطلب",
-        qty: 0,
-        unitPrice: 0,
-        totalPrice: 0,
-        currency: model.order.currency,
-        description: "",
-        sku: "",
-        gtin: "",
-        mpn: "",
-        barcode: "",
-        imageUrl: "",
-      },
-    ], model.settings);
-
-    const pngPages: PngPage[] = [];
-    for (let index = 0; index < itemPages.length; index += 1) {
-      const image = new ImageResponse(
-        invoicePage({
-          model,
-          items: itemPages[index],
-          pageNumber: index + 1,
-          pageCount: itemPages.length,
-          showOrderDetails: index === 0,
-          showTotals: index === itemPages.length - 1,
-          images: embeddedImages,
-        }),
-        {
-          width: PAGE_WIDTH,
-          height: PAGE_HEIGHT,
-          // Satori resolves fonts by the exact weight used in the invoice tree.
-          // The page uses both 400 and 700, so register both weights explicitly.
-          fonts: [
-            {
-              name: "InvoiceArabic",
-              data: font,
-              weight: 400,
-              style: "normal",
-            },
-            {
-              name: "InvoiceArabic",
-              data: font,
-              weight: 700,
-              style: "normal",
-            },
-          ],
-        },
-      );
-
-      pngPages.push(readPng(Buffer.from(await image.arrayBuffer())));
-    }
-
-    const pdf = buildPdf(pngPages);
-    const filename = `invoice-${model.order.invoiceNo.replace(/[^A-Za-z0-9_-]/g, "") || "order"}.pdf`;
-
+    const primaryFont = model.settings.primaryFontWeight === "bold" ? fonts.bold : fonts.regular;
+    const chunks = splitItemsForPages(model.items, model.settings, primaryFont);
+    const pages = chunks.map((chunk, index) => drawPage(model, fonts, images, chunk, index + 1, chunks.length));
+    const pdf = buildPdf(pages);
+    const cleanNo = model.order.invoiceNo.replace(/[^A-Za-z0-9_-]/g, "") || "order";
     return new Response(pdf, {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Content-Disposition": `attachment; filename="invoice-${cleanNo}.pdf"`,
         "Cache-Control": "private, no-store, max-age=0",
         "X-Content-Type-Options": "nosniff",
       },
