@@ -1469,11 +1469,19 @@ export async function GET(
         {
           width: PAGE_WIDTH,
           height: PAGE_HEIGHT,
+          // Satori resolves fonts by the exact weight used in the invoice tree.
+          // The page uses both 400 and 700, so register both weights explicitly.
           fonts: [
             {
               name: "InvoiceArabic",
               data: font,
               weight: 400,
+              style: "normal",
+            },
+            {
+              name: "InvoiceArabic",
+              data: font,
+              weight: 700,
               style: "normal",
             },
           ],
