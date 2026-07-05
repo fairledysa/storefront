@@ -687,7 +687,7 @@ const reviewOrder: OrdersApiRow | null = useMemo(() => {
                   color: "#111827",
                 }}
               >
-                #{state.order.public_no || state.order.order_number}
+                #{state.order.order_number || state.order.public_no}
               </div>
             </div>
 

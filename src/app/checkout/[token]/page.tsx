@@ -309,8 +309,8 @@ function calculatePaymentState(order: any) {
 
 function orderDisplayNo(order: any) {
   return (
-    s(order?.public_no) ||
     s(order?.order_number) ||
+    s(order?.public_no) ||
     s(order?.invoice_no) ||
     "طلب"
   );

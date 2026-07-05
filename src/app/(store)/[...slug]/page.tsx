@@ -2475,11 +2475,13 @@ export default async function Page(props: PageProps) {
       }
     }
 
+    // الرقم الرسمي الظاهر للعميل يجب أن يطابق لوحة التاجر.
+    // public_no يبقى معرفًا بديلًا للمسارات القديمة فقط.
     const orderNo =
-      order.public_no != null
-        ? String(order.public_no)
-        : order.order_number != null
-          ? String(order.order_number)
+      order.order_number != null
+        ? String(order.order_number)
+        : order.public_no != null
+          ? String(order.public_no)
           : order.public_token != null
             ? String(order.public_token)
             : token;
@@ -3027,8 +3029,6 @@ export default async function Page(props: PageProps) {
       extraData: {
         token,
         orderNo,
-        invoiceDownloadUrl: `/api/invoice/${encodeURIComponent(String(order.public_token ?? ""))}`,
-        invoice_download_url: `/api/invoice/${encodeURIComponent(String(order.public_token ?? ""))}`,
 
         orderOptions,
         order_options: orderOptions,

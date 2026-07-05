@@ -976,6 +976,11 @@ export default function OrderDetailsClient({
     };
   }, [previewImage]);
 
+  const displayOrderNo =
+    state.kind === "ready"
+      ? state.order.order_number || state.order.public_no || orderNo
+      : orderNo;
+
   return (
     <>
       <div dir="rtl" className="w-full pb-10">
@@ -985,7 +990,7 @@ export default function OrderDetailsClient({
               رقم الطلب
             </div>
             <div className="mt-1 text-2xl font-black leading-none text-[var(--mk-text-main)]">
-              #{orderNo}
+              #{displayOrderNo}
             </div>
           </div>
 

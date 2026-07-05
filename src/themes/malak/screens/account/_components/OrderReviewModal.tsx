@@ -112,7 +112,7 @@ function clampComment(v: string, max = 120) {
 
 function getOrderNo(order: OrdersApiRow | null) {
   if (!order) return "";
-  return String(order.public_no || order.order_number || "").trim();
+  return String(order.order_number || order.public_no || "").trim();
 }
 
 function makeUploadId() {

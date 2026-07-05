@@ -143,7 +143,10 @@ export default function OrdersScreen() {
         const orders: OrdersApiRow[] = Array.isArray(json?.orders)
           ? json.orders
               .map(normalizeOrder)
-              .filter((order: OrdersApiRow) => order.id && order.public_no)
+              .filter(
+                (order: OrdersApiRow) =>
+                  order.id && (order.order_number || order.public_no),
+              )
           : [];
 
         const stats: OrdersStats = {

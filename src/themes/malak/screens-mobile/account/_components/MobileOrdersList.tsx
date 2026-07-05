@@ -117,10 +117,8 @@ export default function MobileOrdersList({
           <div key={o.id} className="mk-morder-card">
             <div className="mk-morder-card__head">
               <div>
-                <div className="mk-morder-card__number">#{o.public_no}</div>
-
-                <div className="mk-morder-card__internal">
-                  رقم داخلي: {o.order_number}
+                <div className="mk-morder-card__number">
+                  #{o.order_number || o.public_no}
                 </div>
               </div>
 
@@ -142,7 +140,7 @@ export default function MobileOrdersList({
             <div className="mk-morder-card__actions">
               <button
                 type="button"
-                onClick={() => router.push(`/account/orders/${o.public_no}`)}
+                onClick={() => router.push(`/account/orders/${o.order_number || o.public_no}`)}
                 className="mk-morder-card__btn mk-morder-card__btn--details"
               >
                 التفاصيل

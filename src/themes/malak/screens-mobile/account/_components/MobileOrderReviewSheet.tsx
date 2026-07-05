@@ -98,7 +98,7 @@ export default function MobileOrderReviewSheet({
 
         const res = await fetch(
           `/api/account/orders/${encodeURIComponent(
-            currentOrder.public_no,
+            currentOrder.order_number || currentOrder.public_no,
           )}/review`,
           {
             method: "GET",
@@ -161,7 +161,7 @@ export default function MobileOrderReviewSheet({
 
   const title = useMemo(() => {
     if (!order) return "تقييم الطلب";
-    return `تقييم الطلب #${order.public_no || order.order_number}`;
+    return `تقييم الطلب #${order.order_number || order.public_no}`;
   }, [order]);
 
   const currentProduct =
@@ -235,7 +235,7 @@ export default function MobileOrderReviewSheet({
       };
 
       const res = await fetch(
-        `/api/account/orders/${encodeURIComponent(order.public_no)}/review`,
+        `/api/account/orders/${encodeURIComponent(order.order_number || order.public_no)}/review`,
         {
           method: "POST",
           credentials: "include",

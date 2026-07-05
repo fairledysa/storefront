@@ -1047,7 +1047,7 @@ async function loadInvoice(token: string): Promise<InvoiceModel | null> {
     },
     order: {
       invoiceNo: firstText(order.invoice_no, order.order_number, order.public_no, order.id),
-      orderNo: firstText(order.public_no, order.order_number, order.invoice_no, order.id),
+      orderNo: firstText(order.order_number, order.public_no, order.invoice_no, order.id),
       publicNo: firstText(order.public_no),
       createdAt: firstText(order.created_at),
       currency: firstText(order.currency, ctx.store.default_currency, "SAR"),

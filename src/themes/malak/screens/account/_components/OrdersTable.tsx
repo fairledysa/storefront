@@ -97,7 +97,7 @@ function fmtDate(x: string) {
 }
 
 function orderNo(order: OrdersApiRow) {
-  return order.public_no || order.order_number || 0;
+  return order.order_number || order.public_no || 0;
 }
 
 function orderStatusLabel(order: OrdersApiRow) {
