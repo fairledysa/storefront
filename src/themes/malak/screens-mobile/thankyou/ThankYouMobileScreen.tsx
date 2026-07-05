@@ -40,6 +40,8 @@ type ThankYouData = {
   bank_transfer_submitted?: boolean | number | string | null;
 
   orderNo?: string | number;
+  invoiceDownloadUrl?: string | null;
+  invoice_download_url?: string | null;
   order_no?: string | number;
   orderNumber?: string | number;
   order_number?: string | number;
@@ -820,6 +822,8 @@ export default function ThankYouMobileScreen(props: Props) {
   const hasWhatsapp = Boolean(supportContacts.whatsappHref);
   const hasEmail = Boolean(supportContacts.emailHref);
 
+  const invoiceDownloadUrl = s(data.invoiceDownloadUrl ?? data.invoice_download_url);
+
   const paymentFeeLabel =
     pickText(data.paymentFeeLabel, data.payment_fee_label, data.codFeeLabel) ||
     (paymentLabel === "الدفع عند الاستلام"
@@ -886,14 +890,12 @@ export default function ThankYouMobileScreen(props: Props) {
           متابعة التسوق
         </Link>
 
-        <button
-          type="button"
-          className="mk-mthank-action"
-          onClick={() => window.print()}
-        >
-          <Download size={17} />
-          الفاتورة
-        </button>
+        {invoiceDownloadUrl ? (
+          <a href={invoiceDownloadUrl} className="mk-mthank-action">
+            <Download size={17} />
+            الفاتورة
+          </a>
+        ) : null}
       </section>
 
       <Section title="ماذا يحدث الآن؟" icon={<Clock3 size={19} />}>

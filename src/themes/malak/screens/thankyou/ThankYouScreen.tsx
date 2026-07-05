@@ -62,6 +62,8 @@ type OrderOptionLine = {
 
 type ThankYouData = {
   orderNo?: string | number;
+  invoiceDownloadUrl?: string | null;
+  invoice_download_url?: string | null;
 
   paymentSubmitted?: boolean | number | string | null;
   payment_submitted?: boolean | number | string | null;
@@ -1203,6 +1205,7 @@ export default function ThankYouScreen(props: AnyProps) {
     : s(data?.statusDescription) || "تم استلام الطلب وجاري مراجعته.";
 
   const totalText = money(computedTotal);
+  const invoiceDownloadUrl = s(data?.invoiceDownloadUrl ?? data?.invoice_download_url);
 
   const bootstrap = props.bootstrap || data?.bootstrap || data?.theme?.bootstrap;
 
@@ -1274,14 +1277,15 @@ export default function ThankYouScreen(props: AnyProps) {
               متابعة التسوق
             </ActionLink>
 
-            <button
-              type="button"
-              onClick={() => window.print()}
-              className="inline-flex h-12 min-w-[168px] items-center justify-center gap-2 rounded-[14px] border border-zinc-300 bg-white px-7 text-sm font-black text-zinc-950 transition hover:bg-zinc-50 active:scale-[0.99]"
-            >
-              <Download className="h-4 w-4" />
-              تحميل الفاتورة
-            </button>
+            {invoiceDownloadUrl ? (
+              <a
+                href={invoiceDownloadUrl}
+                className="inline-flex h-12 min-w-[168px] items-center justify-center gap-2 rounded-[14px] border border-zinc-300 bg-white px-7 text-sm font-black text-zinc-950 transition hover:bg-zinc-50 active:scale-[0.99]"
+              >
+                <Download className="h-4 w-4" />
+                تحميل الفاتورة
+              </a>
+            ) : null}
           </div>
         </div>
 
