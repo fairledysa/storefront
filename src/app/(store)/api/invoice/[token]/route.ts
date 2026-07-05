@@ -1409,8 +1409,9 @@ export async function GET(
     const params = await context.params;
     const token = s(params?.token);
 
-    // A public token is generated server-side at checkout and must never be a numeric id.
-    if (!/^[A-Za-z0-9_-]{16,160}$/.test(token)) {
+    // Checkout currently creates public order tokens with six characters.
+    // Keep accepting future longer tokens too, while rejecting malformed paths.
+    if (!/^[A-Za-z0-9_-]{5,160}$/.test(token)) {
       return new Response("Not found", { status: 404 });
     }
 
