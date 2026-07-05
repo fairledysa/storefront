@@ -3029,6 +3029,8 @@ export default async function Page(props: PageProps) {
       extraData: {
         token,
         orderNo,
+        invoiceDownloadUrl: `/api/invoice/${encodeURIComponent(String(order.public_token ?? ""))}`,
+        invoice_download_url: `/api/invoice/${encodeURIComponent(String(order.public_token ?? ""))}`,
 
         orderOptions,
         order_options: orderOptions,
