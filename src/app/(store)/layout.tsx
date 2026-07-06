@@ -8,6 +8,7 @@ import { getStoreDb } from "@/data/db/store-db.server";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
 import { loadCustomCode } from "@/theme-engine/injectors/custom-code";
 import { THEME_KIND, type ThemeCode } from "@/theme-engine/types";
+import StoreVisitTracker from "@/components/analytics/StoreVisitTracker";
 
 const PWA_SETTING_SLUGS = ["app/pwa", "store.pwa", "pwa"];
 
@@ -181,6 +182,7 @@ export default async function StoreLayout({
     return (
       <>
         {CustomHead}
+        <StoreVisitTracker storeId={ctx.store.id} />
         {children}
       </>
     );
@@ -193,6 +195,7 @@ export default async function StoreLayout({
   return (
     <>
       {CustomHead}
+      <StoreVisitTracker storeId={ctx.store.id} />
 
       <div dir="rtl" className="min-h-screen bg-slate-50">
         <StorefrontHeader store={ctx.store as any} />

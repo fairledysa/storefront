@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/analytics/flush",
+      "schedule": "*/15 * * * *"
+    }
+  ]
+}
