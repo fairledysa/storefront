@@ -609,3 +609,53 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Actual order-status timeline states */
+.mk-mthank-step.is-current .mk-mthank-step__dot {
+  border-color: color-mix(in srgb, var(--mk-mthank-brand) 34%, #ffffff);
+  background: var(--mk-mthank-brand);
+  color: #fff;
+}
+
+.mk-mthank-step.is-done:not(:last-child)::before {
+  background: var(--mk-mthank-success);
+}
+
+.mk-mthank-timelineIntro {
+  margin: 0 0 14px;
+  color: var(--mk-mthank-muted);
+  font-size: 11.5px;
+  font-weight: 800;
+  line-height: 1.7;
+}
+
+.mk-mthank-statusAlert {
+  border: 1px solid;
+  border-radius: 16px;
+  padding: 14px;
+}
+
+.mk-mthank-statusAlert strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 1000;
+}
+
+.mk-mthank-statusAlert p {
+  margin: 5px 0 0;
+  font-size: 11.5px;
+  font-weight: 800;
+  line-height: 1.7;
+}
+
+.mk-mthank-statusAlert.is-danger {
+  border-color: #fecdd3;
+  background: #fff1f2;
+  color: #9f1239;
+}
+
+.mk-mthank-statusAlert.is-warning {
+  border-color: #fde68a;
+  background: #fffbeb;
+  color: #92400e;
+}

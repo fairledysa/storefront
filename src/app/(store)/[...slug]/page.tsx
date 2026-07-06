@@ -2401,6 +2401,7 @@ export default async function Page(props: PageProps) {
       "invoice_no",
       "status",
       "base_status_key",
+      "store_status_id",
       "payment_status",
       "payment_method",
       "currency",
@@ -2437,6 +2438,33 @@ export default async function Page(props: PageProps) {
     }
 
     if (!order?.id) return notFound();
+
+    const currentBaseStatusKey = String(
+      order.base_status_key ?? order.status ?? "",
+    )
+      .trim()
+      .toLowerCase();
+
+    const [storeStatusR, baseStatusR] = await Promise.all([
+      order.store_status_id
+        ? ordersDb
+            .from("store_order_statuses")
+            .select("id,name,color,icon,base_status_key")
+            .eq("store_id", ctx.store.id)
+            .eq("id", order.store_status_id)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      currentBaseStatusKey
+        ? ordersDb
+            .from("order_status_bases")
+            .select("key,name_ar,color,icon")
+            .eq("key", currentBaseStatusKey)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+    ]);
+
+    const storeStatus = storeStatusR?.data ?? null;
+    const baseStatus = baseStatusR?.data ?? null;
 
     const orderItemsR = await ordersDb
       .from("order_items")
@@ -2877,31 +2905,47 @@ export default async function Page(props: PageProps) {
     }
 
     function statusLabel(orderRow: any) {
-      const base = String(orderRow?.base_status_key ?? "").trim();
-      const status = String(orderRow?.status ?? "").trim();
+      const base = String(orderRow?.base_status_key ?? orderRow?.status ?? "")
+        .trim()
+        .toLowerCase();
 
-      if (base === "pending_review") return "تم الاستلام";
-      if (base === "processing") return "جاري التجهيز";
-      if (base === "shipped") return "تم الشحن";
-      if (base === "delivered") return "تم التسليم";
-      if (base === "cancelled" || status === "cancelled") return "ملغي";
+      const labels: Record<string, string> = {
+        draft: "مسودة",
+        pending: "بانتظار المراجعة",
+        pending_review: "بانتظار المراجعة",
+        pending_payment: "بانتظار الدفع",
+        processing: "جاري التجهيز",
+        shipped: "تم الشحن",
+        delivered: "تم التسليم",
+        completed: "تم التنفيذ",
+        cancelled: "ملغي",
+        refunded: "مسترجع",
+        failed: "تعذر التنفيذ",
+      };
 
-      return "تم الاستلام";
+      return labels[base] || "تم استلام الطلب";
     }
 
     function statusDescription(orderRow: any) {
-      const base = String(orderRow?.base_status_key ?? "").trim();
-      const status = String(orderRow?.status ?? "").trim();
+      const base = String(orderRow?.base_status_key ?? orderRow?.status ?? "")
+        .trim()
+        .toLowerCase();
 
-      if (base === "pending_review") return "تم استلام الطلب وجاري مراجعته.";
-      if (base === "processing") return "طلبك قيد التجهيز الآن.";
-      if (base === "shipped") return "تم تسليم الطلب لشركة الشحن.";
-      if (base === "delivered") return "تم تسليم الطلب بنجاح.";
-      if (base === "cancelled" || status === "cancelled") {
-        return "تم إلغاء هذا الطلب.";
-      }
+      const descriptions: Record<string, string> = {
+        draft: "لم يتم تأكيد هذا الطلب بعد.",
+        pending: "تم استلام الطلب وجاري مراجعته.",
+        pending_review: "تم استلام الطلب وجاري مراجعته.",
+        pending_payment: "ينتظر الطلب إتمام الدفع قبل بدء التجهيز.",
+        processing: "طلبك قيد التجهيز الآن.",
+        shipped: "تم تسليم طلبك لشركة الشحن وهو في طريقه إليك.",
+        delivered: "تم تسليم طلبك بنجاح.",
+        completed: "اكتمل تنفيذ طلبك بنجاح.",
+        cancelled: "تم إلغاء هذا الطلب.",
+        refunded: "تم استرجاع هذا الطلب.",
+        failed: "تعذر إتمام هذا الطلب.",
+      };
 
-      return "تم استلام الطلب وجاري مراجعته.";
+      return descriptions[base] || "سيتم تحديث حالة طلبك من المتجر.";
     }
 
     function addressText(orderRow: any) {
@@ -3106,8 +3150,12 @@ export default async function Page(props: PageProps) {
 
         deliveryAddressText: addressText(order),
 
-        statusLabel: statusLabel(order),
+        statusLabel:
+          String(storeStatus?.name ?? baseStatus?.name_ar ?? "").trim() ||
+          statusLabel(order),
         statusDescription: statusDescription(order),
+        baseStatusKey: currentBaseStatusKey,
+        base_status_key: currentBaseStatusKey,
 
         items: thankYouItems,
 

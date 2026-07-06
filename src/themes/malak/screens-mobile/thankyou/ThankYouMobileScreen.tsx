@@ -93,6 +93,11 @@ type ThankYouData = {
 
   statusLabel?: string | null;
   statusDescription?: string | null;
+  baseStatusKey?: string | null;
+  base_status_key?: string | null;
+  statusKey?: string | null;
+  status_key?: string | null;
+  status?: string | null;
 
   items?: OrderItem[];
   specialOffers?: any;
@@ -298,6 +303,147 @@ function usePaymentSubmittedFlag(data: ThankYouData) {
   return fromData || fromUrl;
 }
 
+type TimelineState = "completed" | "current" | "upcoming";
+
+type OrderTimelineStep = {
+  key: "confirmation" | "processing" | "delivery";
+  title: string;
+  text: string;
+  state: TimelineState;
+};
+
+type OrderTimeline = {
+  title: string;
+  description: string;
+  steps: OrderTimelineStep[];
+  terminal?: {
+    title: string;
+    description: string;
+    tone: "danger" | "warning";
+  };
+};
+
+function normalizeOrderStatusKey(value: unknown) {
+  return s(value).toLowerCase().replace(/[-\s]+/g, "_");
+}
+
+function buildOrderTimeline(args: {
+  statusKey: string;
+  statusLabel: string;
+  statusDescription: string;
+  paymentReview: boolean;
+}): OrderTimeline {
+  const key = normalizeOrderStatusKey(args.statusKey);
+  const statusLabel = args.statusLabel || "حالة الطلب";
+  const statusDescription = args.statusDescription || "سيتم تحديث حالة طلبك من المتجر.";
+
+  if (["cancelled", "canceled", "refunded", "failed"].includes(key)) {
+    const fallback =
+      key === "refunded"
+        ? "تم استرجاع هذا الطلب."
+        : key === "failed"
+          ? "تعذر إتمام هذا الطلب."
+          : "تم إلغاء هذا الطلب.";
+
+    return {
+      title: "حالة الطلب",
+      description: "تم تحديث حالة الطلب من المتجر.",
+      steps: [],
+      terminal: {
+        title: statusLabel,
+        description: statusDescription || fallback,
+        tone: key === "failed" ? "warning" : "danger",
+      },
+    };
+  }
+
+  if (args.paymentReview && ["", "pending", "pending_review", "pending_payment"].includes(key)) {
+    return {
+      title: "ماذا يحدث الآن؟",
+      description: "ينتظر طلبك اعتماد التحويل قبل بدء التجهيز.",
+      steps: [
+        {
+          key: "confirmation",
+          title: "اعتماد التحويل",
+          text: "تم استلام طلب التحويل وسيقوم المتجر بمراجعته.",
+          state: "current",
+        },
+        {
+          key: "processing",
+          title: "جاري التجهيز",
+          text: "بعد اعتماد التحويل يبدأ تجهيز طلبك.",
+          state: "upcoming",
+        },
+        {
+          key: "delivery",
+          title: "الشحن والتسليم",
+          text: "سيتم شحن طلبك وتسليمه إلى عنوانك.",
+          state: "upcoming",
+        },
+      ],
+    };
+  }
+
+  const steps: OrderTimelineStep[] = [
+    {
+      key: "confirmation",
+      title: key === "pending_review" || key === "pending" ? statusLabel : "تأكيد الطلب",
+      text:
+        key === "pending_review" || key === "pending"
+          ? statusDescription
+          : "تم تأكيد بيانات الطلب وانتقل إلى المرحلة التالية.",
+      state: "current",
+    },
+    {
+      key: "processing",
+      title: key === "processing" ? statusLabel : "جاري التجهيز",
+      text:
+        key === "processing"
+          ? statusDescription
+          : "نقوم بتجهيز طلبك بعناية قبل الشحن.",
+      state: "upcoming",
+    },
+    {
+      key: "delivery",
+      title:
+        key === "shipped" || key === "delivered" || key === "completed"
+          ? statusLabel
+          : "الشحن والتسليم",
+      text:
+        key === "shipped" || key === "delivered" || key === "completed"
+          ? statusDescription
+          : "سيتم شحن طلبك وتسليمه إلى عنوانك.",
+      state: "upcoming",
+    },
+  ];
+
+  if (key === "processing") {
+    steps[0].state = "completed";
+    steps[1].state = "current";
+  } else if (key === "shipped") {
+    steps[0].state = "completed";
+    steps[1].state = "completed";
+    steps[2].state = "current";
+  } else if (["delivered", "completed"].includes(key)) {
+    steps[0].state = "completed";
+    steps[1].state = "completed";
+    steps[2].state = "completed";
+  }
+
+  return {
+    title: "ماذا يحدث الآن؟",
+    description:
+      key === "processing"
+        ? "طلبك قيد التجهيز الآن."
+        : key === "shipped"
+          ? "تم شحن طلبك وهو في طريقه إليك."
+          : ["delivered", "completed"].includes(key)
+            ? "اكتملت مراحل معالجة طلبك بنجاح."
+            : "هذه هي مراحل معالجة طلبك.",
+    steps,
+  };
+}
+
 function Section({
   title,
   icon,
@@ -348,18 +494,31 @@ function MoneyRow({
 }
 
 function TimelineStep({
-  done,
+  number,
   title,
   text,
+  state = "upcoming",
 }: {
-  done?: boolean;
+  number: number;
   title: string;
   text: string;
+  state?: TimelineState;
 }) {
+  const done = state === "completed";
+  const current = state === "current";
+
   return (
-    <div className={["mk-mthank-step", done ? "is-done" : ""].join(" ")}>
+    <div
+      className={[
+        "mk-mthank-step",
+        done ? "is-done" : "",
+        current ? "is-current" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
       <span className="mk-mthank-step__dot">
-        {done ? <Check size={15} /> : null}
+        {done ? <Check size={15} /> : number}
       </span>
 
       <div>
@@ -792,13 +951,36 @@ export default function ThankYouMobileScreen(props: Props) {
     ? "بانتظار مراجعة التحويل"
     : s(data.paymentStatusLabel) || "قيد المعالجة";
 
-  const statusLabel = isPaymentSubmitted
-    ? "بانتظار اعتماد الدفع"
-    : s(data.statusLabel) || "تم الاستلام";
+  const baseStatusKey = normalizeOrderStatusKey(
+    firstValue(
+      data.baseStatusKey,
+      data.base_status_key,
+      data.statusKey,
+      data.status_key,
+      data.status,
+    ),
+  );
 
-  const statusDescription = isPaymentSubmitted
-    ? "تم استلام طلب اعتماد التحويل، وسيقوم المتجر بمراجعته وتحديث حالة الطلب."
-    : s(data.statusDescription) || "تم استلام الطلب وجاري مراجعته.";
+  const paymentReview =
+    isPaymentSubmitted &&
+    ["", "pending", "pending_review", "pending_payment"].includes(baseStatusKey);
+
+  const statusLabel =
+    s(data.statusLabel) ||
+    (paymentReview ? "بانتظار اعتماد الدفع" : "تم استلام الطلب");
+
+  const statusDescription =
+    s(data.statusDescription) ||
+    (paymentReview
+      ? "تم استلام طلب اعتماد التحويل، وسيقوم المتجر بمراجعته وتحديث حالة الطلب."
+      : "تم استلام الطلب وجاري مراجعته.");
+
+  const orderTimeline = buildOrderTimeline({
+    statusKey: baseStatusKey,
+    statusLabel,
+    statusDescription,
+    paymentReview,
+  });
 
   const estimatedDeliveryText =
     s(data.estimatedDeliveryText) || "سيتم تحديده قريبًا";
@@ -838,19 +1020,19 @@ export default function ThankYouMobileScreen(props: Props) {
         </div>
 
         <div className="mk-mthank-hero__eyebrow">
-          {isPaymentSubmitted ? "تم إرسال طلب الاعتماد" : "تم تأكيد الطلب"}
+          {paymentReview ? "تم إرسال طلب الاعتماد" : "تم تأكيد الطلب"}
         </div>
 
         <h1>
-          {isPaymentSubmitted
+          {paymentReview
             ? "تم إرسال طلب اعتماد التحويل"
             : "تم استلام طلبك بنجاح"}
         </h1>
 
         <p>
-          {isPaymentSubmitted
+          {paymentReview
             ? "تم تسجيل طلب اعتماد التحويل لهذا الطلب. سيقوم المتجر بمراجعته وتحديث حالة الدفع بعد التحقق."
-            : "شكرًا لك، تم استلام الطلب وسيتم البدء في مراجعته وتجهيزه."}
+            : "شكرًا لك، ستظهر هنا حالة طلبك الحالية فور تحديثها من المتجر."}
         </p>
 
         <div className="mk-mthank-hero__chips">
@@ -898,36 +1080,34 @@ export default function ThankYouMobileScreen(props: Props) {
         ) : null}
       </section>
 
-      <Section title="ماذا يحدث الآن؟" icon={<Clock3 size={19} />}>
-        <div className="mk-mthank-timeline">
-          <TimelineStep
-            done
-            title={isPaymentSubmitted ? "استلام طلب الاعتماد" : "استلام الطلب"}
-            text={
-              isPaymentSubmitted
-                ? "وصل طلب اعتماد التحويل للمتجر وتم تسجيله."
-                : "وصل طلبك للمتجر وتم تسجيله بنجاح."
-            }
-          />
+      <Section title={orderTimeline.title} icon={<Clock3 size={19} />}>
+        <div className="mk-mthank-timelineIntro">{orderTimeline.description}</div>
 
-          <TimelineStep
-            title={isPaymentSubmitted ? "مراجعة التحويل" : "المراجعة والتجهيز"}
-            text={
-              isPaymentSubmitted
-                ? "سيقوم المتجر بمراجعة بيانات التحويل وتحديث حالة الدفع."
-                : "سيتم مراجعة بيانات الطلب وتجهيزه للشحن."
-            }
-          />
-
-          <TimelineStep
-            title={isPaymentSubmitted ? "اعتماد الدفع" : "الشحن والتسليم"}
-            text={
-              isPaymentSubmitted
-                ? "بعد الاعتماد سيتم تحديث حالة الطلب."
-                : "سيتم تسليم الطلب حسب العنوان وطريقة الشحن."
-            }
-          />
-        </div>
+        {orderTimeline.terminal ? (
+          <div
+            className={[
+              "mk-mthank-statusAlert",
+              orderTimeline.terminal.tone === "danger"
+                ? "is-danger"
+                : "is-warning",
+            ].join(" ")}
+          >
+            <strong>{orderTimeline.terminal.title}</strong>
+            <p>{orderTimeline.terminal.description}</p>
+          </div>
+        ) : (
+          <div className="mk-mthank-timeline">
+            {orderTimeline.steps.map((step, index) => (
+              <TimelineStep
+                key={step.key}
+                number={index + 1}
+                title={step.title}
+                text={step.text}
+                state={step.state}
+              />
+            ))}
+          </div>
+        )}
       </Section>
 
       <Section title="ملخص الطلب" icon={<ShoppingBag size={19} />}>

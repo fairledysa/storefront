@@ -151,6 +151,11 @@ type ThankYouData = {
 
   statusLabel?: string | null;
   statusDescription?: string | null;
+  baseStatusKey?: string | null;
+  base_status_key?: string | null;
+  statusKey?: string | null;
+  status_key?: string | null;
+  status?: string | null;
 
   items?: OrderItem[];
   specialOffers?: any;
@@ -486,6 +491,153 @@ function usePaymentSubmittedFlag(data: ThankYouData) {
   return fromData || fromUrl;
 }
 
+type TimelineState = "completed" | "current" | "upcoming";
+
+type OrderTimelineStep = {
+  key: "confirmation" | "processing" | "delivery";
+  title: string;
+  text: string;
+  state: TimelineState;
+};
+
+type OrderTimeline = {
+  title: string;
+  description: string;
+  steps: OrderTimelineStep[];
+  progressSegments: number;
+  terminal?: {
+    title: string;
+    description: string;
+    tone: "danger" | "warning";
+  };
+};
+
+function normalizeOrderStatusKey(value: unknown) {
+  return s(value).toLowerCase().replace(/[-\s]+/g, "_");
+}
+
+function buildOrderTimeline(args: {
+  statusKey: string;
+  statusLabel: string;
+  statusDescription: string;
+  paymentReview: boolean;
+}): OrderTimeline {
+  const key = normalizeOrderStatusKey(args.statusKey);
+  const statusLabel = args.statusLabel || "حالة الطلب";
+  const statusDescription = args.statusDescription || "سيتم تحديث حالة طلبك من المتجر.";
+
+  if (["cancelled", "canceled", "refunded", "failed"].includes(key)) {
+    const fallback =
+      key === "refunded"
+        ? "تم استرجاع هذا الطلب."
+        : key === "failed"
+          ? "تعذر إتمام هذا الطلب."
+          : "تم إلغاء هذا الطلب.";
+
+    return {
+      title: "حالة الطلب",
+      description: "تم تحديث حالة الطلب من المتجر.",
+      progressSegments: 0,
+      steps: [],
+      terminal: {
+        title: statusLabel,
+        description: statusDescription || fallback,
+        tone: key === "failed" ? "warning" : "danger",
+      },
+    };
+  }
+
+  if (args.paymentReview && ["", "pending", "pending_review", "pending_payment"].includes(key)) {
+    return {
+      title: "ماذا يحدث الآن؟",
+      description: "ينتظر طلبك اعتماد التحويل قبل بدء التجهيز.",
+      progressSegments: 0,
+      steps: [
+        {
+          key: "confirmation",
+          title: "اعتماد التحويل",
+          text: "تم استلام طلب التحويل وسيقوم المتجر بمراجعته.",
+          state: "current",
+        },
+        {
+          key: "processing",
+          title: "جاري التجهيز",
+          text: "بعد اعتماد التحويل يبدأ تجهيز طلبك.",
+          state: "upcoming",
+        },
+        {
+          key: "delivery",
+          title: "الشحن والتسليم",
+          text: "سيتم شحن طلبك وتسليمه إلى عنوانك.",
+          state: "upcoming",
+        },
+      ],
+    };
+  }
+
+  const steps: OrderTimelineStep[] = [
+    {
+      key: "confirmation",
+      title: key === "pending_review" || key === "pending" ? statusLabel : "تأكيد الطلب",
+      text:
+        key === "pending_review" || key === "pending"
+          ? statusDescription
+          : "تم تأكيد بيانات الطلب وانتقل إلى المرحلة التالية.",
+      state: "current",
+    },
+    {
+      key: "processing",
+      title: key === "processing" ? statusLabel : "جاري التجهيز",
+      text:
+        key === "processing"
+          ? statusDescription
+          : "نقوم بتجهيز طلبك بعناية قبل الشحن.",
+      state: "upcoming",
+    },
+    {
+      key: "delivery",
+      title:
+        key === "shipped" || key === "delivered" || key === "completed"
+          ? statusLabel
+          : "الشحن والتسليم",
+      text:
+        key === "shipped" || key === "delivered" || key === "completed"
+          ? statusDescription
+          : "سيتم شحن طلبك وتسليمه إلى عنوانك.",
+      state: "upcoming",
+    },
+  ];
+
+  if (key === "processing") {
+    steps[0].state = "completed";
+    steps[1].state = "current";
+  } else if (key === "shipped") {
+    steps[0].state = "completed";
+    steps[1].state = "completed";
+    steps[2].state = "current";
+  } else if (["delivered", "completed"].includes(key)) {
+    steps[0].state = "completed";
+    steps[1].state = "completed";
+    steps[2].state = "completed";
+  }
+
+  const completedBeforeLast = steps.slice(0, -1).filter((step) => step.state === "completed").length;
+
+  return {
+    title: "ماذا يحدث الآن؟",
+    description:
+      key === "processing"
+        ? "طلبك قيد التجهيز الآن."
+        : key === "shipped"
+          ? "تم شحن طلبك وهو في طريقه إليك."
+          : ["delivered", "completed"].includes(key)
+            ? "اكتملت مراحل معالجة طلبك بنجاح."
+            : "هذه هي مراحل معالجة طلبك.",
+    steps,
+    progressSegments: completedBeforeLast,
+  };
+}
+
 function SectionCard({
   icon,
   title,
@@ -556,24 +708,29 @@ function TimelineStep({
   number,
   title,
   text,
-  active = false,
+  state = "upcoming",
 }: {
   number: number;
   title: string;
   text: string;
-  active?: boolean;
+  state?: TimelineState;
 }) {
+  const completed = state === "completed";
+  const current = state === "current";
+
   return (
     <div className="relative z-10 flex min-w-0 flex-1 flex-col items-center text-center">
       <div
         className={[
           "grid h-11 w-11 place-items-center rounded-full border text-sm font-black shadow-sm",
-          active
+          completed
             ? "border-emerald-600 bg-emerald-600 text-white"
-            : "border-[#eadfd1] bg-[#fcfaf7] text-zinc-800",
+            : current
+              ? "border-[#0d3b45] bg-[#0d3b45] text-white"
+              : "border-[#eadfd1] bg-[#fcfaf7] text-zinc-800",
         ].join(" ")}
       >
-        {active ? <Check className="h-5 w-5" /> : number}
+        {completed ? <Check className="h-5 w-5" /> : number}
       </div>
 
       <div className="mt-4 text-[15px] font-black text-zinc-950">{title}</div>
@@ -1196,13 +1353,36 @@ export default function ThankYouScreen(props: AnyProps) {
   const deliveryAddressText =
     s(data?.deliveryAddressText) || "العنوان المختار أثناء إتمام الطلب";
 
-  const statusLabel = isPaymentSubmitted
-    ? "بانتظار اعتماد الدفع"
-    : s(data?.statusLabel) || "تم الاستلام";
+  const baseStatusKey = normalizeOrderStatusKey(
+    firstValue(
+      data?.baseStatusKey,
+      data?.base_status_key,
+      data?.statusKey,
+      data?.status_key,
+      data?.status,
+    ),
+  );
 
-  const statusDescription = isPaymentSubmitted
-    ? "تم استلام طلب اعتماد التحويل، وسيقوم المتجر بمراجعته وتحديث حالة الطلب."
-    : s(data?.statusDescription) || "تم استلام الطلب وجاري مراجعته.";
+  const paymentReview =
+    isPaymentSubmitted &&
+    ["", "pending", "pending_review", "pending_payment"].includes(baseStatusKey);
+
+  const statusLabel =
+    s(data?.statusLabel) ||
+    (paymentReview ? "بانتظار اعتماد الدفع" : "تم استلام الطلب");
+
+  const statusDescription =
+    s(data?.statusDescription) ||
+    (paymentReview
+      ? "تم استلام طلب اعتماد التحويل، وسيقوم المتجر بمراجعته وتحديث حالة الطلب."
+      : "تم استلام الطلب وجاري مراجعته.");
+
+  const orderTimeline = buildOrderTimeline({
+    statusKey: baseStatusKey,
+    statusLabel,
+    statusDescription,
+    paymentReview,
+  });
 
   const totalText = money(computedTotal);
   const invoiceDownloadUrl = s(data?.invoiceDownloadUrl ?? data?.invoice_download_url);
@@ -1231,15 +1411,15 @@ export default function ThankYouScreen(props: AnyProps) {
           </div>
 
           <h1 className="mt-5 text-[34px] font-black leading-tight tracking-tight text-zinc-950 sm:text-[46px]">
-            {isPaymentSubmitted
+            {paymentReview
               ? "تم إرسال طلب اعتماد التحويل"
               : "تم استلام طلبك بنجاح"}
           </h1>
 
           <p className="mx-auto mt-2 max-w-[620px] text-[15px] leading-7 text-zinc-500 sm:text-[16px]">
-            {isPaymentSubmitted
+            {paymentReview
               ? "تم تسجيل طلب اعتماد التحويل لهذا الطلب. سيقوم المتجر بمراجعته وتحديث حالة الدفع بعد التحقق."
-              : "شكرًا لك، تم تأكيد طلبك وسيتم البدء في تجهيزه مباشرة."}
+              : "شكرًا لك، ستظهر هنا حالة طلبك الحالية فور تحديثها من المتجر."}
           </p>
 
           <div className="mt-4 flex flex-wrap items-center justify-center gap-2.5">
@@ -1258,9 +1438,9 @@ export default function ThankYouScreen(props: AnyProps) {
           <div className="mt-4 flex items-center justify-center gap-2 text-[14px] leading-6 text-zinc-500">
             <Mail className="h-4 w-4 shrink-0" />
             <span>
-              {isPaymentSubmitted
+              {paymentReview
                 ? "تم تسجيل طلب اعتماد الدفع، ويمكنك متابعة حالة الطلب من حسابك."
-                : "تم إرسال تفاصيل الطلب إلى بريدك الإلكتروني ورسالة نصية إلى جوالك."}
+                : "تم إرسال تفاصيل الطلب إلى بريدك الإلكتروني، وتظهر حالة طلبك هنا عند كل تحديث."}
             </span>
           </div>
 
@@ -1293,57 +1473,63 @@ export default function ThankYouScreen(props: AnyProps) {
           <section className="space-y-5">
             <SectionCard
               icon={<Clock3 className="h-5 w-5" />}
-              title="ماذا يحدث الآن؟"
+              title={orderTimeline.title}
             >
               <div className="text-[13px] text-zinc-500">
-                {isPaymentSubmitted
-                  ? "هذه هي مراحل مراجعة اعتماد الدفع."
-                  : "هذه هي مراحل معالجة طلبك بعد الإرسال."}
+                {orderTimeline.description}
               </div>
 
-              <div className="relative mt-7">
-                <div className="absolute left-[12%] right-[12%] top-[22px] hidden h-px bg-[#e8ddd0] md:block" />
-                <div className="absolute right-[12%] top-[22px] hidden h-px w-[38%] bg-emerald-500 md:block" />
-
-                <div className="grid grid-cols-1 gap-7 md:grid-cols-3">
-                  <TimelineStep
-                    number={1}
-                    title={
-                      isPaymentSubmitted ? "استلام طلب الاعتماد" : "تأكيد الطلب"
-                    }
-                    text={
-                      isPaymentSubmitted
-                        ? "تم استلام طلب اعتماد التحويل."
-                        : "تم استلام طلبك وسيتم تأكيد بياناته."
-                    }
-                    active
-                  />
-
-                  <TimelineStep
-                    number={2}
-                    title={
-                      isPaymentSubmitted ? "مراجعة التحويل" : "جاري التجهيز"
-                    }
-                    text={
-                      isPaymentSubmitted
-                        ? "سيقوم المتجر بمراجعة بيانات التحويل."
-                        : "نقوم الآن بتجهيز طلبك بعناية."
-                    }
-                  />
-
-                  <TimelineStep
-                    number={3}
-                    title={
-                      isPaymentSubmitted ? "تحديث حالة الدفع" : "الشحن والتسليم"
-                    }
-                    text={
-                      isPaymentSubmitted
-                        ? "بعد الاعتماد سيتم تحديث حالة الطلب."
-                        : "سيتم شحن طلبك وتسليمه إلى عنوانك."
-                    }
-                  />
+              {orderTimeline.terminal ? (
+                <div
+                  className={[
+                    "mt-5 rounded-[18px] border px-5 py-4",
+                    orderTimeline.terminal.tone === "danger"
+                      ? "border-rose-200 bg-rose-50"
+                      : "border-amber-200 bg-amber-50",
+                  ].join(" ")}
+                >
+                  <div
+                    className={[
+                      "text-[15px] font-black",
+                      orderTimeline.terminal.tone === "danger"
+                        ? "text-rose-800"
+                        : "text-amber-800",
+                    ].join(" ")}
+                  >
+                    {orderTimeline.terminal.title}
+                  </div>
+                  <div
+                    className={[
+                      "mt-1 text-[13px] leading-6",
+                      orderTimeline.terminal.tone === "danger"
+                        ? "text-rose-700"
+                        : "text-amber-700",
+                    ].join(" ")}
+                  >
+                    {orderTimeline.terminal.description}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="relative mt-7">
+                  <div className="absolute left-[12%] right-[12%] top-[22px] hidden h-px bg-[#e8ddd0] md:block" />
+                  <div
+                    className="absolute right-[12%] top-[22px] hidden h-px bg-emerald-500 transition-[width] md:block"
+                    style={{ width: `${orderTimeline.progressSegments * 38}%` }}
+                  />
+
+                  <div className="grid grid-cols-1 gap-7 md:grid-cols-3">
+                    {orderTimeline.steps.map((step, index) => (
+                      <TimelineStep
+                        key={step.key}
+                        number={index + 1}
+                        title={step.title}
+                        text={step.text}
+                        state={step.state}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
             </SectionCard>
 
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
