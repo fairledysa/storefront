@@ -52,6 +52,32 @@ function s(input: unknown) {
   return String(input ?? "").trim();
 }
 
+type PreviewDevice = "mobile" | "desktop";
+type StoreSearchParams = Record<string, string | string[] | undefined>;
+
+function firstSearchParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+/**
+ * يعرض نسخة الجوال الحقيقية فقط داخل iframe محرر الثيم.
+ * زيارة المتجر العامة لا تتأثر بهذا المعامل.
+ */
+function getThemeEditorPreviewDevice(
+  searchParams?: StoreSearchParams,
+): PreviewDevice | null {
+  const preview = s(firstSearchParam(searchParams?.preview));
+  const themeEditor = s(firstSearchParam(searchParams?.themeEditor));
+  const requested = s(
+    firstSearchParam(searchParams?.themeEditorDevice),
+  ).toLowerCase();
+
+  if (preview !== "1" || themeEditor !== "1") return null;
+  if (requested === "mobile" || requested === "desktop") return requested;
+
+  return null;
+}
+
 function normalizeKeywords(input?: string | null) {
   const value = safeText(input);
   if (!value) return undefined;
@@ -557,6 +583,7 @@ export default async function StoreHomePage({
   const sp = (await searchParams) || {};
   const previewVal = Array.isArray(sp.preview) ? sp.preview[0] : sp.preview;
   const preview = previewVal === "1";
+  const previewDevice = getThemeEditorPreviewDevice(sp);
 
   const ctx = await getStoreContextCached();
   if (!ctx?.store) return notFound();
@@ -577,7 +604,8 @@ export default async function StoreHomePage({
 
   if (isMalak) {
     const h = await headers();
-    const device = detectDeviceFromUA(h.get("user-agent") || "");
+    const device =
+      previewDevice ?? detectDeviceFromUA(h.get("user-agent") || "");
 
     const themeOptions = safeObject(ctx.theme?.options);
 

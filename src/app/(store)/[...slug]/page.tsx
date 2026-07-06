@@ -57,6 +57,28 @@ import TagScreen from "@/themes/malak/screens/tag/TagScreen";
 import { getSeoUrlMode } from "@/data/store/settings";
 
 type SP = Record<string, string | string[] | undefined>;
+type PreviewDevice = "mobile" | "desktop";
+
+function firstSearchParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+/**
+ * يسمح بتغيير شجرة ثيم ملاك داخل معاينة المحرر فقط.
+ * لا نقبل المعامل على أي زيارة عامة للمتجر.
+ */
+function getThemeEditorPreviewDevice(searchParams?: SP): PreviewDevice | null {
+  const preview = s(firstSearchParam(searchParams?.preview));
+  const themeEditor = s(firstSearchParam(searchParams?.themeEditor));
+  const requested = s(
+    firstSearchParam(searchParams?.themeEditorDevice),
+  ).toLowerCase();
+
+  if (preview !== "1" || themeEditor !== "1") return null;
+  if (requested === "mobile" || requested === "desktop") return requested;
+
+  return null;
+}
 
 type PageParams = {
   slug?: string[];
@@ -414,13 +436,16 @@ async function renderMalakCategoryPage(args: {
   ctx: any;
   data: any;
   preview: boolean;
+  previewDevice?: PreviewDevice | null;
 }) {
   const h = await headers();
 
-  const device = detectDeviceFromUA(
-    h.get("user-agent") || "",
-    h.get("sec-ch-ua-mobile"),
-  );
+  const device =
+    args.previewDevice ??
+    detectDeviceFromUA(
+      h.get("user-agent") || "",
+      h.get("sec-ch-ua-mobile"),
+    );
 
   const seoMode = await getSeoUrlModeCached(args.ctx.store.id);
 
@@ -464,13 +489,16 @@ async function renderMalakTagPage(args: {
   ctx: any;
   data: any;
   preview: boolean;
+  previewDevice?: PreviewDevice | null;
 }) {
   const h = await headers();
 
-  const device = detectDeviceFromUA(
-    h.get("user-agent") || "",
-    h.get("sec-ch-ua-mobile"),
-  );
+  const device =
+    args.previewDevice ??
+    detectDeviceFromUA(
+      h.get("user-agent") || "",
+      h.get("sec-ch-ua-mobile"),
+    );
 
   const seoMode = await getSeoUrlModeCached(args.ctx.store.id);
 
@@ -510,6 +538,7 @@ async function renderMalakProductPage(args: {
   ctx: any;
   data: any;
   preview: boolean;
+  previewDevice?: PreviewDevice | null;
   seoMode?: any;
   shellData?: {
     bootstrap: any;
@@ -518,10 +547,12 @@ async function renderMalakProductPage(args: {
 }) {
   const h = await headers();
 
-  const device = detectDeviceFromUA(
-    h.get("user-agent") || "",
-    h.get("sec-ch-ua-mobile"),
-  );
+  const device =
+    args.previewDevice ??
+    detectDeviceFromUA(
+      h.get("user-agent") || "",
+      h.get("sec-ch-ua-mobile"),
+    );
 
   const seoMode = args.seoMode ?? (await getSeoUrlModeCached(args.ctx.store.id));
 
@@ -570,13 +601,16 @@ async function renderMalakInfoPage(args: {
   ctx: any;
   page: StorePageRow;
   preview: boolean;
+  previewDevice?: PreviewDevice | null;
 }) {
   const h = await headers();
 
-  const device = detectDeviceFromUA(
-    h.get("user-agent") || "",
-    h.get("sec-ch-ua-mobile"),
-  );
+  const device =
+    args.previewDevice ??
+    detectDeviceFromUA(
+      h.get("user-agent") || "",
+      h.get("sec-ch-ua-mobile"),
+    );
 
   const seoMode = await getSeoUrlModeCached(args.ctx.store.id);
 
@@ -2166,6 +2200,7 @@ export default async function Page(props: PageProps) {
   const sp = (await props.searchParams) || {};
   const previewVal = Array.isArray(sp.preview) ? sp.preview[0] : sp.preview;
   const preview = previewVal === "1";
+  const previewDevice = getThemeEditorPreviewDevice(sp);
 
   const params = ((await props.params) ?? {}) as { slug?: string[] };
   const slug = params.slug || [];
@@ -2233,6 +2268,7 @@ export default async function Page(props: PageProps) {
         ctx,
         page,
         preview,
+        previewDevice,
       });
 
       return withJsonLd(content, jsonLdEntries);
@@ -2292,6 +2328,7 @@ export default async function Page(props: PageProps) {
         ctx,
         data,
         preview,
+        previewDevice,
       });
 
       return withJsonLd(content, jsonLdEntries);
@@ -2475,13 +2512,11 @@ export default async function Page(props: PageProps) {
       }
     }
 
-    // الرقم الرسمي الظاهر للعميل يجب أن يطابق لوحة التاجر.
-    // public_no يبقى معرفًا بديلًا للمسارات القديمة فقط.
     const orderNo =
-      order.order_number != null
-        ? String(order.order_number)
-        : order.public_no != null
-          ? String(order.public_no)
+      order.public_no != null
+        ? String(order.public_no)
+        : order.order_number != null
+          ? String(order.order_number)
           : order.public_token != null
             ? String(order.public_token)
             : token;
@@ -3029,8 +3064,6 @@ export default async function Page(props: PageProps) {
       extraData: {
         token,
         orderNo,
-        invoiceDownloadUrl: `/api/invoice/${encodeURIComponent(String(order.public_token ?? ""))}`,
-        invoice_download_url: `/api/invoice/${encodeURIComponent(String(order.public_token ?? ""))}`,
 
         orderOptions,
         order_options: orderOptions,
@@ -3262,6 +3295,7 @@ export default async function Page(props: PageProps) {
         ctx,
         data,
         preview,
+        previewDevice,
       });
 
       return withJsonLd(content, jsonLdEntries);
@@ -3308,6 +3342,7 @@ export default async function Page(props: PageProps) {
         ctx,
         data,
         preview,
+        previewDevice,
         seoMode,
       });
 
@@ -3358,6 +3393,7 @@ export default async function Page(props: PageProps) {
         ctx,
         data: category,
         preview,
+        previewDevice,
       });
 
       return withJsonLd(content, jsonLdEntries);
@@ -3403,6 +3439,7 @@ export default async function Page(props: PageProps) {
           ctx,
           data: product,
           preview,
+          previewDevice,
           seoMode,
         });
 
@@ -3451,6 +3488,7 @@ export default async function Page(props: PageProps) {
           ctx,
           data: category,
           preview,
+          previewDevice,
         });
 
         return withJsonLd(content, jsonLdEntries);
