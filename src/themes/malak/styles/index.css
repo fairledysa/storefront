@@ -13,6 +13,7 @@
 @import "./components/empty.css";
 @import "./components/overlay.css";
 @import "./components/auth-modal.css";
+@import "./components/smart-search.css";
 
 @import "./shell/app-shell.css";
 @import "./shell/mobile-shell.css";

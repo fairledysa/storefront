@@ -52,6 +52,8 @@ import {
   sortProductsByNewest,
 } from "./product-utils";
 
+import { isSmartSearchSection as isSmartSearchThemeSection } from "@/themes/malak/smart-search/config";
+
 import {
   getButtonTextFromValues,
   getCountdownButton,
@@ -154,6 +156,10 @@ export function sectionHasToken(section: HomeDynamicSection, token: string) {
     lower(section.raw?.component_definition?.slug) === t ||
     lower(section.raw?.component_definition?.category) === t
   );
+}
+
+export function isSmartSearchSection(section: HomeDynamicSection) {
+  return isSmartSearchThemeSection(section.raw);
 }
 
 export function isBannersSliderSection(section: HomeDynamicSection) {
@@ -272,8 +278,8 @@ export function buildDynamicSections(
       };
     })
     .filter((section: HomeDynamicSection) => {
-       if (isResponsiveHeroSliderSection(section)) return true;
- 
+      if (isResponsiveHeroSliderSection(section)) return true;
+      if (isSmartSearchSection(section)) return true;
 
       if (isCountdownOfferSection(section)) return true;
       if (isProductsTabsSection(section)) return true;

@@ -9,6 +9,8 @@ import { usePathname } from "next/navigation";
 import DesktopHeader from "./_components/DesktopHeader";
 import Footer from "./Footer";
 import ScreenContainer from "./ScreenContainer";
+import SmartSearchDesktopBar from "@/themes/malak/components/smart-search/SmartSearchDesktopBar";
+import { shouldShowSmartSearchOnDesktop } from "@/themes/malak/smart-search/visibility";
 
 import type { ThemeAdapterOutput } from "../types";
 import type { SeoUrlMode } from "@/data/store/settings";
@@ -771,6 +773,10 @@ export default function DesktopShell({
           seoMode={seoMode}
           initialCartCount={initialCartCount}
         />
+
+        {shouldShowSmartSearchOnDesktop(pathname) ? (
+          <SmartSearchDesktopBar data={screenData} bootstrap={bootstrap} />
+        ) : null}
 
         <main className="mk-desktop-main">
           <div className="mk-desktop-container">

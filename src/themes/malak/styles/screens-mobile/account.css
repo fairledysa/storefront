@@ -1110,3 +1110,455 @@
 .mk-maccount-logout__btn:active:not(:disabled) {
   transform: scale(0.985);
 }
+
+/* ORDERS MOBILE DESKTOP PARITY:
+   نفس منطق الكمبيوتر: ملخص، بحث، فلاتر، منتجات، فاتورة/تفاصيل، وتقييمات. */
+@media (max-width: 760px) {
+  .mk-morders-hello {
+    margin-bottom: 10px;
+    border-radius: 22px;
+    padding: 14px;
+    background: linear-gradient(135deg, #111827, #263548);
+    color: #fff;
+    box-shadow: 0 18px 38px rgba(15, 23, 42, .16);
+  }
+
+  .mk-morders-hello strong {
+    display: block;
+    font-size: 15px;
+    font-weight: 950;
+  }
+
+  .mk-morders-hello span {
+    display: block;
+    margin-top: 4px;
+    color: rgba(255, 255, 255, .74);
+    font-size: 12px;
+    font-weight: 750;
+  }
+
+  .mk-morders-page {
+    display: grid;
+    gap: 11px;
+  }
+
+  .mk-morders-stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .mk-morders-stat {
+    min-height: 82px;
+    border-radius: 20px;
+    background: #fff;
+    border: 1px solid rgba(15, 23, 42, .055);
+    box-shadow: 0 14px 30px rgba(15, 23, 42, .045);
+    padding: 12px 8px;
+    text-align: center;
+  }
+
+  .mk-morders-stat__value {
+    color: #111827;
+    font-size: 22px;
+    font-weight: 950;
+    line-height: 1;
+  }
+
+  .mk-morders-stat__label {
+    margin-top: 7px;
+    color: #475569;
+    font-size: 10.8px;
+    font-weight: 900;
+    line-height: 1.35;
+  }
+
+  .mk-morders-stat__hint {
+    margin-top: 2px;
+    color: #94a3b8;
+    font-size: 10px;
+    font-weight: 800;
+  }
+
+  .mk-morders-loading {
+    min-height: 96px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-radius: 22px;
+    background: #fff;
+    border: 1px solid rgba(15, 23, 42, .06);
+    padding: 16px;
+    box-shadow: 0 14px 30px rgba(15, 23, 42, .045);
+  }
+
+  .mk-morders-loading__pulse {
+    width: 42px;
+    height: 42px;
+    border-radius: 999px;
+    background: #e2e8f0;
+    animation: mk-morders-pulse 1s ease-in-out infinite alternate;
+  }
+
+  .mk-morders-loading strong {
+    display: block;
+    color: #111827;
+    font-size: 14px;
+    font-weight: 950;
+  }
+
+  .mk-morders-loading p {
+    margin: 4px 0 0;
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 750;
+  }
+
+  @keyframes mk-morders-pulse {
+    from { opacity: .48; transform: scale(.96); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  .mk-morders {
+    display: grid;
+    gap: 10px;
+  }
+
+  .mk-morders-toolbar {
+    border-radius: 24px;
+    background: #fff;
+    border: 1px solid rgba(15, 23, 42, .055);
+    padding: 11px;
+    box-shadow: 0 14px 30px rgba(15, 23, 42, .045);
+  }
+
+  .mk-morders-search {
+    height: 46px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-radius: 16px;
+    background: #f8fafc;
+    border: 1px solid rgba(15, 23, 42, .06);
+    padding: 0 12px;
+    color: #64748b;
+  }
+
+  .mk-morders-search input {
+    min-width: 0;
+    flex: 1;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: #111827;
+    font-size: 13px;
+    font-weight: 850;
+  }
+
+  .mk-morders-filterGrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .mk-morders-select {
+    display: grid;
+    gap: 5px;
+    border-radius: 16px;
+    background: #f8fafc;
+    border: 1px solid rgba(15, 23, 42, .06);
+    padding: 8px 10px;
+  }
+
+  .mk-morders-select span {
+    color: #8a6471;
+    font-size: 10px;
+    font-weight: 900;
+  }
+
+  .mk-morders-select select {
+    width: 100%;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: #111827;
+    font-size: 12px;
+    font-weight: 900;
+  }
+
+  .mk-morders-list {
+    display: grid;
+    gap: 11px;
+  }
+
+  .mk-morder-card {
+    border-radius: 26px;
+    background: #fff;
+    border: 1px solid rgba(15, 23, 42, .06);
+    padding: 14px;
+    box-shadow:
+      0 16px 36px rgba(15, 23, 42, .055),
+      inset 0 1px 0 rgba(255, 255, 255, .8);
+  }
+
+  .mk-morder-card__top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .mk-morder-card__label {
+    color: #7a6470;
+    font-size: 10.5px;
+    font-weight: 900;
+    margin-bottom: 3px;
+  }
+
+  .mk-morder-card__number {
+    border: 0;
+    background: transparent;
+    padding: 0;
+    color: #111827;
+    font-size: 18px;
+    font-weight: 950;
+    cursor: pointer;
+  }
+
+  .mk-morder-card__badge {
+    min-height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    padding: 0 11px;
+    font-size: 11px;
+    font-weight: 950;
+    border: 1px solid transparent;
+    background: color-mix(in srgb, var(--order-status-color, #f59e0b) 12%, #fff 88%);
+    color: var(--order-status-color, #b45309);
+  }
+
+  .mk-morder-card__badge[data-tone="success"],
+  .mk-morder-card__badge[data-tone="green"] {
+    background: #ecfdf5;
+    color: #047857;
+    border-color: rgba(16, 185, 129, .14);
+  }
+
+  .mk-morder-card__badge[data-tone="neutral"] {
+    background: #f8fafc;
+    color: #475569;
+    border-color: rgba(148, 163, 184, .18);
+  }
+
+  .mk-morder-card__meta {
+    margin-top: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .mk-morder-card__meta span {
+    min-height: 28px;
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    background: #f8fafc;
+    color: #475569;
+    padding: 0 9px;
+    font-size: 10.5px;
+    font-weight: 850;
+  }
+
+  .mk-morder-products {
+    margin-top: 12px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 10px;
+    border-radius: 20px;
+    background: #fbfbfc;
+    border: 1px solid rgba(15, 23, 42, .045);
+    padding: 10px;
+  }
+
+  .mk-morder-products__media {
+    display: flex;
+    align-items: center;
+    direction: ltr;
+  }
+
+  .mk-morder-products__img {
+    width: 38px;
+    height: 38px;
+    border-radius: 14px;
+    background: #eef2f7;
+    border: 2px solid #fff;
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+    margin-left: -9px;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, .08);
+  }
+
+  .mk-morder-products__img:first-child {
+    margin-left: 0;
+  }
+
+  .mk-morder-products__img img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .mk-morder-products__names {
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+    align-content: center;
+  }
+
+  .mk-morder-products__name {
+    min-width: 0;
+    color: #111827;
+    font-size: 12px;
+    font-weight: 900;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .mk-morder-products__name small {
+    margin-inline-start: 5px;
+    color: #8a6470;
+    font-size: 10px;
+    font-weight: 900;
+  }
+
+  .mk-morder-products__more {
+    color: #64748b;
+    font-size: 10.5px;
+    font-weight: 800;
+  }
+
+  .mk-morder-card__invoice {
+    margin-top: 10px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .mk-morder-info {
+    border-radius: 17px;
+    background: #f8fafc;
+    border: 1px solid rgba(15, 23, 42, .05);
+    padding: 10px;
+  }
+
+  .mk-morder-info__label {
+    color: #7a6470;
+    font-size: 10px;
+    font-weight: 900;
+    margin-bottom: 4px;
+  }
+
+  .mk-morder-info__value {
+    min-width: 0;
+    color: #111827;
+    font-size: 12px;
+    font-weight: 950;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mk-morder-info[data-tone="paid"] .mk-morder-info__value {
+    color: #047857;
+  }
+
+  .mk-morder-info[data-tone="failed"] .mk-morder-info__value {
+    color: #b91c1c;
+  }
+
+  .mk-morder-info[data-tone="refunded"] .mk-morder-info__value {
+    color: #1d4ed8;
+  }
+
+  .mk-morder-card__actions {
+    margin-top: 11px;
+    display: grid;
+    gap: 8px;
+  }
+
+  .mk-morder-card__btn {
+    width: 100%;
+    min-height: 44px;
+    border-radius: 16px;
+    font-size: 12px;
+    font-weight: 950;
+    cursor: pointer;
+  }
+
+  .mk-morder-card__btn--details {
+    border: 0;
+    background: #111827;
+    color: #fff;
+  }
+
+  .mk-morder-card__btn--review {
+    border: 1px solid rgba(202, 112, 140, .16);
+    background: #fff7fb;
+    color: #9f1239;
+  }
+
+  .mk-morder-card__btn--reviewed {
+    border: 1px solid rgba(16, 185, 129, .14);
+    background: #ecfdf5;
+    color: #047857;
+  }
+
+  .mk-morder-card__btn--reviewed.is-pending {
+    border-color: rgba(245, 158, 11, .18);
+    background: #fffbeb;
+    color: #b45309;
+  }
+
+  .mk-morders-empty {
+    border-radius: 26px;
+    background: #fff;
+    border: 1px solid rgba(15, 23, 42, .055);
+    padding: 26px 18px;
+    text-align: center;
+    box-shadow: 0 16px 34px rgba(15, 23, 42, .045);
+  }
+
+  .mk-morders-empty--inside {
+    margin-top: 2px;
+  }
+
+  .mk-morders-empty__icon {
+    width: 54px;
+    height: 54px;
+    display: grid;
+    place-items: center;
+    margin: 0 auto 10px;
+    border-radius: 20px;
+    background: #f8fafc;
+    font-size: 24px;
+  }
+
+  .mk-morders-empty__title {
+    color: #111827;
+    font-size: 15px;
+    font-weight: 950;
+  }
+
+  .mk-morders-empty__text {
+    margin-top: 7px;
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 750;
+    line-height: 1.8;
+  }
+}

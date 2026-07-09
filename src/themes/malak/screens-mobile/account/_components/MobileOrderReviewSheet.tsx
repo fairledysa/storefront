@@ -38,10 +38,12 @@ export default function MobileOrderReviewSheet({
   open,
   order,
   onClose,
+  onSubmitted,
 }: {
   open: boolean;
   order: OrdersApiRow | null;
   onClose: () => void;
+  onSubmitted?: () => void;
 }) {
   const [mounted, setMounted] = useState(open);
   const [visible, setVisible] = useState(false);
@@ -254,6 +256,7 @@ export default function MobileOrderReviewSheet({
 
       setStep("done");
       setSubmitMsg("تم إرسال التقييم بنجاح.");
+      onSubmitted?.();
     } catch (e: any) {
       setSubmitMsg(s(e?.message) || "تعذر إرسال التقييم");
     } finally {

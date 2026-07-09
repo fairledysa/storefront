@@ -14,6 +14,7 @@ import {
   type CatalogProductSort,
 } from "@/data/catalog/products";
 import { getStoreDb } from "@/data/db/store-db.server";
+import { resolveSmartSearchProductIds } from "@/data/catalog/smart-search.server";
 import { fromBase62 } from "@/lib/seo/base62";
 import {
   loadCategoryFiltersForPage,
@@ -844,6 +845,10 @@ export async function loadCategoryProductsPage(args: {
   searchParams?: CatalogFilterSearchParams;
   offset?: number;
   limit?: number;
+  smartSearch?: {
+    themeOptions?: Record<string, any> | null;
+    themeVersionId?: string | null;
+  };
 }): Promise<CategoryProductsPage> {
   const storeId = s(args.store_id);
   const categoryId = s(args.category_id);
@@ -870,6 +875,14 @@ export async function loadCategoryProductsPage(args: {
 
   const sort = normalizeCatalogSort(args.searchParams);
 
+  const smartSearch = await resolveSmartSearchProductIds({
+    storeId,
+    themeOptions: args.smartSearch?.themeOptions ?? null,
+    themeVersionId: args.smartSearch?.themeVersionId ?? null,
+    searchParams: args.searchParams,
+    categoryScopeIds,
+  });
+
   const catalogFilters = args.searchParams
     ? await loadCategoryFiltersForPage({
         store_id: storeId,
@@ -883,6 +896,37 @@ export async function loadCategoryProductsPage(args: {
   const hasActiveFilters = Boolean(
     catalogFilters?.enabled && catalogFilters?.filters?.hasActiveFilters,
   );
+
+  if (smartSearch.isSmartSearch) {
+    let smartIds = smartSearch.productIds;
+
+    if (hasActiveFilters) {
+      const activeFilterIds = Array.isArray(catalogFilters?.productIds)
+        ? catalogFilters.productIds.map((value: unknown) => s(value)).filter(Boolean)
+        : [];
+      const activeSet = new Set(activeFilterIds);
+      smartIds = smartIds.filter((id) => activeSet.has(id));
+    }
+
+    const pageIds = smartIds.slice(offset, offset + pageSize);
+    const items = await loadCategoryProductsByIds({
+      store_id: storeId,
+      productIds: pageIds,
+      limit: pageSize,
+    });
+    const nextOffset = offset + pageIds.length;
+
+    return {
+      items,
+      categoryScopeIds,
+      pageInfo: {
+        pageSize,
+        nextOffset,
+        hasNextPage: nextOffset < smartIds.length,
+      },
+      catalogFilters,
+    };
+  }
 
   if (hasActiveFilters) {
     const pageIds = Array.isArray(catalogFilters?.productIds)

@@ -13,6 +13,7 @@ type Props = {
   bootstrap?: MalakBootstrap;
   isHome?: boolean;
   onSearchOpen?: () => void;
+  hideSearchUntilScrolled?: boolean;
 };
 
 function text(value: unknown) {
@@ -33,6 +34,7 @@ export default function TopBar({
   bootstrap,
   isHome = false,
   onSearchOpen,
+  hideSearchUntilScrolled = false,
 }: Props) {
   const [scrolled, setScrolled] = useState(false);
 
@@ -54,7 +56,8 @@ export default function TopBar({
   );
 
   const hasBrand = Boolean(logoUrl || storeName);
-  const shouldShowSearch = showSearch && Boolean(onSearchOpen);
+  const shouldShowSearch =
+    showSearch && Boolean(onSearchOpen) && (!hideSearchUntilScrolled || scrolled);
 
   const shouldShowSlogan = Boolean(sloganText && !scrolled);
 

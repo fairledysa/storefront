@@ -50,6 +50,7 @@ import {
   isFeaturedMosaicOfferSection,
   isProductsTabsSection,
   isResponsiveHeroSliderSection,
+  isSmartSearchSection,
   isSquareLinksSection,
   isStatsHeroSplitSection,
   isStatsSection,
@@ -58,6 +59,8 @@ import {
   isWideBannerSection,
   maskCustomerName,
 } from "../../screens/home/_dynamic/section-utils";
+
+import SmartSearchFromData from "../../components/smart-search/SmartSearchFromData";
 
 import MobileHero, {
   type MobileHeroSlide,
@@ -2172,17 +2175,31 @@ function MobileTestimonialsSection({
 
 function MobileDynamicSectionRenderer({
   section,
+  sectionIndex = 0,
   data,
   seoMode,
   currencies,
   tax,
 }: {
   section: HomeDynamicSection;
+  sectionIndex?: number;
   data: any;
   seoMode: any;
   currencies?: any;
   tax?: any;
 }) {
+  if (isSmartSearchSection(section)) {
+    return (
+      <SmartSearchFromData
+        data={data}
+        bootstrap={data?.bootstrap}
+        variant="hero"
+        section={section.raw}
+        sectionIndex={sectionIndex}
+      />
+    );
+  }
+
   if (isResponsiveHeroSliderSection(section)) {
     return (
       <MobileResponsiveHeroSliderSection
@@ -2373,7 +2390,7 @@ export default function HomeMobileScreen({ data, seoMode }: Props) {
 
   return (
     <div className="mk-mobile-home">
-      {dynamicSections.map((section) => {
+      {dynamicSections.map((section, sectionIndex) => {
         const shouldSkipMergedCircle =
           hasResponsiveHero &&
           mergedMobileCircleSection?.id === section.id &&
@@ -2387,6 +2404,7 @@ export default function HomeMobileScreen({ data, seoMode }: Props) {
           <MobileDynamicSectionRenderer
             key={section.id}
             section={section}
+            sectionIndex={sectionIndex}
             data={data}
             seoMode={seoMode}
             currencies={currencies}

@@ -13,6 +13,12 @@ import ScreenContainer from "./ScreenContainer";
 import AuthModal from "./_components/AuthModal";
 import SearchOverlay from "./SearchOverlay";
 import InstallAppPrompt from "./_components/InstallAppPrompt";
+import SmartSearchMobileLauncher from "@/themes/malak/components/smart-search/SmartSearchMobileLauncher";
+import { shouldShowSmartSearchOnMobile } from "@/themes/malak/smart-search/visibility";
+import {
+  buildDynamicSections,
+  isSmartSearchSection,
+} from "../screens/home/_dynamic/section-utils";
 
 import type { ThemeAdapterOutput } from "../types";
 import type { MalakBootstrap } from "../bootstrap/types";
@@ -236,6 +242,15 @@ export default function MobileShell({
 
   const shellBootstrap = dataWithBootstrap.bootstrap as MalakBootstrap | undefined;
 
+  const firstHomeSectionIsSmartSearch = useMemo(() => {
+    if (!isHome) return false;
+
+    const sections = buildDynamicSections(dataWithBootstrap, seoMode);
+    const firstSection = sections[0];
+
+    return Boolean(firstSection && isSmartSearchSection(firstSection));
+  }, [dataWithBootstrap, isHome, seoMode]);
+
   const showSearch = shellBootstrap?.header?.show_search !== false;
 
   const searchPlaceholder = String(
@@ -307,6 +322,7 @@ export default function MobileShell({
             theme={theme}
             bootstrap={shellBootstrap}
             isHome={isHome}
+            hideSearchUntilScrolled={firstHomeSectionIsSmartSearch}
             onSearchOpen={
               showSearch
                 ? () => {
@@ -315,6 +331,10 @@ export default function MobileShell({
                 : undefined
             }
           />
+        ) : null}
+
+        {!isAuthScreen && !isHome && shouldShowSmartSearchOnMobile(effectivePath) ? (
+          <SmartSearchMobileLauncher data={dataWithBootstrap} bootstrap={shellBootstrap} />
         ) : null}
 
         <div className="mk-mobile-content">

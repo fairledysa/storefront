@@ -1,7 +1,28 @@
 // FILE: apps/storefront/src/themes/malak/screens-mobile/account/AccountMobileScreen.tsx
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+ 
+
+import {
+  BadgeCheck,
+  Bell,
+  CalendarDays,
+  ChevronLeft,
+  LockKeyhole,
+  Mail,
+  MapPin,
+  Megaphone,
+  MonitorSmartphone,
+  Pencil,
+  Phone,
+  Shield,
+  ShieldCheck,
+  Smartphone,
+  User,
+  VenusAndMars,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import AccountMobileLayout from "./AccountMobileLayout";
 import RequireMobileCustomer from "./_components/RequireMobileCustomer";
@@ -15,6 +36,7 @@ type Customer = {
   gender?: string | null;
   birth_date?: string | null;
   city_id?: string | null;
+  created_at?: string | null;
 };
 
 type City = {
@@ -41,6 +63,11 @@ async function safeJson(r: Response) {
   }
 }
 
+function getInitial(name?: string | null) {
+  const value = s(name);
+  return value ? value.slice(0, 1) : "س";
+}
+
 function genderLabel(v: any) {
   const x = s(v).toLowerCase();
   if (x === "male") return "ذكر";
@@ -55,7 +82,24 @@ function birthDateLabel(v: any) {
   const d = new Date(x);
   if (Number.isNaN(d.getTime())) return x;
 
-  return d.toLocaleDateString("ar-SA");
+  return d.toLocaleDateString("ar-SA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
+
+function memberSinceLabel(v: any) {
+  const x = s(v);
+  if (!x) return "";
+
+  const d = new Date(x);
+  if (Number.isNaN(d.getTime())) return "";
+
+  return `عضو منذ ${d.toLocaleDateString("ar-SA", {
+    year: "numeric",
+    month: "long",
+  })}`;
 }
 
 function valueLabel(v: any) {
@@ -85,7 +129,116 @@ function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
 
-function EditProfileSheet({
+function InfoCard({
+  label,
+  value,
+  icon,
+  dir,
+}: {
+  label: string;
+  value: string;
+  icon: ReactNode;
+  dir?: "rtl" | "ltr" | "auto";
+}) {
+  const missing = value === "غير مضاف";
+
+  return (
+    <div className="mk-account-infoCard mk-account-infoCard--rich">
+      <div className="mk-account-infoCard__icon">{icon}</div>
+
+      <div className="mk-account-infoCard__body">
+        <div className="mk-account-infoCard__label">{label}</div>
+
+        <div
+          dir={dir || "auto"}
+          className={`mk-account-infoCard__value ${
+            missing ? "is-missing" : ""
+          }`}
+        >
+          {value}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AccountAction({
+  children,
+  icon,
+  variant = "dark",
+  onClick,
+}: {
+  children: ReactNode;
+  icon: ReactNode;
+  variant?: "dark" | "light";
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`mk-account-profileAction mk-account-profileAction--${variant}`}
+    >
+      <span>{children}</span>
+      {icon}
+    </button>
+  );
+}
+
+function SettingRow({
+  icon,
+  label,
+  value,
+  badge,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: ReactNode;
+  badge?: "success" | "neutral";
+}) {
+  return (
+    <button type="button" className="mk-account-settingRow">
+      <span className="mk-account-settingRow__icon">{icon}</span>
+
+      <span className="mk-account-settingRow__label">{label}</span>
+
+      <span
+        className={
+          badge
+            ? `mk-account-settingRow__badge mk-account-settingRow__badge--${badge}`
+            : "mk-account-settingRow__value"
+        }
+      >
+        {value}
+      </span>
+
+      <ChevronLeft size={16} strokeWidth={2.2} />
+    </button>
+  );
+}
+
+function AccountPanel({
+  title,
+  icon,
+  children,
+}: {
+  title: string;
+  icon: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="mk-account-panel">
+      <div className="mk-account-panel__head">
+        <span className="mk-account-panel__icon">{icon}</span>
+        <h3 className="mk-account-panel__title">{title}</h3>
+      </div>
+
+      <div className="mk-account-panel__body">{children}</div>
+    </div>
+  );
+}
+
+function EditProfileModal({
   open,
   customer,
   saving,
@@ -108,9 +261,6 @@ function EditProfileSheet({
     city_id: string;
   }) => void;
 }) {
-  const [mounted, setMounted] = useState(open);
-  const [visible, setVisible] = useState(false);
-
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [gender, setGender] = useState<"" | "male" | "female">("");
@@ -140,17 +290,21 @@ function EditProfileSheet({
   const months = useMemo(() => Array.from({ length: 12 }, (_, i) => i + 1), []);
   const days = useMemo(() => Array.from({ length: 31 }, (_, i) => i + 1), []);
 
-  useEffect(() => {
-    if (open) {
-      setMounted(true);
-      const raf = window.requestAnimationFrame(() => setVisible(true));
-      return () => window.cancelAnimationFrame(raf);
-    }
+  const selectedCity = useMemo(
+    () => cities.find((c) => c.id === cityId),
+    [cities, cityId],
+  );
 
-    setVisible(false);
-    const t = window.setTimeout(() => setMounted(false), 260);
-    return () => window.clearTimeout(t);
-  }, [open]);
+  const filteredCities = useMemo(() => {
+    const q = cityQuery.trim().toLowerCase();
+    if (!q) return cities;
+
+    return cities.filter((c) => {
+      const ar = s(c.name_ar).toLowerCase();
+      const en = s(c.name_en).toLowerCase();
+      return ar.includes(q) || en.includes(q);
+    });
+  }, [cities, cityQuery]);
 
   useEffect(() => {
     if (!open) return;
@@ -182,6 +336,7 @@ function EditProfileSheet({
 
     (async () => {
       setCitiesLoading(true);
+
       try {
         const res = await fetch("/api/ref/cities", {
           cache: "no-store",
@@ -223,10 +378,11 @@ function EditProfileSheet({
       if (!cityOpen) return;
 
       const t = e.target as HTMLElement;
-      const box = document.getElementById("mobile-account-city-popover");
-      if (!box) return;
+      const box = document.getElementById("account-city-popover");
 
+      if (!box) return;
       if (box.contains(t) || cityBtnRef.current?.contains(t as any)) return;
+
       setCityOpen(false);
     }
 
@@ -234,98 +390,79 @@ function EditProfileSheet({
     return () => document.removeEventListener("mousedown", onDoc);
   }, [cityOpen]);
 
-  const selectedCity = useMemo(
-    () => cities.find((c) => c.id === cityId),
-    [cities, cityId],
-  );
+const [mounted, setMounted] = useState(false);
 
-  const filteredCities = useMemo(() => {
-    const q = cityQuery.trim().toLowerCase();
-    if (!q) return cities;
+useEffect(() => {
+  setMounted(true);
+  return () => setMounted(false);
+}, []);
 
-    return cities.filter((c) => {
-      const ar = s(c.name_ar).toLowerCase();
-      const en = s(c.name_en).toLowerCase();
-      return ar.includes(q) || en.includes(q);
-    });
-  }, [cities, cityQuery]);
+if (!open || !mounted) return null;
 
-  if (!mounted) return null;
-
-  return (
-    <div className="mk-mprofile-sheet">
+ return createPortal(
+  <div className="mk-account-modal">
       <div
+        className="mk-account-modal__overlay"
         onClick={saving ? undefined : onClose}
-        className={`mk-mprofile-sheet__overlay ${
-          visible ? "is-visible" : ""
-        }`}
       />
 
-      <div
-        dir="rtl"
-        className={`mk-mprofile-sheet__panel ${visible ? "is-visible" : ""}`}
-      >
-        <div className="mk-mprofile-sheet__sticky">
-          <div className="mk-mprofile-sheet__handleWrap">
-            <div className="mk-mprofile-sheet__handle" />
-          </div>
-
-          <div className="mk-mprofile-sheet__head">
-            <div>
-              <div className="mk-mprofile-sheet__title">تعديل البيانات</div>
-              <div className="mk-mprofile-sheet__desc">
-                نفس بيانات حساب نسخة الكمبيوتر
-              </div>
+      <div dir="rtl" className="mk-account-modal__card">
+        <div className="mk-account-modal__head">
+          <div>
+            <div className="mk-account-modal__title">تعديل البيانات</div>
+            <div className="mk-account-subtitle">
+              حدّث بيانات حسابك الأساسية.
             </div>
-
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={saving}
-              className="mk-mprofile-sheet__close"
-            >
-              ×
-            </button>
           </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="mk-account-modal__close"
+            disabled={saving}
+            aria-label="إغلاق"
+          >
+            ✕
+          </button>
         </div>
 
-        <div className="mk-mprofile-sheet__form">
-          {errorMsg ? (
-            <div className="mk-mprofile-sheet__alert mk-mprofile-sheet__alert--error">
-              {errorMsg}
-            </div>
-          ) : null}
+        {errorMsg ? (
+          <div className="mk-account-alert mk-account-alert--error">
+            {errorMsg}
+          </div>
+        ) : null}
 
-          {successMsg ? (
-            <div className="mk-mprofile-sheet__alert mk-mprofile-sheet__alert--success">
-              {successMsg}
-            </div>
-          ) : null}
+        {successMsg ? (
+          <div className="mk-account-alert mk-account-alert--success">
+            {successMsg}
+          </div>
+        ) : null}
 
+        <div className="mk-account-modal__body">
           <input
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
             placeholder="الاسم"
+            className="mk-account-input"
             disabled={saving}
-            className="mk-mprofile-input"
           />
 
           <input
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="الجوال"
+            className="mk-account-input"
             disabled={saving}
-            className="mk-mprofile-input"
           />
 
-          <div className="mk-mprofile-dateGrid">
+          <div className="mk-account-dateGrid">
             <select
               value={by}
               onChange={(e) =>
                 setBy(e.target.value ? Number(e.target.value) : "")
               }
+              className="mk-account-select"
               disabled={saving}
-              className="mk-mprofile-select"
             >
               <option value="">السنة</option>
               {years.map((y) => (
@@ -340,8 +477,8 @@ function EditProfileSheet({
               onChange={(e) =>
                 setBm(e.target.value ? Number(e.target.value) : "")
               }
+              className="mk-account-select"
               disabled={saving}
-              className="mk-mprofile-select"
             >
               <option value="">الشهر</option>
               {months.map((m) => (
@@ -356,8 +493,8 @@ function EditProfileSheet({
               onChange={(e) =>
                 setBd(e.target.value ? Number(e.target.value) : "")
               }
+              className="mk-account-select"
               disabled={saving}
-              className="mk-mprofile-select"
             >
               <option value="">اليوم</option>
               {days.map((d) => (
@@ -371,27 +508,27 @@ function EditProfileSheet({
           <select
             value={gender}
             onChange={(e) => setGender(e.target.value as any)}
+            className="mk-account-select"
             disabled={saving}
-            className="mk-mprofile-select"
           >
             <option value="">اختر الجنس</option>
             <option value="male">ذكر</option>
             <option value="female">أنثى</option>
           </select>
 
-          <div className="mk-mprofile-city">
+          <div className="mk-account-city">
             <button
               ref={cityBtnRef}
               type="button"
               onClick={() => setCityOpen((v) => !v)}
+              className="mk-account-city__btn"
               disabled={saving || citiesLoading}
-              className="mk-mprofile-cityBtn"
             >
               <span
                 className={
                   selectedCity
-                    ? "mk-mprofile-cityBtn__value"
-                    : "mk-mprofile-cityBtn__placeholder"
+                    ? "mk-account-city__value"
+                    : "mk-account-city__placeholder"
                 }
               >
                 {citiesLoading
@@ -401,27 +538,24 @@ function EditProfileSheet({
                     : "اختر المدينة"}
               </span>
 
-              <span className="mk-mprofile-cityBtn__chev">▾</span>
+              <span className="mk-account-city__chev">▾</span>
             </button>
 
             {cityOpen ? (
-              <div
-                id="mobile-account-city-popover"
-                className="mk-mprofile-cityPop"
-              >
-                <div className="mk-mprofile-cityPop__searchWrap">
+              <div id="account-city-popover" className="mk-account-cityPop">
+                <div className="mk-account-cityPop__searchWrap">
                   <input
                     ref={citySearchRef}
                     value={cityQuery}
                     onChange={(e) => setCityQuery(e.target.value)}
                     placeholder="ابحث عن مدينتك..."
-                    className="mk-mprofile-cityPop__search"
+                    className="mk-account-cityPop__search"
                   />
                 </div>
 
-                <div className="mk-mprofile-cityPop__list">
+                <div className="mk-account-cityPop__list">
                   {filteredCities.length === 0 ? (
-                    <div className="mk-mprofile-cityPop__empty">
+                    <div className="mk-account-cityPop__empty">
                       لا توجد نتائج
                     </div>
                   ) : (
@@ -433,14 +567,14 @@ function EditProfileSheet({
                           setCityId(c.id);
                           setCityOpen(false);
                         }}
-                        className={`mk-mprofile-cityPop__item ${
+                        className={`mk-account-cityPop__item ${
                           c.id === cityId ? "is-active" : ""
                         }`}
                       >
-                        <span className="mk-mprofile-cityPop__ar">
+                        <span className="mk-account-cityPop__ar">
                           {c.name_ar}
                         </span>
-                        <span className="mk-mprofile-cityPop__en">
+                        <span className="mk-account-cityPop__en">
                           {c.name_en}
                         </span>
                       </button>
@@ -455,7 +589,7 @@ function EditProfileSheet({
             value={s(customer?.email)}
             disabled
             placeholder="البريد الإلكتروني"
-            className="mk-mprofile-input mk-mprofile-input--readonly"
+            className="mk-account-input"
           />
 
           <button
@@ -469,7 +603,7 @@ function EditProfileSheet({
                 city_id: s(cityId),
               })
             }
-            className="mk-mprofile-submit"
+            className="mk-account-btn mk-account-btn--primary"
           >
             {saving ? "جاري الحفظ..." : "حفظ البيانات"}
           </button>
@@ -478,25 +612,25 @@ function EditProfileSheet({
             type="button"
             disabled={saving}
             onClick={onClose}
-            className="mk-mprofile-cancel"
+            className="mk-account-btn mk-account-btn--soft"
           >
             إلغاء
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
 export default function AccountMobileScreen() {
   const router = useRouter();
-
   const [state, setState] = useState<State>({ kind: "loading" });
   const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [saveSuccess, setSaveSuccess] = useState("");
-
+  const [cityName, setCityName] = useState("");
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState("");
 
@@ -551,6 +685,42 @@ export default function AccountMobileScreen() {
     };
   }, []);
 
+  const currentCityId = state.kind === "ready" ? s(state.customer.city_id) : "";
+
+  useEffect(() => {
+    if (!currentCityId) {
+      setCityName("");
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadCityName() {
+      try {
+        const res = await fetch("/api/ref/cities", {
+          cache: "no-store",
+          credentials: "include",
+        });
+
+        const json = await safeJson(res);
+        const rows: City[] = Array.isArray(json?.cities) ? json.cities : [];
+        const found = rows.find((c) => c.id === currentCityId);
+
+        if (!cancelled) {
+          setCityName(s(found?.name_ar) || s(found?.name_en));
+        }
+      } catch {
+        if (!cancelled) setCityName("");
+      }
+    }
+
+    void loadCityName();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentCityId]);
+
   const missingFields = useMemo(() => {
     if (state.kind !== "ready") return [];
 
@@ -562,6 +732,7 @@ export default function AccountMobileScreen() {
     if (!s(c.email)) out.push("البريد الإلكتروني");
     if (!s(c.gender)) out.push("الجنس");
     if (!s(c.birth_date)) out.push("تاريخ الميلاد");
+    if (!s(c.city_id)) out.push("المدينة");
 
     return out;
   }, [state]);
@@ -673,17 +844,13 @@ export default function AccountMobileScreen() {
 
       const href = "/";
 
-setEditOpen(false);
+      startMobileNavigation({
+        href,
+        source: "programmatic",
+      });
 
-startMobileNavigation({
-  href,
-  source: "programmatic",
-});
-
-router.replace(href);
-
-window.dispatchEvent(new CustomEvent("auth:changed"));
-
+      router.replace(href);
+      window.dispatchEvent(new CustomEvent("auth:changed"));
     } catch (e: any) {
       setLogoutError(s(e?.message) || "تعذر تسجيل الخروج");
     } finally {
@@ -691,134 +858,252 @@ window.dispatchEvent(new CustomEvent("auth:changed"));
     }
   }
 
+  const readyCustomer = state.kind === "ready" ? state.customer : null;
+  const completed = state.kind === "ready" && missingFields.length === 0;
+
   return (
     <RequireMobileCustomer>
       <AccountMobileLayout active="account" title="حسابي">
-        <EditProfileSheet
-          open={editOpen}
-          customer={state.kind === "ready" ? state.customer : null}
-          saving={saving}
-          errorMsg={saveError}
-          successMsg={saveSuccess}
-          onClose={() => {
-            if (saving) return;
-            setEditOpen(false);
-            setSaveError("");
-            setSaveSuccess("");
-          }}
-          onSave={handleSave}
-        />
+      <EditProfileModal
+        open={editOpen}
+        customer={readyCustomer}
+        saving={saving}
+        errorMsg={saveError}
+        successMsg={saveSuccess}
+        onClose={() => {
+          if (saving) return;
+          setEditOpen(false);
+          setSaveError("");
+          setSaveSuccess("");
+        }}
+        onSave={handleSave}
+      />
 
-        {state.kind === "loading" ? (
-          <div className="mk-maccount-card">
-            <div className="mk-maccount-card__muted">
-              جاري تحميل بيانات الحساب...
-            </div>
-          </div>
-        ) : state.kind === "unauth" ? (
-          <div className="mk-maccount-card">
-            <div className="mk-maccount-card__muted">
-              لازم تسجل دخول عشان تشوف بيانات حسابك.
-            </div>
-          </div>
-        ) : state.kind === "error" ? (
-          <div className="mk-maccount-card mk-maccount-card--error">
-            <div className="mk-maccount-card__error">{state.message}</div>
-          </div>
-        ) : (
-          <div className="mk-maccount__grid">
-            <div className="mk-maccount-profile">
-              <div className="mk-maccount-profile__name">
-                {valueLabel(state.customer.full_name)}
-              </div>
-
-              <div className="mk-maccount-profile__email">
-                {valueLabel(state.customer.email)}
-              </div>
-
-              <button
-                type="button"
+      {state.kind === "loading" ? (
+        <div className="mk-account-state">جاري تحميل بيانات الحساب...</div>
+      ) : state.kind === "unauth" ? (
+        <div className="mk-account-state">
+          لازم تسجل دخول عشان تشوف بيانات حسابك.
+        </div>
+      ) : state.kind === "error" ? (
+        <div className="mk-account-state mk-account-state--error">
+          {state.message}
+        </div>
+      ) : (
+        <div className="mk-account-dashboard">
+          <section className="mk-account-profileHero">
+            <div className="mk-account-profileHero__actions">
+              <AccountAction
+                variant="dark"
+                icon={<Pencil size={17} strokeWidth={2.1} />}
                 onClick={() => {
                   setSaveError("");
                   setSaveSuccess("");
                   setEditOpen(true);
                 }}
-                className="mk-maccount-profile__btn"
               >
                 تعديل البيانات
-              </button>
+              </AccountAction>
+
+              <AccountAction
+                variant="light"
+                icon={<ShieldCheck size={17} strokeWidth={2.1} />}
+              >
+                إدارة الأمان
+              </AccountAction>
             </div>
 
-            {missingFields.length > 0 ? (
-              <div className="mk-maccount-warning">
-                <div className="mk-maccount-warning__title">
-                  بيانات الحساب غير مكتملة
+            <div className="mk-account-profileHero__divider" />
+
+            <div className="mk-account-profileHero__contacts">
+              <div className="mk-account-contactLine">
+                <span className="mk-account-contactLine__icon">
+                  <Phone size={18} strokeWidth={2} />
+                </span>
+                <span dir="ltr" className="mk-account-contactLine__value">
+                  {valueLabel(state.customer.phone_e164)}
+                </span>
+                <span className="mk-account-contactLine__label">الجوال</span>
+              </div>
+
+              <div className="mk-account-contactLine">
+                <span className="mk-account-contactLine__icon">
+                  <Mail size={18} strokeWidth={2} />
+                </span>
+                <span dir="ltr" className="mk-account-contactLine__value">
+                  {valueLabel(state.customer.email)}
+                </span>
+                <span className="mk-account-contactLine__label">
+                  البريد الإلكتروني
+                </span>
+              </div>
+            </div>
+
+            <div className="mk-account-profileHero__identity">
+              <div className="mk-account-avatarLg">
+                {getInitial(state.customer.full_name)}
+              </div>
+
+              <div className="mk-account-profileHero__info">
+                <h2 className="mk-account-profileHero__name">
+                  {valueLabel(state.customer.full_name)}
+                </h2>
+
+                <div className="mk-account-profileHero__badges">
+                  <span
+                    className={`mk-account-chip ${
+                      completed ? "mk-account-chip--success" : "mk-account-chip--warn"
+                    }`}
+                  >
+                    {completed ? "الحساب مكتمل" : "الحساب غير مكتمل"}
+                  </span>
+
+                  <span className="mk-account-chip mk-account-chip--soft">
+                    <BadgeCheck size={14} strokeWidth={2.2} />
+                    موثق
+                  </span>
                 </div>
 
-                <div className="mk-maccount-warning__text">
-                  الحقول الناقصة: {missingFields.join("، ")}
-                </div>
+                {memberSinceLabel(state.customer.created_at) ? (
+                  <div className="mk-account-profileHero__member">
+                    <CalendarDays size={15} strokeWidth={2} />
+                    {memberSinceLabel(state.customer.created_at)}
+                  </div>
+                ) : null}
               </div>
+            </div>
+          </section>
+
+          {missingFields.length > 0 ? (
+            <div className="mk-account-warning">
+              <div className="mk-account-warning__title">
+                بيانات الحساب غير مكتملة
+              </div>
+
+              <div className="mk-account-warning__text">
+                الحقول الناقصة: {missingFields.join("، ")}
+              </div>
+            </div>
+          ) : null}
+
+          <section className="mk-account-infoGrid mk-account-infoGrid--profile">
+            <InfoCard
+              label="الاسم"
+              value={valueLabel(state.customer.full_name)}
+              icon={<User size={21} strokeWidth={2} />}
+            />
+
+            <InfoCard
+              label="الجوال"
+              value={valueLabel(state.customer.phone_e164)}
+              dir="ltr"
+              icon={<Smartphone size={21} strokeWidth={2} />}
+            />
+
+            <InfoCard
+              label="البريد الإلكتروني"
+              value={valueLabel(state.customer.email)}
+              dir="ltr"
+              icon={<Mail size={21} strokeWidth={2} />}
+            />
+
+            <InfoCard
+              label="الجنس"
+              value={genderLabel(state.customer.gender)}
+              icon={<VenusAndMars size={21} strokeWidth={2} />}
+            />
+
+            <InfoCard
+              label="تاريخ الميلاد"
+              value={birthDateLabel(state.customer.birth_date)}
+              dir="ltr"
+              icon={<CalendarDays size={21} strokeWidth={2} />}
+            />
+
+            <InfoCard
+              label="المدينة"
+              value={
+                s(state.customer.city_id)
+                  ? cityName || "جاري التحميل..."
+                  : "غير مضاف"
+              }
+              icon={<MapPin size={21} strokeWidth={2} />}
+            />
+          </section>
+
+          <section className="mk-account-panelsGrid">
+            <AccountPanel
+              title="إعدادات الحساب"
+              icon={<ShieldCheck size={21} strokeWidth={2} />}
+            >
+              <SettingRow
+                icon={<User size={18} strokeWidth={2} />}
+                label="اللغة"
+                value="العربية"
+              />
+
+              <SettingRow
+                icon={<Bell size={18} strokeWidth={2} />}
+                label="الإشعارات"
+                value="قريبًا"
+                badge="neutral"
+              />
+
+              <SettingRow
+                icon={<Megaphone size={18} strokeWidth={2} />}
+                label="الرسائل التسويقية"
+                value="قريبًا"
+                badge="neutral"
+              />
+            </AccountPanel>
+
+            <AccountPanel
+              title="الأمان والخصوصية"
+              icon={<Shield size={21} strokeWidth={2} />}
+            >
+              <SettingRow
+                icon={<LockKeyhole size={18} strokeWidth={2} />}
+                label="تغيير كلمة المرور"
+                value="قريبًا"
+              />
+
+              <SettingRow
+                icon={<ShieldCheck size={18} strokeWidth={2} />}
+                label="التحقق بخطوتين"
+                value="غير مفعل"
+                badge="neutral"
+              />
+
+              <SettingRow
+                icon={<MonitorSmartphone size={18} strokeWidth={2} />}
+                label="الأجهزة المسجلة"
+                value="قريبًا"
+                badge="neutral"
+              />
+            </AccountPanel>
+          </section>
+
+          <section className="mk-account-panel mk-account-logoutPanel">
+            <div className="mk-account-logoutPanel__text">
+              <strong>تسجيل الخروج</strong>
+              <span>سيتم إنهاء جلستك الحالية من هذا المتجر.</span>
+            </div>
+
+            {logoutError ? (
+              <div className="mk-account-logoutPanel__error">{logoutError}</div>
             ) : null}
 
-            <div className="mk-maccount__cardsGrid">
-              <div className="mk-maccount-card">
-                <div className="mk-maccount-card__label">الاسم</div>
-                <div className="mk-maccount-card__value">
-                  {valueLabel(state.customer.full_name)}
-                </div>
-              </div>
-
-              <div className="mk-maccount-card">
-                <div className="mk-maccount-card__label">الجوال</div>
-                <div className="mk-maccount-card__value">
-                  {valueLabel(state.customer.phone_e164)}
-                </div>
-              </div>
-
-              <div className="mk-maccount-card">
-                <div className="mk-maccount-card__label">البريد الإلكتروني</div>
-                <div className="mk-maccount-card__value">
-                  {valueLabel(state.customer.email)}
-                </div>
-              </div>
-
-              <div className="mk-maccount-card">
-                <div className="mk-maccount-card__label">الجنس</div>
-                <div className="mk-maccount-card__value">
-                  {genderLabel(state.customer.gender)}
-                </div>
-              </div>
-
-              <div className="mk-maccount-card">
-                <div className="mk-maccount-card__label">تاريخ الميلاد</div>
-                <div className="mk-maccount-card__value">
-                  {birthDateLabel(state.customer.birth_date)}
-                </div>
-              </div>
-            </div>
-
-            <div className="mk-maccount-logout">
-              <div className="mk-maccount-logout__text">
-                <strong>تسجيل الخروج</strong>
-                <span>سيتم إنهاء جلستك الحالية من هذا المتجر.</span>
-              </div>
-
-              {logoutError ? (
-                <div className="mk-maccount-logout__error">{logoutError}</div>
-              ) : null}
-
-              <button
-                type="button"
-                disabled={loggingOut}
-                onClick={handleLogout}
-                className="mk-maccount-logout__btn"
-              >
-                {loggingOut ? "جاري تسجيل الخروج..." : "تسجيل الخروج"}
-              </button>
-            </div>
-          </div>
-        )}
+            <button
+              type="button"
+              disabled={loggingOut}
+              onClick={handleLogout}
+              className="mk-account-logoutPanel__btn"
+            >
+              {loggingOut ? "جاري تسجيل الخروج..." : "تسجيل الخروج"}
+            </button>
+          </section>
+        </div>
+      )}
       </AccountMobileLayout>
     </RequireMobileCustomer>
   );

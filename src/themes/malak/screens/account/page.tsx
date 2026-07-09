@@ -1,4 +1,4 @@
-// FILE: apps/storefront/src/app/account/page.tsx
+//  apps/storefront/src/themes/malak/screens/account/page.tsx
 import { notFound } from "next/navigation";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
 import { renderTemplate } from "@/theme-engine/runtime/render-template";

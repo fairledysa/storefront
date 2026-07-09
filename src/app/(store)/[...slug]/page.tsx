@@ -714,6 +714,8 @@ async function attachCatalogFiltersToCategoryData(args: {
   storeId: string;
   data: any;
   searchParams?: SP;
+  themeOptions?: Record<string, any> | null;
+  themeVersionId?: string | null;
 }) {
   const categoryId = s(args.data?.category?.id);
 
@@ -724,6 +726,36 @@ async function attachCatalogFiltersToCategoryData(args: {
     categoryId,
     args.searchParams,
   );
+
+  const rawSmartInstance = args.searchParams?.ss;
+  const smartInstance = Array.isArray(rawSmartInstance)
+    ? s(rawSmartInstance[0])
+    : s(rawSmartInstance);
+  const rawSmartKeywords = args.searchParams?.ss_kw;
+  const smartKeywords = Array.isArray(rawSmartKeywords)
+    ? s(rawSmartKeywords[0])
+    : s(rawSmartKeywords);
+
+  if (smartInstance && smartKeywords) {
+    const page = await loadCategoryProductsPage({
+      store_id: args.storeId,
+      category_id: categoryId,
+      searchParams: args.searchParams,
+      limit: 24,
+      offset: 0,
+      smartSearch: {
+        themeOptions: args.themeOptions ?? null,
+        themeVersionId: args.themeVersionId ?? null,
+      },
+    });
+
+    return {
+      ...(args.data ?? {}),
+      products: page.items,
+      pagination: page.pageInfo,
+      catalogFilters: page.catalogFilters,
+    };
+  }
 
   if (!catalogFilters) {
     const rawSort = args.searchParams?.sort;
@@ -3321,6 +3353,8 @@ export default async function Page(props: PageProps) {
       storeId: ctx.store.id,
       data: rawData,
       searchParams: sp,
+      themeOptions: ctx.theme?.options ?? null,
+      themeVersionId: ctx.theme?.version_id ?? null,
     });
 
     const seoMode = await getSeoUrlModeCached(ctx.store.id);
@@ -3419,6 +3453,8 @@ export default async function Page(props: PageProps) {
       storeId: ctx.store.id,
       data: rawCategory,
       searchParams: sp,
+      themeOptions: ctx.theme?.options ?? null,
+      themeVersionId: ctx.theme?.version_id ?? null,
     });
 
     const seoMode = await getSeoUrlModeCached(ctx.store.id);
@@ -3514,6 +3550,8 @@ export default async function Page(props: PageProps) {
         storeId: ctx.store.id,
         data: rawCategory,
         searchParams: sp,
+        themeOptions: ctx.theme?.options ?? null,
+        themeVersionId: ctx.theme?.version_id ?? null,
       });
 
       const seoMode = await getSeoUrlModeCached(ctx.store.id);

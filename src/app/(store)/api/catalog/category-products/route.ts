@@ -106,6 +106,10 @@ export async function GET(request: NextRequest) {
       searchParams,
       offset: clampOffset(request.nextUrl.searchParams.get("offset")),
       limit: PAGE_SIZE,
+      smartSearch: {
+        themeOptions: ctx.theme?.options ?? null,
+        themeVersionId: ctx.theme?.version_id ?? null,
+      },
     });
 
     return NextResponse.json(
