@@ -358,6 +358,7 @@ export default function MobileOrderDetails({ orderNo }: Props) {
     title: string;
   } | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -478,7 +479,7 @@ export default function MobileOrderDetails({ orderNo }: Props) {
     return () => {
       alive = false;
     };
-  }, [orderNo]);
+  }, [orderNo, refreshKey]);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -1134,6 +1135,7 @@ const reviewOrder: OrdersApiRow | null = useMemo(() => {
         open={reviewOpen}
         order={reviewOrder}
         onClose={() => setReviewOpen(false)}
+        onSubmitted={() => setRefreshKey((key) => key + 1)}
       />
 
       {previewImage ? (

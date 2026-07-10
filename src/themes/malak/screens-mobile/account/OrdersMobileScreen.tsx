@@ -5,8 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import AccountMobileLayout from "./AccountMobileLayout";
 import MobileOrdersList from "./_components/MobileOrdersList";
-import OrderReviewModal from "../../screens/account/_components/OrderReviewModal";
-import RequireCustomer from "../../screens/account/_components/RequireCustomer";
+import MobileOrderReviewSheet from "./_components/MobileOrderReviewSheet";
+import RequireMobileCustomer from "./_components/RequireMobileCustomer";
 import type {
   AccountCustomerSummary,
   OrdersApiRow,
@@ -184,7 +184,7 @@ export default function OrdersMobileScreen() {
   const ready = state.kind === "ready" ? state : null;
 
   return (
-    <RequireCustomer>
+    <RequireMobileCustomer>
       <AccountMobileLayout active="orders" title="طلباتي">
         {ready?.customer ? (
           <div className="mk-morders-hello">
@@ -250,7 +250,7 @@ export default function OrdersMobileScreen() {
           </div>
         )}
 
-        <OrderReviewModal
+        <MobileOrderReviewSheet
           open={Boolean(reviewOrder)}
           order={reviewOrder}
           onClose={() => setReviewOrder(null)}
@@ -259,7 +259,7 @@ export default function OrdersMobileScreen() {
           }}
         />
       </AccountMobileLayout>
-    </RequireCustomer>
+    </RequireMobileCustomer>
   );
 }
 
