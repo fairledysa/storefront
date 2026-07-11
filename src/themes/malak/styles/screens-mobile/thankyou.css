@@ -659,3 +659,7 @@
   background: #fffbeb;
   color: #92400e;
 }
+
+.mk-mthank-wallet{border-color:#a7f3d0;background:#ecfdf5}.mk-mthank-wallet__grid{display:grid;gap:10px;margin-top:12px}.mk-mthank-wallet__grid>div{display:flex;align-items:center;justify-content:space-between;gap:12px;border-radius:12px;background:#fff;padding:12px}.mk-mthank-wallet__grid span{color:#64748b;font-size:13px}.mk-mthank-wallet__grid strong{color:#0f172a;font-size:14px}
+
+.mk-mthank-wallet{border-color:#a7f3d0;background:#ecfdf5}.mk-mthank-wallet__grid{display:grid;gap:10px;margin-top:12px}.mk-mthank-wallet__grid>div{display:flex;align-items:center;justify-content:space-between;gap:12px;border-radius:12px;background:#fff;padding:12px}.mk-mthank-wallet__grid span{color:#64748b;font-size:13px}.mk-mthank-wallet__grid strong{color:#0f172a;font-size:14px}

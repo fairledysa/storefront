@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
 import { verifySession } from "@/lib/auth/session";
 import { supabaseAdmin } from "@/data/store/supabase.server";
+import { getOrdersDb } from "@/data/db/orders-db.server";
 
 export const dynamic = "force-dynamic";
 
@@ -1523,8 +1524,31 @@ export async function GET(_req: Request, ctx: RouteCtx) {
       ),
     ]);
 
+    // Financial wallet records live in the orders database/shard.
+    // Using the store client here silently returned no row, so the customer
+    // order page could not display the wallet-paid and remaining amounts.
+    const ordersDb = await getOrdersDb(String(storeId));
+    const walletPaymentR = await ordersDb
+      .from("order_wallet_payments")
+      .select("id,wallet_amount,external_amount,total_amount,currency,status,refunded_wallet_amount,captured_at,refunded_at")
+      .eq("store_id", storeId)
+      .eq("order_id", order.id)
+      .maybeSingle();
+
+    const walletPayment = !walletPaymentR.error ? walletPaymentR.data : null;
+    const walletUsedAmount = round2(walletPayment?.wallet_amount);
+    const walletRemainingAmount = round2(
+      walletPayment?.external_amount ?? Math.max(0, round2(order.total_amount) - walletUsedAmount),
+    );
+    const walletRefundedAmount = round2(walletPayment?.refunded_wallet_amount);
+
     const orderWithOptions = {
       ...order,
+      wallet_payment: walletPayment,
+      walletPayment,
+      wallet_used_amount: walletUsedAmount,
+      wallet_remaining_amount: walletRemainingAmount,
+      wallet_refunded_amount: walletRefundedAmount,
 
       order_options: orderOptions,
       orderOptions,

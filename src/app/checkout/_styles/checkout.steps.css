@@ -586,3 +586,115 @@
     font-size: 15px;
   }
 }
+
+/* Wallet balance notice inside the payment step */
+.co-payment-wallet-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 0 14px;
+  padding: 14px 16px;
+  border: 1px solid rgba(13, 59, 69, 0.14);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(191, 230, 216, 0.28), rgba(255, 255, 255, 0.96));
+}
+
+.co-payment-wallet-notice__icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  border-radius: 12px;
+  color: #0d3b45;
+  background: #fff;
+  border: 1px solid rgba(13, 59, 69, 0.1);
+}
+
+.co-payment-wallet-notice__content {
+  min-width: 0;
+  flex: 1;
+}
+
+.co-payment-wallet-notice__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.co-payment-wallet-notice__head strong {
+  font-size: 15px;
+  color: #0d3b45;
+}
+
+.co-payment-wallet-notice__head span {
+  font-size: 16px;
+  font-weight: 800;
+  color: #0d3b45;
+}
+
+.co-payment-wallet-notice p {
+  margin: 5px 0 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #64748b;
+}
+
+.co-payment-wallet-notice small {
+  display: block;
+  margin-top: 5px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+@media (max-width: 640px) {
+  .co-payment-wallet-notice {
+    padding: 12px;
+  }
+
+  .co-payment-wallet-notice__head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+}
+
+.co-wallet-checkout--inline {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(13, 59, 69, 0.12);
+}
+
+.co-wallet-checkout__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(13, 59, 69, 0.1);
+}
+
+.co-wallet-checkout__summary span {
+  font-size: 13px;
+  color: #64748b;
+}
+
+.co-wallet-checkout__summary strong {
+  font-size: 14px;
+  color: #0d3b45;
+}
+
+.co-payment-wallet-covered {
+  margin: 12px 0;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  background: rgba(236, 253, 245, 0.9);
+  color: #065f46;
+  font-size: 14px;
+  font-weight: 700;
+}

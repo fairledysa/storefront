@@ -2,7 +2,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import Link from "next/link";
 import {
   Building2,
   Edit3,
@@ -362,7 +361,6 @@ function AddressCard({
   const kind = addressKindLabel(address, index);
   const isDefaultVisual = index === 0;
   const details = detailLine(address);
-  const lastOrderNo = index === 0 ? "1287" : index === 1 ? "1301" : "";
 
   return (
     <article className="mk-maddr-card">
@@ -452,48 +450,7 @@ function AddressCard({
           <span>تعيين الافتراضي غير مربوط في نسخة الكمبيوتر الحالية.</span>
         </div>
       ) : null}
-
-      {lastOrderNo ? (
-        <div className="mk-maddr-card__lastOrder">
-          <div className="mk-maddr-card__lastOrderMeta">
-            <span className="mk-maddr-card__lastOrderLabel">
-            آخر استخدام في طلب
-            </span>
-
-            <Link
-              href={`/account/orders/${lastOrderNo}`}
-              className="mk-maddr-card__lastOrderNumber"
-              dir="ltr"
-            >
-              #{lastOrderNo}
-            </Link>
-          </div>
-        </div>
-      ) : null}
-
-      <div className="mk-maddr-card__lastOrderLegacy" aria-hidden="true">
-        <span className="mk-maddr-card__lastOrderLabel">
-          <Info size={14} strokeWidth={2.1} />
-          آخر استخدام في طلب
-        </span>
-        <span>
-          آخر استخدام في طلب #{index === 0 ? "1287" : index === 1 ? "1301" : "-"}
-        </span>
-        {lastOrderNo ? (
-          <Link
-            href={`/account/orders/${lastOrderNo}`}
-            className="mk-maddr-card__lastOrderLink"
-            dir="ltr"
-          >
-            #{lastOrderNo}
-          </Link>
-        ) : (
-          <span className="mk-maddr-card__lastOrderLink is-disabled" dir="ltr">
-            -
-          </span>
-        )}
-      </div>
-    </article>
+</article>
   );
 }
 

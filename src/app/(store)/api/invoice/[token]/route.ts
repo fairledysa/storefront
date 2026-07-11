@@ -89,6 +89,9 @@ type InvoiceModel = {
     discount: number;
     tax: number;
     total: number;
+    walletUsed: number;
+    walletRemaining: number;
+    walletRefunded: number;
   };
   items: InvoiceItem[];
   settings: InvoiceSettings;
@@ -776,6 +779,27 @@ function drawPage(model: InvoiceModel, fonts: InvoiceFonts, images: Map<string, 
     drawText(page, bodyFont, `طريقة الدفع: ${paymentMethodLabel(model.order.paymentMethod)}`, PAGE_WIDTH - MARGIN, cursor, 9.4, "#475569", "right");
     cursor -= 14;
     drawText(page, bodyFont, `حالة الدفع: ${paymentStatusLabel(model.order.paymentStatus)}`, PAGE_WIDTH - MARGIN, cursor, 9.4, "#475569", "right");
+    if (model.order.walletUsed > 0) {
+      // Keep Arabic labels and Latin currency values in separate text runs.
+      // Mixing RTL Arabic with LTR numbers/currency in one fontkit run reverses
+      // values such as "SAR 100" into "001 RAS" in the generated PDF.
+      cursor -= 14;
+      drawText(page, bodyFont, "المدفوع من المحفظة", PAGE_WIDTH - MARGIN, cursor, 9.4, "#047857", "right");
+      cursor -= 13;
+      drawText(page, titleFont, money(model.order.walletUsed, model.order.currency), PAGE_WIDTH - MARGIN, cursor, 9.4, "#047857", "right");
+
+      cursor -= 14;
+      drawText(page, bodyFont, "المتبقي على العميل", PAGE_WIDTH - MARGIN, cursor, 9.4, "#475569", "right");
+      cursor -= 13;
+      drawText(page, titleFont, money(model.order.walletRemaining, model.order.currency), PAGE_WIDTH - MARGIN, cursor, 9.4, "#475569", "right");
+
+      if (model.order.walletRefunded > 0) {
+        cursor -= 14;
+        drawText(page, bodyFont, "المسترجع إلى المحفظة", PAGE_WIDTH - MARGIN, cursor, 9.4, "#475569", "right");
+        cursor -= 13;
+        drawText(page, titleFont, money(model.order.walletRefunded, model.order.currency), PAGE_WIDTH - MARGIN, cursor, 9.4, "#475569", "right");
+      }
+    }
     if (model.order.shippingCarrier) { cursor -= 14; drawText(page, bodyFont, `شركة الشحن: ${model.order.shippingCarrier}`, PAGE_WIDTH - MARGIN, cursor, 9.4, "#475569", "right"); }
     const totalsX = MARGIN;
     let totalY = cursor + 14;
@@ -901,7 +925,7 @@ async function loadInvoice(token: string): Promise<InvoiceModel | null> {
   if (orderR.error || !orderR.data?.id) return null;
   const order = orderR.data as DbRecord;
 
-  const [itemsR, settingR, taxR, customerR] = await Promise.all([
+  const [itemsR, settingR, taxR, customerR, walletPaymentR] = await Promise.all([
     orders
       .from("order_items")
       .select(
@@ -940,6 +964,12 @@ async function loadInvoice(token: string): Promise<InvoiceModel | null> {
           .eq("id", order.customer_id)
           .maybeSingle()
       : Promise.resolve({ data: null, error: null }),
+    orders
+      .from("order_wallet_payments")
+      .select("wallet_amount,external_amount,refunded_wallet_amount,status,currency")
+      .eq("store_id", storeId)
+      .eq("order_id", order.id)
+      .maybeSingle(),
   ]);
 
   const items = Array.isArray(itemsR.data) ? itemsR.data : [];
@@ -1003,6 +1033,12 @@ async function loadInvoice(token: string): Promise<InvoiceModel | null> {
   const snapshot = safeObject(order.shipping_snapshot);
   const checkoutSnapshot = safeObject(snapshot.checkout);
   const customer = safeObject(customerR.data);
+  const walletPayment = walletPaymentR?.error ? {} : safeObject(walletPaymentR?.data);
+  const walletUsed = round2(walletPayment.wallet_amount);
+  const walletRemaining = round2(
+    walletPayment.external_amount ?? Math.max(0, round2(order.total_amount) - walletUsed),
+  );
+  const walletRefunded = round2(walletPayment.refunded_wallet_amount);
 
   const invoiceItems: InvoiceItem[] = items.map((item: DbRecord, index: number) => {
     const product = productsById.get(s(item.product_id)) || {};
@@ -1063,6 +1099,9 @@ async function loadInvoice(token: string): Promise<InvoiceModel | null> {
       discount: round2(order.discount_amount),
       tax: round2(order.tax_amount),
       total: round2(order.total_amount),
+      walletUsed,
+      walletRemaining,
+      walletRefunded,
     },
     items: invoiceItems,
     settings: invoiceSettings,

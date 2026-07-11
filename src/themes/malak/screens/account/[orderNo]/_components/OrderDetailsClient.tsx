@@ -73,6 +73,14 @@ type OrderDetails = {
   tax_amount: number;
   discount_amount: number;
   total_amount: number;
+  wallet_used_amount?: number;
+  wallet_remaining_amount?: number;
+  wallet_refunded_amount?: number;
+  wallet_payment?: {
+    id?: string | null;
+    status?: string | null;
+    currency?: string | null;
+  } | null;
   created_at: string;
 
   shipping_address: any | null;
@@ -873,6 +881,10 @@ export default function OrderDetailsClient({
           tax_amount: Number(o.tax_amount ?? 0),
           discount_amount: Number(o.discount_amount ?? 0),
           total_amount: Number(o.total_amount ?? 0),
+          wallet_used_amount: Number(o.wallet_used_amount ?? o.walletUsedAmount ?? o.wallet_payment?.wallet_amount ?? o.walletPayment?.wallet_amount ?? 0),
+          wallet_remaining_amount: Number(o.wallet_remaining_amount ?? o.walletRemainingAmount ?? o.wallet_payment?.external_amount ?? o.walletPayment?.external_amount ?? 0),
+          wallet_refunded_amount: Number(o.wallet_refunded_amount ?? o.walletRefundedAmount ?? o.wallet_payment?.refunded_wallet_amount ?? o.walletPayment?.refunded_wallet_amount ?? 0),
+          wallet_payment: o.wallet_payment ?? o.walletPayment ?? null,
           created_at: String(o.created_at ?? ""),
 
           shipping_address: o.shipping_address ?? null,
@@ -1382,6 +1394,35 @@ export default function OrderDetailsClient({
                           state.order.currency,
                         )}`,
                       )}
+
+                      {safeNumber(state.order.wallet_used_amount) > 0 ? (
+                        <>
+                          <div className="my-1 h-px bg-[var(--mk-border-soft)]" />
+                          {lineRow(
+                            "المدفوع من المحفظة",
+                            `- ${money(
+                              state.order.wallet_used_amount,
+                              state.order.currency,
+                            )}`,
+                          )}
+                          {lineRow(
+                            "المتبقي للدفع",
+                            money(
+                              state.order.wallet_remaining_amount,
+                              state.order.currency,
+                            ),
+                          )}
+                          {safeNumber(state.order.wallet_refunded_amount) > 0
+                            ? lineRow(
+                                "المسترجع إلى المحفظة",
+                                money(
+                                  state.order.wallet_refunded_amount,
+                                  state.order.currency,
+                                ),
+                              )
+                            : null}
+                        </>
+                      ) : null}
                     </div>
                   </div>
 
@@ -1410,9 +1451,27 @@ export default function OrderDetailsClient({
                       ),
                     )}
                     {lineRow(
-                      "طريقة الدفع",
+                      "طريقة دفع المبلغ المتبقي",
                       paymentMethodAr(state.order.payment_method),
                     )}
+                    {safeNumber(state.order.wallet_used_amount) > 0
+                      ? lineRow(
+                          "المدفوع من المحفظة",
+                          money(
+                            state.order.wallet_used_amount,
+                            state.order.currency,
+                          ),
+                        )
+                      : null}
+                    {safeNumber(state.order.wallet_used_amount) > 0
+                      ? lineRow(
+                          "المتبقي على العميل",
+                          money(
+                            state.order.wallet_remaining_amount,
+                            state.order.currency,
+                          ),
+                        )
+                      : null}
                   </div>
                 </div>
 

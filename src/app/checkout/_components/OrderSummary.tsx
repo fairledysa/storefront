@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   ShoppingCart,
   Ticket,
+  WalletCards,
   X,
 } from "lucide-react";
 import CartOfferProgressBar from "@/themes/malak/components/cart-offers/CartOfferProgressBar";
@@ -711,6 +712,14 @@ export default function OrderSummary({
   const [canSubmit, setCanSubmit] = useState(false);
   const [bankTransferPayload, setBankTransferPayload] =
     useState<BankTransferPayload | null>(null);
+  const [walletAvailable, setWalletAvailable] = useState(0);
+  const [walletPending, setWalletPending] = useState(0);
+  const [walletCurrency, setWalletCurrency] = useState("SAR");
+  const [walletCheckoutEnabled, setWalletCheckoutEnabled] = useState(false);
+  const [walletPartialEnabled, setWalletPartialEnabled] = useState(false);
+  const [useWallet, setUseWallet] = useState(false);
+  const [walletRequestedAmount, setWalletRequestedAmount] = useState("");
+  const walletIdempotencyRef = useRef(`checkout-wallet:${crypto.randomUUID()}`);
 
   const abortRef = useRef<AbortController | null>(null);
   const seqRef = useRef(0);
@@ -826,7 +835,46 @@ export default function OrderSummary({
     [summary],
   );
   const total = hasTotals ? summary!.total : null;
+  const maxWalletApplicable = Math.max(0, Math.min(walletAvailable, n(total)));
+  const parsedWalletRequested = n(walletRequestedAmount);
+  const walletApplied = useWallet
+    ? Math.max(0, Math.min(maxWalletApplicable, parsedWalletRequested || maxWalletApplicable))
+    : 0;
+  const walletCoversOrder = Boolean(hasTotals && n(total) > 0 && walletApplied >= n(total));
+  const effectiveCanSubmit = canSubmit || walletCoversOrder;
+  const externalAmountDue = Math.max(0, n(total) - walletApplied);
   const hasCouponApplied = Boolean(summary?.coupon?.code);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const response = await fetch("/api/account/wallet", {
+          method: "GET",
+          cache: "no-store",
+          credentials: "same-origin",
+          headers: { "Cache-Control": "no-store" },
+        });
+        const payload = await response.json().catch(() => null);
+        if (cancelled || !response.ok || !payload?.ok) return;
+
+        const available = Math.max(0, n(payload?.wallet?.available_balance));
+        setWalletAvailable(available);
+        setWalletPending(Math.max(0, n(payload?.wallet?.pending_balance)));
+        setWalletCurrency(s(payload?.wallet?.currency) || "SAR");
+        setWalletCheckoutEnabled(Boolean(payload?.settings?.wallet_enabled && payload?.settings?.checkout_enabled));
+        setWalletPartialEnabled(Boolean(payload?.settings?.partial_payment_enabled));
+        setWalletRequestedAmount(available > 0 ? String(available) : "");
+      } catch {
+        // المحفظة اختيارية داخل الدفع، فلا نعطل الطلب عند تعذر تحميلها.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const fetchPrepare = useCallback(
     async (reason?: string, opts?: PrepareOptions) => {
@@ -980,6 +1028,29 @@ export default function OrderSummary({
       setBankTransferPayload(e?.detail?.payload ?? null);
     };
 
+    const emitWalletState = () => {
+      window.dispatchEvent(
+        new CustomEvent("checkout:walletState", {
+          detail: {
+            useWallet,
+            requestedAmount: walletApplied,
+            total: n(total),
+          },
+        }),
+      );
+    };
+
+    const onWalletSelection = (evt: Event) => {
+      const detail = (evt as CustomEvent<{ useWallet?: boolean; amount?: number }>).detail;
+      const nextUseWallet = Boolean(detail?.useWallet);
+      const nextAmount = Math.max(0, Math.min(maxWalletApplicable, n(detail?.amount)));
+
+      setUseWallet(nextUseWallet);
+      setWalletRequestedAmount(nextUseWallet ? String(nextAmount || maxWalletApplicable) : "");
+    };
+
+    const onWalletStateRequest = () => emitWalletState();
+
     const onOpenSummary = () => {
       if (actionLockRef.current) return;
       openDrawer();
@@ -999,6 +1070,8 @@ export default function OrderSummary({
       onBankTransferPayload as EventListener,
     );
     window.addEventListener("checkout:openSummary", onOpenSummary);
+    window.addEventListener("checkout:walletSelection", onWalletSelection as EventListener);
+    window.addEventListener("checkout:walletStateRequest", onWalletStateRequest);
 
     return () => {
       mountedRef.current = false;
@@ -1017,11 +1090,34 @@ export default function OrderSummary({
         onBankTransferPayload as EventListener,
       );
       window.removeEventListener("checkout:openSummary", onOpenSummary);
+      window.removeEventListener("checkout:walletSelection", onWalletSelection as EventListener);
+      window.removeEventListener("checkout:walletStateRequest", onWalletStateRequest);
 
       clearQueuedPrepare();
       clearDrawerCloseTimer();
     };
-  }, [clearDrawerCloseTimer, fetchPrepare, openDrawer, schedulePrepare]);
+  }, [
+    clearDrawerCloseTimer,
+    fetchPrepare,
+    openDrawer,
+    schedulePrepare,
+    useWallet,
+    walletApplied,
+    total,
+    maxWalletApplicable,
+  ]);
+
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("checkout:walletState", {
+        detail: {
+          useWallet,
+          requestedAmount: walletApplied,
+          total: n(total),
+        },
+      }),
+    );
+  }, [useWallet, walletApplied, total]);
 
   useEffect(() => {
     if (!summary?.cart_id) return;
@@ -1173,7 +1269,7 @@ export default function OrderSummary({
       return;
     }
 
-    if (!canSubmit) {
+    if (!effectiveCanSubmit) {
       setErrorMsg(INCOMPLETE_CHECKOUT_MESSAGE);
       setStockIssueState(null);
       openDrawer();
@@ -1202,7 +1298,14 @@ export default function OrderSummary({
             الخادم يستخدمه لتأكيد نفس cart بدل دمج cart جلسة هذا الجهاز.
           */
           cart_id: summary?.cart_id ?? null,
-          payment_method: summary?.payment_method ?? null,
+          payment_method: walletCoversOrder ? "wallet" : (summary?.payment_method ?? null),
+          wallet: useWallet && walletApplied > 0
+            ? {
+                amount: walletApplied,
+                currency: walletCurrency,
+                idempotency_key: walletIdempotencyRef.current,
+              }
+            : null,
           ...(bankTransferPayload
             ? { bankTransfer: bankTransferPayload }
             : {}),
@@ -1264,7 +1367,7 @@ export default function OrderSummary({
       window.removeEventListener("checkout:submitOrder", onSubmitOrder);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canSubmit, loading, submitBusy, couponBusy, hasTotals, summary]);
+  }, [effectiveCanSubmit, loading, submitBusy, couponBusy, hasTotals, summary, walletApplied, walletCoversOrder, useWallet, walletCurrency]);
 
   const isInitialLoading = loading && !summary;
   const showSkeleton = isInitialLoading;
@@ -1285,7 +1388,7 @@ export default function OrderSummary({
   }, [submitBusy, couponBusy, hasCouponApplied, isInitialLoading, hasTotals]);
 
   const submitDisabledHint = useMemo(() => {
-    if (submitBusy || couponBusy || loading || !hasTotals || canSubmit) {
+    if (submitBusy || couponBusy || loading || !hasTotals || effectiveCanSubmit) {
       return "";
     }
 
@@ -1293,7 +1396,7 @@ export default function OrderSummary({
 
     return "يرجى اختيار عنوان الشحن وطريقة الدفع للمتابعة";
   }, [
-    canSubmit,
+    effectiveCanSubmit,
     couponBusy,
     errorMsg,
     hasTotals,
@@ -1623,17 +1726,63 @@ export default function OrderSummary({
                     </>
                   ) : null}
 
+                  {!showSkeleton && walletApplied > 0 ? (
+                    <div className="co-total-row is-discount">
+                      <span>الدفع من المحفظة</span>
+                      <strong dir="ltr">- {formatMoney(money, walletApplied)}</strong>
+                    </div>
+                  ) : null}
+
                   <div className="co-total-line">
-                    <span>إجمالي الطلب</span>
+                    <span>{walletApplied > 0 ? "المتبقي للدفع" : "إجمالي الطلب"}</span>
 
                     {showSkeleton || total == null ? (
                       <span className="co-skeleton co-skeleton--money" />
                     ) : (
-                      <strong dir="ltr">{formatMoney(money, total)}</strong>
+                      <strong dir="ltr">{formatMoney(money, walletApplied > 0 ? externalAmountDue : total)}</strong>
                     )}
                   </div>
                 </div>
               </section>
+
+              {walletCheckoutEnabled && walletAvailable > 0 ? (
+                <section className="co-drawer-section co-wallet-checkout">
+                  <div className="co-coupon-head">
+                    <WalletCards size={17} />
+                    <h3>استخدام رصيد المحفظة</h3>
+                    <span>{formatMoney(money, walletAvailable)} متاح</span>
+                  </div>
+
+                  <label className="co-wallet-checkout__toggle">
+                    <input
+                      type="checkbox"
+                      checked={useWallet}
+                      disabled={submitBusy || loading}
+                      onChange={(event) => {
+                        const checked = event.target.checked;
+                        setUseWallet(checked);
+                        if (checked) setWalletRequestedAmount(String(maxWalletApplicable));
+                      }}
+                    />
+                    <span>استخدام الرصيد في هذا الطلب</span>
+                  </label>
+
+                  {useWallet ? (
+                    <div className="co-wallet-checkout__amount">
+                      <label htmlFor="checkout-wallet-amount">المبلغ المستخدم</label>
+                      <input
+                        id="checkout-wallet-amount"
+                        inputMode="decimal"
+                        value={walletRequestedAmount}
+                        disabled={!walletPartialEnabled || submitBusy || loading}
+                        onChange={(event) => setWalletRequestedAmount(event.target.value)}
+                        onBlur={() => setWalletRequestedAmount(String(walletApplied))}
+                      />
+                      <small>الرصيد المعلّق: {formatMoney(money, walletPending)} · العملة: {walletCurrency}</small>
+                    </div>
+                  ) : null}
+                </section>
+              ) : null}
 
               <section className="co-drawer-section">
                 <div className="co-coupon-head">
@@ -1684,11 +1833,11 @@ export default function OrderSummary({
                 type="button"
                 className={[
                   "co-pay-btn co-pay-btn--drawer",
-                  canSubmit && !paymentActionBusy ? "is-ready" : "is-disabled",
+                  effectiveCanSubmit && !paymentActionBusy ? "is-ready" : "is-disabled",
                 ]
                   .filter(Boolean)
                   .join(" ")}
-                disabled={loading || submitBusy || couponBusy || !hasTotals || !canSubmit}
+                disabled={loading || submitBusy || couponBusy || !hasTotals || !effectiveCanSubmit}
                 onClick={submitOrder}
               >
                 {submitBusy || loading || couponBusy ? (

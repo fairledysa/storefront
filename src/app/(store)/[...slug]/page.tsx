@@ -2471,6 +2471,17 @@ export default async function Page(props: PageProps) {
 
     if (!order?.id) return notFound();
 
+    const walletPaymentR = await ordersDb
+      .from("order_wallet_payments")
+      .select(
+        "id,wallet_amount,external_amount,total_amount,currency,status,refunded_wallet_amount,captured_at,refunded_at",
+      )
+      .eq("store_id", ctx.store.id)
+      .eq("order_id", order.id)
+      .maybeSingle();
+
+    const walletPayment = !walletPaymentR.error ? walletPaymentR.data : null;
+
     const currentBaseStatusKey = String(
       order.base_status_key ?? order.status ?? "",
     )
@@ -3140,6 +3151,8 @@ export default async function Page(props: PageProps) {
       extraData: {
         token,
         orderNo,
+        invoiceDownloadUrl: `/api/invoice/${encodeURIComponent(token)}`,
+        invoice_download_url: `/api/invoice/${encodeURIComponent(token)}`,
 
         orderOptions,
         order_options: orderOptions,
@@ -3175,6 +3188,27 @@ export default async function Page(props: PageProps) {
 
         paymentLabel: paymentLabel(paymentMethod),
         paymentStatusLabel: paymentStatusLabel(order.payment_status),
+
+        walletPaymentId: walletPayment?.id ?? null,
+        wallet_payment_id: walletPayment?.id ?? null,
+        walletUsedAmount: moneyRound(walletPayment?.wallet_amount),
+        wallet_used_amount: moneyRound(walletPayment?.wallet_amount),
+        walletRemainingAmount: moneyRound(
+          walletPayment?.external_amount ??
+            Math.max(0, totalAmount - moneyRound(walletPayment?.wallet_amount)),
+        ),
+        wallet_remaining_amount: moneyRound(
+          walletPayment?.external_amount ??
+            Math.max(0, totalAmount - moneyRound(walletPayment?.wallet_amount)),
+        ),
+        walletRefundedAmount: moneyRound(walletPayment?.refunded_wallet_amount),
+        wallet_refunded_amount: moneyRound(walletPayment?.refunded_wallet_amount),
+        walletPaymentStatus: String(walletPayment?.status ?? ""),
+        wallet_payment_status: String(walletPayment?.status ?? ""),
+        walletExternalPaymentMethod:
+          moneyRound(walletPayment?.external_amount) > 0 ? paymentMethod : null,
+        wallet_external_payment_method:
+          moneyRound(walletPayment?.external_amount) > 0 ? paymentMethod : null,
 
         estimatedDeliveryText:
           String(shippingSnapshot?.eta_text ?? "").trim() ||

@@ -2305,6 +2305,9 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const bodyPaymentMethod = normalizePaymentMethodId(body?.payment_method);
   const requestedCartId = toStr(body?.cart_id);
+  const walletBody = body?.wallet && typeof body.wallet === "object" ? body.wallet : null;
+  const requestedWalletAmount = round2(Math.max(0, n(walletBody?.amount)));
+  const walletIdempotencyKey = toStr(walletBody?.idempotency_key);
 
   /*
     نستخدم cart_id الذي بُني منه ملخص صفحة الدفع نفسها.
@@ -2459,6 +2462,24 @@ export async function POST(req: Request) {
   }
 
   const summary = await buildCartSummary({ store_id, cart_id: cart.id });
+  const checkoutTotal = round2(Math.max(0, n(summary?.total)));
+  const walletAmount = round2(Math.min(requestedWalletAmount, checkoutTotal));
+  const walletRequested = walletAmount > 0;
+  const walletCoversOrder = walletRequested && walletAmount >= checkoutTotal;
+
+  if (requestedWalletAmount > checkoutTotal + 0.001) {
+    return NextResponse.json(
+      { ok: false, error: "WALLET_AMOUNT_EXCEEDS_ORDER_TOTAL", message_ar: "مبلغ المحفظة أكبر من إجمالي الطلب." },
+      { status: 400 },
+    );
+  }
+
+  if (walletRequested && !walletIdempotencyKey) {
+    return NextResponse.json(
+      { ok: false, error: "WALLET_IDEMPOTENCY_KEY_REQUIRED", message_ar: "تعذر تأمين عملية المحفظة. حدّث الصفحة وحاول مرة أخرى." },
+      { status: 400 },
+    );
+  }
 
   if (!summary.items.length) {
     return NextResponse.json(
@@ -2468,12 +2489,14 @@ export async function POST(req: Request) {
   }
 
   try {
-    const paymentCheck = await validateSelectedPaymentMethod({
-      sb,
-      store_id,
-      cart,
-      body_payment_method: bodyPaymentMethod,
-    });
+    const paymentCheck = walletCoversOrder
+      ? ({ ok: true } as const)
+      : await validateSelectedPaymentMethod({
+          sb,
+          store_id,
+          cart,
+          body_payment_method: bodyPaymentMethod,
+        });
 
     if (!paymentCheck.ok) {
       const paymentExtra: Record<string, any> = {};
@@ -2507,7 +2530,7 @@ export async function POST(req: Request) {
 
   let bankTransferProof: any = null;
 
-  if (normalizePaymentMethodId(cart?.payment_method) === "bank_transfer") {
+  if (!walletCoversOrder && normalizePaymentMethodId(cart?.payment_method) === "bank_transfer") {
     const proofCheck = await validateBankTransferProof({
       sb,
       store_id,
@@ -2605,6 +2628,11 @@ export async function POST(req: Request) {
         customer: customer_snapshot,
       }
     : (body?.shipping_address ?? null);
+
+  if (walletCoversOrder) {
+    cart.payment_method = "wallet";
+    summary.payment_method = "wallet";
+  }
 
   let order: any = null;
 
@@ -2885,6 +2913,156 @@ export async function POST(req: Request) {
     }
   }
 
+  let walletHoldId: string | null = null;
+  let walletCaptured = false;
+
+  if (walletRequested) {
+    const customerId = toStr(cart?.user_id);
+
+    if (!customerId) {
+      await cleanupFailedOrder({
+        sb, store_id, order_id: String(order.id), stage: "wallet_customer_missing",
+        cart_id: String(cart.id), request_id,
+      });
+      return NextResponse.json(
+        { ok: false, error: "WALLET_CUSTOMER_REQUIRED", message_ar: "يجب تسجيل الدخول لاستخدام المحفظة." },
+        { status: 401 },
+      );
+    }
+
+    const holdR = await sb.rpc("wallet_create_checkout_hold", {
+      p_store_id: store_id,
+      p_customer_id: customerId,
+      p_amount: walletAmount,
+      p_currency: toStr(summary.currency) || "SAR",
+      p_idempotency_key: `${walletIdempotencyKey}:hold`,
+      p_order_id: order.id,
+      p_cart_id: cart.id,
+      p_expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      p_metadata: { source: "storefront_checkout", request_id },
+    });
+
+    if (holdR.error || !holdR.data?.hold?.id) {
+      await cleanupFailedOrder({
+        sb, store_id, order_id: String(order.id), stage: "wallet_hold_failed",
+        cart_id: String(cart.id), request_id,
+      });
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "WALLET_HOLD_FAILED",
+          message_ar: toStr(holdR.error?.message).includes("INSUFFICIENT_WALLET_BALANCE")
+            ? "رصيد المحفظة غير كافٍ."
+            : "تعذر حجز رصيد المحفظة. حاول مرة أخرى.",
+          debug: toStr(holdR.error?.message) || null,
+        },
+        { status: 409 },
+      );
+    }
+
+    walletHoldId = String(holdR.data.hold.id);
+
+    const captureR = await sb.rpc("wallet_capture_checkout_hold", {
+      p_hold_id: walletHoldId,
+      p_order_id: order.id,
+      p_total_amount: checkoutTotal,
+      p_external_amount: round2(Math.max(0, checkoutTotal - walletAmount)),
+      p_idempotency_key: `${walletIdempotencyKey}:capture`,
+      p_metadata: { source: "storefront_checkout", request_id },
+    });
+
+    if (captureR.error) {
+      await sb.rpc("wallet_release_checkout_hold", {
+        p_hold_id: walletHoldId,
+        p_release_status: "released",
+        p_reason: "تعذر تثبيت دفع الطلب",
+        p_idempotency_key: `${walletIdempotencyKey}:release-after-capture-failure`,
+        p_metadata: { source: "storefront_checkout", request_id },
+      });
+      await cleanupFailedOrder({
+        sb, store_id, order_id: String(order.id), stage: "wallet_capture_failed",
+        cart_id: String(cart.id), request_id,
+      });
+      return NextResponse.json(
+        { ok: false, error: "WALLET_CAPTURE_FAILED", message_ar: "تعذر اعتماد الدفع من المحفظة وتمت إعادة المبلغ المحجوز." },
+        { status: 500 },
+      );
+    }
+
+    walletCaptured = true;
+
+    const walletPayment = captureR.data?.payment ?? {};
+    const walletFinancial = {
+      wallet_payment_id: toStr(walletPayment?.id) || null,
+      wallet_hold_id: walletHoldId,
+      wallet_payment_status: toStr(walletPayment?.status) || "captured",
+      wallet_used_order_amount: round2(walletAmount),
+      wallet_used_wallet_amount: round2(walletAmount),
+      wallet_external_order_amount: round2(Math.max(0, checkoutTotal - walletAmount)),
+      wallet_remaining_order_amount: round2(Math.max(0, checkoutTotal - walletAmount)),
+      wallet_refunded_order_amount: 0,
+      wallet_refunded_wallet_amount: 0,
+      wallet_currency: toStr(summary.currency) || "SAR",
+      wallet_external_payment_method: walletCoversOrder
+        ? null
+        : (toStr(cart.payment_method) || null),
+      wallet_is_partial_payment: !walletCoversOrder,
+      wallet_captured_at: new Date().toISOString(),
+    };
+
+    const nextCheckoutSnapshot = {
+      ...(shipping_snapshot?.checkout && typeof shipping_snapshot.checkout === "object"
+        ? shipping_snapshot.checkout
+        : {}),
+      ...walletFinancial,
+    };
+
+    const nextAdminFinancial = {
+      ...(shipping_snapshot?.admin_financial && typeof shipping_snapshot.admin_financial === "object"
+        ? shipping_snapshot.admin_financial
+        : {}),
+      ...walletFinancial,
+      customer_payment_status: walletCoversOrder ? "paid" : "partially_paid",
+      paid_total_reference_order_amount: round2(walletAmount),
+      amount_due_order_amount: round2(Math.max(0, checkoutTotal - walletAmount)),
+    };
+
+    shipping_snapshot = {
+      ...(shipping_snapshot && typeof shipping_snapshot === "object" ? shipping_snapshot : {}),
+      checkout: nextCheckoutSnapshot,
+      admin_financial: nextAdminFinancial,
+      adminFinancial: nextAdminFinancial,
+    };
+
+    const walletSnapshotUpdate = await sb
+      .from("orders")
+      .update({
+        shipping_snapshot,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", order.id)
+      .eq("store_id", store_id);
+
+    if (walletSnapshotUpdate.error) {
+      logCheckoutFailure({
+        stage: "wallet_financial_snapshot_update",
+        store_id,
+        cart_id: String(cart.id),
+        order_id: String(order.id),
+        request_id,
+        error: walletSnapshotUpdate.error,
+      });
+    }
+
+    if (walletCoversOrder) {
+      await sb
+        .from("orders")
+        .update({ payment_status: "paid", payment_method: "wallet", updated_at: new Date().toISOString() })
+        .eq("id", order.id)
+        .eq("store_id", store_id);
+    }
+  }
+
   let decR: any;
 
   try {
@@ -2926,6 +3104,24 @@ export async function POST(req: Request) {
         request_id,
         error: stockIssueError,
       });
+    }
+
+    if (walletCaptured && walletAmount > 0) {
+      const walletRefundR = await sb.rpc("wallet_refund_order_payment", {
+        p_store_id: store_id,
+        p_order_id: order.id,
+        p_amount: walletAmount,
+        p_idempotency_key: `${walletIdempotencyKey}:refund-stock-failure`,
+        p_reason: "إلغاء دفع المحفظة بسبب تعذر اعتماد المخزون",
+        p_metadata: { source: "storefront_checkout", request_id },
+      });
+      if (walletRefundR.error) {
+        logCheckoutFailure({
+          stage: "wallet_refund_after_stock_failure",
+          store_id, cart_id: String(cart.id), order_id: String(order.id), request_id,
+          error: walletRefundR.error,
+        });
+      }
     }
 
     await cleanupFailedOrder({

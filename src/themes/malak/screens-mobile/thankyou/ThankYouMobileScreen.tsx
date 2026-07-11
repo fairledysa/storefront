@@ -87,6 +87,16 @@ type ThankYouData = {
 
   paymentLabel?: string | null;
   paymentStatusLabel?: string | null;
+  walletUsedAmount?: number | string | null;
+  wallet_used_amount?: number | string | null;
+  walletRemainingAmount?: number | string | null;
+  wallet_remaining_amount?: number | string | null;
+  walletRefundedAmount?: number | string | null;
+  wallet_refunded_amount?: number | string | null;
+  walletPaymentStatus?: string | null;
+  wallet_payment_status?: string | null;
+  walletExternalPaymentMethod?: string | null;
+  wallet_external_payment_method?: string | null;
 
   estimatedDeliveryText?: string | null;
   deliveryAddressText?: string | null;
@@ -1012,6 +1022,11 @@ export default function ThankYouMobileScreen(props: Props) {
       ? "رسوم الدفع عند الاستلام"
       : "رسوم الدفع");
 
+  const walletUsedAmount = Math.max(0, n(firstValue(data.walletUsedAmount, data.wallet_used_amount)));
+  const walletRemainingAmount = Math.max(0, n(firstValue(data.walletRemainingAmount, data.wallet_remaining_amount)));
+  const walletRefundedAmount = Math.max(0, n(firstValue(data.walletRefundedAmount, data.wallet_refunded_amount)));
+  const hasWalletPayment = walletUsedAmount > 0;
+
   return (
     <main dir="rtl" className="mk-mthank">
       <section className="mk-mthank-hero">
@@ -1048,6 +1063,20 @@ export default function ThankYouMobileScreen(props: Props) {
           </span>
         </div>
       </section>
+
+      {hasWalletPayment ? (
+        <section className="mk-mthank-card mk-mthank-wallet">
+          <div className="mk-mthank-card__head">
+            <CreditCard size={18} />
+            <strong>تفاصيل الدفع بالمحفظة</strong>
+          </div>
+          <div className="mk-mthank-wallet__grid">
+            <div><span>المدفوع من المحفظة</span><strong>{money(walletUsedAmount)}</strong></div>
+            <div><span>المتبقي على العميل</span><strong>{money(walletRemainingAmount)}</strong></div>
+            {walletRefundedAmount > 0 ? <div><span>المسترجع إلى المحفظة</span><strong>{money(walletRefundedAmount)}</strong></div> : null}
+          </div>
+        </section>
+      ) : null}
 
       <section className="mk-mthank-total">
         <div>

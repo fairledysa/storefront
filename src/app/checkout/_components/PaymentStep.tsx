@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import StepShell from "./StepShell";
-import { CreditCard, Loader2 } from "lucide-react";
+import { CreditCard, Loader2, WalletCards } from "lucide-react";
 import PaymentMethodsPanel, {
   fallbackPaymentTitle,
   paymentPatchKey,
@@ -183,6 +183,15 @@ export default function PaymentStep({
   const [receipt, setReceipt] = useState<BankTransferReceipt | null>(null);
   const [receiptUploading, setReceiptUploading] = useState(false);
   const [receiptError, setReceiptError] = useState("");
+  const [walletLoading, setWalletLoading] = useState(false);
+  const [walletAvailable, setWalletAvailable] = useState(0);
+  const [walletPending, setWalletPending] = useState(0);
+  const [walletCurrency, setWalletCurrency] = useState("SAR");
+  const [walletCheckoutEnabled, setWalletCheckoutEnabled] = useState(false);
+  const [walletPartialEnabled, setWalletPartialEnabled] = useState(false);
+  const [walletUseEnabled, setWalletUseEnabled] = useState(false);
+  const [walletRequestedAmount, setWalletRequestedAmount] = useState("");
+  const [checkoutTotal, setCheckoutTotal] = useState(0);
 
   const mountedRef = useRef(true);
   const loadSeqRef = useRef(0);
@@ -191,6 +200,14 @@ export default function PaymentStep({
   const lastSyncedRef = useRef<string>(initialSyncedId);
   const lastPatchedRef = useRef("");
   const receiptInputRef = useRef<HTMLInputElement | null>(null);
+
+  const maxWalletApplicable = Math.max(0, Math.min(walletAvailable, checkoutTotal || walletAvailable));
+  const parsedWalletRequestedAmount = Math.max(0, Number(walletRequestedAmount) || 0);
+  const walletApplied = walletUseEnabled
+    ? Math.max(0, Math.min(maxWalletApplicable, parsedWalletRequestedAmount || maxWalletApplicable))
+    : 0;
+  const walletCoversOrder = checkoutTotal > 0 && walletApplied >= checkoutTotal;
+  const walletRemainingAmount = Math.max(0, checkoutTotal - walletApplied);
 
   const selectedOption = useMemo(() => {
     return options.find((m) => m.id === method) ?? null;
@@ -219,6 +236,7 @@ export default function PaymentStep({
     isBankTransferSelected,
     receipt,
     senderAccountName,
+    walletCoversOrder,
   ]);
 
   function canSubmitPaymentOption(option?: PaymentOption | null) {
@@ -506,6 +524,104 @@ export default function PaymentStep({
     }
   }
 
+
+  useEffect(() => {
+    if (isLocked || !isActive) return;
+
+    let cancelled = false;
+
+    async function loadWalletSummary() {
+      setWalletLoading(true);
+
+      try {
+        const response = await fetch("/api/account/wallet", {
+          method: "GET",
+          credentials: "same-origin",
+          cache: "no-store",
+          headers: { "Cache-Control": "no-store" },
+        });
+
+        const payload = await safeJson(response);
+
+        if (cancelled) return;
+
+        if (!response.ok || !payload?.ok) {
+          setWalletAvailable(0);
+          setWalletPending(0);
+          setWalletCheckoutEnabled(false);
+          return;
+        }
+
+        setWalletAvailable(Math.max(0, Number(payload?.wallet?.available_balance ?? 0) || 0));
+        setWalletPending(Math.max(0, Number(payload?.wallet?.pending_balance ?? 0) || 0));
+        setWalletCurrency(s(payload?.wallet?.currency) || "SAR");
+        setWalletCheckoutEnabled(
+          Boolean(payload?.settings?.wallet_enabled && payload?.settings?.checkout_enabled),
+        );
+        setWalletPartialEnabled(Boolean(payload?.settings?.partial_payment_enabled));
+      } catch {
+        if (cancelled) return;
+        setWalletAvailable(0);
+        setWalletPending(0);
+        setWalletCheckoutEnabled(false);
+      } finally {
+        if (!cancelled) setWalletLoading(false);
+      }
+    }
+
+    void loadWalletSummary();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isActive, isLocked]);
+
+  useEffect(() => {
+    const onWalletState = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        useWallet?: boolean;
+        requestedAmount?: number;
+        total?: number;
+      }>).detail;
+
+      if (!detail) return;
+      setWalletUseEnabled(Boolean(detail.useWallet));
+      setWalletRequestedAmount(
+        Number.isFinite(Number(detail.requestedAmount))
+          ? String(Math.max(0, Number(detail.requestedAmount)))
+          : "",
+      );
+      setCheckoutTotal(Math.max(0, Number(detail.total) || 0));
+    };
+
+    window.addEventListener("checkout:walletState", onWalletState as EventListener);
+
+    dispatchCheckoutEvent("checkout:walletStateRequest");
+
+    return () => {
+      window.removeEventListener("checkout:walletState", onWalletState as EventListener);
+    };
+  }, []);
+
+  function updateWalletSelection(nextUseWallet: boolean, nextAmount: number) {
+    const normalizedAmount = Math.max(0, Math.min(maxWalletApplicable, nextAmount || maxWalletApplicable));
+
+    setWalletUseEnabled(nextUseWallet);
+    setWalletRequestedAmount(nextUseWallet ? String(normalizedAmount) : "");
+
+    dispatchCheckoutEvent("checkout:walletSelection", {
+      useWallet: nextUseWallet,
+      amount: nextUseWallet ? normalizedAmount : 0,
+    });
+  }
+
+  useEffect(() => {
+    if (!walletUseEnabled) return;
+    if (walletApplied === parsedWalletRequestedAmount) return;
+
+    setWalletRequestedAmount(String(walletApplied));
+  }, [walletApplied, walletUseEnabled, parsedWalletRequestedAmount]);
+
   useEffect(() => {
     mountedRef.current = true;
 
@@ -550,6 +666,11 @@ export default function PaymentStep({
   useEffect(() => {
     if (isLocked || !isActive || loading) return;
 
+    if (walletCoversOrder) {
+      setSubmitEnabled(true);
+      return;
+    }
+
     if (!method || !options.length) {
       setSubmitEnabled(false);
       return;
@@ -591,10 +712,10 @@ export default function PaymentStep({
     loading ||
     submitSaving ||
     receiptUploading ||
-    !method ||
-    !selectedOption ||
-    Boolean(selectedOption.disabled) ||
-    !bankTransferReady;
+    (!walletCoversOrder && !method) ||
+    (!walletCoversOrder && !selectedOption) ||
+    (!walletCoversOrder && Boolean(selectedOption?.disabled)) ||
+    (!walletCoversOrder && !bankTransferReady);
 
   if (isDone && !isActive) {
     return (
@@ -641,6 +762,88 @@ export default function PaymentStep({
         <div className="co-field-error">{errorMsg}</div>
       ) : null}
 
+
+      <section className="co-payment-wallet-notice" aria-live="polite">
+        <div className="co-payment-wallet-notice__icon">
+          <WalletCards size={21} />
+        </div>
+
+        <div className="co-payment-wallet-notice__content">
+          <div className="co-payment-wallet-notice__head">
+            <strong>رصيد محفظتك</strong>
+            <span dir="ltr">
+              {walletLoading
+                ? "جاري التحميل..."
+                : `${walletAvailable.toLocaleString("ar-SA", { maximumFractionDigits: 2 })} ${walletCurrency}`}
+            </span>
+          </div>
+
+          <p>
+            {walletCheckoutEnabled && walletAvailable > 0
+              ? "يمكنك استخدام الرصيد كاملًا أو جزئيًا، ثم إكمال المتبقي بإحدى طرق الدفع أدناه."
+              : walletCheckoutEnabled
+                ? "لا يوجد رصيد متاح حاليًا لاستخدامه في هذا الطلب."
+                : "الدفع من المحفظة غير متاح لهذا المتجر حاليًا."}
+          </p>
+
+          {walletCheckoutEnabled && walletAvailable > 0 ? (
+            <div className="co-wallet-checkout co-wallet-checkout--inline">
+              <label className="co-wallet-checkout__toggle">
+                <input
+                  type="checkbox"
+                  checked={walletUseEnabled}
+                  disabled={walletLoading || submitSaving || loading}
+                  onChange={(event) => {
+                    updateWalletSelection(
+                      event.target.checked,
+                      event.target.checked ? maxWalletApplicable : 0,
+                    );
+                  }}
+                />
+                <span>استخدام الرصيد في هذا الطلب</span>
+              </label>
+
+              {walletUseEnabled ? (
+                <div className="co-wallet-checkout__amount">
+                  <label htmlFor="payment-step-wallet-amount">المبلغ المستخدم</label>
+                  <input
+                    id="payment-step-wallet-amount"
+                    inputMode="decimal"
+                    value={walletRequestedAmount}
+                    disabled={!walletPartialEnabled || submitSaving || loading}
+                    onChange={(event) => {
+                      const raw = event.target.value;
+                      setWalletRequestedAmount(raw);
+                      dispatchCheckoutEvent("checkout:walletSelection", {
+                        useWallet: true,
+                        amount: Math.max(0, Math.min(maxWalletApplicable, Number(raw) || 0)),
+                      });
+                    }}
+                    onBlur={() => updateWalletSelection(true, walletApplied)}
+                  />
+
+                  <div className="co-wallet-checkout__summary">
+                    <span>المستخدم من المحفظة</span>
+                    <strong dir="ltr">{walletApplied.toLocaleString("ar-SA", { maximumFractionDigits: 2 })} {walletCurrency}</strong>
+                  </div>
+                  <div className="co-wallet-checkout__summary">
+                    <span>المتبقي للدفع</span>
+                    <strong dir="ltr">{walletRemainingAmount.toLocaleString("ar-SA", { maximumFractionDigits: 2 })} {walletCurrency}</strong>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {!walletLoading && walletPending > 0 ? (
+            <small dir="ltr">
+              الرصيد المعلّق: {walletPending.toLocaleString("ar-SA", { maximumFractionDigits: 2 })} {walletCurrency}
+            </small>
+          ) : null}
+        </div>
+      </section>
+
+      {!walletCoversOrder ? (
       <PaymentMethodsPanel
         options={options}
         selectedId={method}
@@ -650,6 +853,11 @@ export default function PaymentStep({
         submitSaving={submitSaving}
         onSelect={(nextId) => choosePayment(nextId)}
       />
+      ) : (
+        <div className="co-payment-wallet-covered">
+          تم تغطية كامل قيمة الطلب من رصيد المحفظة، ولا تحتاج إلى اختيار وسيلة دفع أخرى.
+        </div>
+      )}
 
       {isBankTransferSelected ? (
         <div className="co-bank-proof">
@@ -739,7 +947,7 @@ export default function PaymentStep({
         <div className="co-field-error">{errorMsg}</div>
       ) : null}
 
-      {!loading && options.length > 0 ? (
+      {!loading && (options.length > 0 || walletCoversOrder) ? (
         <button
           type="button"
           className="co-payment-final-btn"

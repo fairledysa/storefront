@@ -19,6 +19,27 @@ type OrderDetails = {
   tax_amount: number;
   discount_amount: number;
   total_amount: number;
+  wallet_used_amount?: number;
+  wallet_remaining_amount?: number;
+  wallet_refunded_amount?: number;
+  wallet_payment?: {
+    id?: string | null;
+    wallet_amount?: number | string | null;
+    external_amount?: number | string | null;
+    refunded_wallet_amount?: number | string | null;
+    status?: string | null;
+    payment_method?: string | null;
+    [key: string]: unknown;
+  } | null;
+  walletPayment?: {
+    id?: string | null;
+    wallet_amount?: number | string | null;
+    external_amount?: number | string | null;
+    refunded_wallet_amount?: number | string | null;
+    status?: string | null;
+    payment_method?: string | null;
+    [key: string]: unknown;
+  } | null;
   created_at: string;
 
   shipping_address: any | null;
@@ -425,6 +446,10 @@ export default function MobileOrderDetails({ orderNo }: Props) {
           tax_amount: Number(o.tax_amount ?? 0),
           discount_amount: Number(o.discount_amount ?? 0),
           total_amount: Number(o.total_amount ?? 0),
+          wallet_used_amount: Number(o.wallet_used_amount ?? o.walletUsedAmount ?? o.wallet_payment?.wallet_amount ?? o.walletPayment?.wallet_amount ?? 0),
+          wallet_remaining_amount: Number(o.wallet_remaining_amount ?? o.walletRemainingAmount ?? o.wallet_payment?.external_amount ?? o.walletPayment?.external_amount ?? 0),
+          wallet_refunded_amount: Number(o.wallet_refunded_amount ?? o.walletRefundedAmount ?? o.wallet_payment?.refunded_wallet_amount ?? o.walletPayment?.refunded_wallet_amount ?? 0),
+          wallet_payment: o.wallet_payment ?? o.walletPayment ?? null,
           created_at: String(o.created_at ?? ""),
 
           shipping_address: o.shipping_address ?? null,
@@ -1000,6 +1025,34 @@ const reviewOrder: OrdersApiRow | null = useMemo(() => {
                 state.order.currency,
               )}`}
             />
+
+            {Number(state.order.wallet_used_amount ?? 0) > 0 ? (
+              <>
+                <SummaryRow
+                  label="المدفوع من المحفظة"
+                  value={`- ${money(
+                    state.order.wallet_used_amount,
+                    state.order.currency,
+                  )}`}
+                />
+                <SummaryRow
+                  label="المتبقي للدفع"
+                  value={money(
+                    state.order.wallet_remaining_amount,
+                    state.order.currency,
+                  )}
+                />
+                {Number(state.order.wallet_refunded_amount ?? 0) > 0 ? (
+                  <SummaryRow
+                    label="المسترجع إلى المحفظة"
+                    value={money(
+                      state.order.wallet_refunded_amount,
+                      state.order.currency,
+                    )}
+                  />
+                ) : null}
+              </>
+            ) : null}
 
             <div
               style={{

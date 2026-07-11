@@ -145,6 +145,16 @@ type ThankYouData = {
 
   paymentLabel?: string | null;
   paymentStatusLabel?: string | null;
+  walletUsedAmount?: number | string | null;
+  wallet_used_amount?: number | string | null;
+  walletRemainingAmount?: number | string | null;
+  wallet_remaining_amount?: number | string | null;
+  walletRefundedAmount?: number | string | null;
+  wallet_refunded_amount?: number | string | null;
+  walletPaymentStatus?: string | null;
+  wallet_payment_status?: string | null;
+  walletExternalPaymentMethod?: string | null;
+  wallet_external_payment_method?: string | null;
 
   estimatedDeliveryText?: string | null;
   deliveryAddressText?: string | null;
@@ -1384,6 +1394,10 @@ export default function ThankYouScreen(props: AnyProps) {
     paymentReview,
   });
 
+  const walletUsedAmount = Math.max(0, n(firstValue(data?.walletUsedAmount, data?.wallet_used_amount)));
+  const walletRemainingAmount = Math.max(0, n(firstValue(data?.walletRemainingAmount, data?.wallet_remaining_amount)));
+  const walletRefundedAmount = Math.max(0, n(firstValue(data?.walletRefundedAmount, data?.wallet_refunded_amount)));
+  const hasWalletPayment = walletUsedAmount > 0;
   const totalText = money(computedTotal);
   const invoiceDownloadUrl = s(data?.invoiceDownloadUrl ?? data?.invoice_download_url);
 
@@ -1434,6 +1448,20 @@ export default function ThankYouScreen(props: AnyProps) {
               {statusLabel}
             </span>
           </div>
+
+          {hasWalletPayment ? (
+            <div className="mx-auto mt-5 max-w-[620px] rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-right">
+              <div className="mb-3 flex items-center gap-2 text-[15px] font-black text-emerald-900">
+                <CreditCard className="h-4 w-4" />
+                تفاصيل الدفع بالمحفظة
+              </div>
+              <div className="grid gap-2 text-[14px] sm:grid-cols-2">
+                <div className="rounded-xl bg-white px-3 py-2"><span className="text-zinc-500">المدفوع من المحفظة</span><strong className="mt-1 block text-zinc-950">{money(walletUsedAmount)}</strong></div>
+                <div className="rounded-xl bg-white px-3 py-2"><span className="text-zinc-500">المتبقي على العميل</span><strong className="mt-1 block text-zinc-950">{money(walletRemainingAmount)}</strong></div>
+                {walletRefundedAmount > 0 ? <div className="rounded-xl bg-white px-3 py-2 sm:col-span-2"><span className="text-zinc-500">المسترجع إلى المحفظة</span><strong className="mt-1 block text-zinc-950">{money(walletRefundedAmount)}</strong></div> : null}
+              </div>
+            </div>
+          ) : null}
 
           <div className="mt-4 flex items-center justify-center gap-2 text-[14px] leading-6 text-zinc-500">
             <Mail className="h-4 w-4 shrink-0" />
