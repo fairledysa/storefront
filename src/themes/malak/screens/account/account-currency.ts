@@ -33,7 +33,7 @@ export function useAccountCurrency() {
     const toBase = (amount: number) => (Number(amount || 0) * activeRate) / baseRate;
     const format = (amount: number, sourceCode?: string, signed?: "credit" | "debit") => {
       const converted = toDisplay(amount, sourceCode); const sign = signed === "credit" ? "+" : signed === "debit" ? "−" : "";
-      return `${sign}${new Intl.NumberFormat("ar-SA", { minimumFractionDigits: 0, maximumFractionDigits: context.active.decimals }).format(Math.abs(converted))} ${context.active.symbol || context.active.code}`;
+      return `${sign}${new Intl.NumberFormat("ar-SA-u-nu-arab", { minimumFractionDigits: 0, maximumFractionDigits: context.active.decimals }).format(Math.abs(converted))} ${context.active.symbol || context.active.code}`;
     };
     return { ...context, loading, reload: load, toDisplay, toBase, format };
   }, [context, loading, load]);

@@ -132,7 +132,7 @@ function currencyLabel(currency: unknown) {
 
 function money(value: unknown, currency: unknown, options?: { signed?: boolean; direction?: TransactionDirection }) {
   const amount = Math.abs(safeNumber(value));
-  const formatted = new Intl.NumberFormat("ar-SA", {
+  const formatted = new Intl.NumberFormat("ar-SA-u-nu-arab", {
     maximumFractionDigits: amount % 1 === 0 ? 0 : 2,
     minimumFractionDigits: 0,
   }).format(amount);
@@ -149,12 +149,12 @@ function formatDate(value: string | null) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
 
-  const datePart = new Intl.DateTimeFormat("ar-SA", {
+  const datePart = new Intl.DateTimeFormat("ar-SA-u-nu-arab", {
     day: "numeric",
     month: "long",
     year: "numeric",
   }).format(date);
-  const timePart = new Intl.DateTimeFormat("ar-SA", {
+  const timePart = new Intl.DateTimeFormat("ar-SA-u-nu-arab", {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,

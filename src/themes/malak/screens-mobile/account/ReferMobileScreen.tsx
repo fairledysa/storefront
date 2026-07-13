@@ -91,7 +91,7 @@ export default function ReferMobileScreen() {
         <header className="mk-mrefer2-hero">
           <Sparkles size={18} />
           <h2>شارك رابطك واربح</h2>
-          <p>{data?.settings.enabled ? `احصل على ${(data.settings.inviter_reward_type === "points" ? `${data.settings.inviter_reward_value.toLocaleString("ar-SA")} نقطة` : data.settings.inviter_reward_type === "coupon_percentage" ? `${data.settings.inviter_reward_value.toLocaleString("ar-SA")}%` : accountCurrency.format(data.settings.inviter_reward_value, data.settings.currency))} بعد أن يسجل صديقك عبر رابطك ويكمل أول طلب مؤهل.` : "برنامج الدعوات غير مفعّل حاليًا."}</p>
+          <p>{data?.settings.enabled ? `احصل على ${(data.settings.inviter_reward_type === "points" ? `${data.settings.inviter_reward_value.toLocaleString("ar-SA-u-nu-arab")} نقطة` : data.settings.inviter_reward_type === "coupon_percentage" ? `${data.settings.inviter_reward_value.toLocaleString("ar-SA-u-nu-arab")}%` : accountCurrency.format(data.settings.inviter_reward_value, data.settings.currency))} بعد أن يسجل صديقك عبر رابطك ويكمل أول طلب مؤهل.` : "برنامج الدعوات غير مفعّل حاليًا."}</p>
           <div className="mk-mrefer2-link">
             <input readOnly value={data?.referral_link ?? ""} dir="ltr" placeholder="رابط الدعوة" />
             <button type="button" onClick={() => void handleCopy()} disabled={!data?.referral_link || !data.settings.enabled}>{copied ? <Check size={16} /> : <Copy size={16} />}{copyLabel}</button>
@@ -100,9 +100,9 @@ export default function ReferMobileScreen() {
         </header>
 
         <section className="mk-mrefer2-stats">
-          <article><Link2 size={20} /><span>زيارات الرابط</span><strong>{(data?.stats.visits ?? 0).toLocaleString("ar-SA")}</strong></article>
-          <article><Users size={20} /><span>الأصدقاء المنضمون</span><strong>{(data?.stats.joined ?? 0).toLocaleString("ar-SA")}</strong></article>
-          <article><Gift size={20} /><span>الدعوات المؤهلة</span><strong>{(data?.stats.qualified ?? 0).toLocaleString("ar-SA")}</strong></article>
+          <article><Link2 size={20} /><span>زيارات الرابط</span><strong>{(data?.stats.visits ?? 0).toLocaleString("ar-SA-u-nu-arab")}</strong></article>
+          <article><Users size={20} /><span>الأصدقاء المنضمون</span><strong>{(data?.stats.joined ?? 0).toLocaleString("ar-SA-u-nu-arab")}</strong></article>
+          <article><Gift size={20} /><span>الدعوات المؤهلة</span><strong>{(data?.stats.qualified ?? 0).toLocaleString("ar-SA-u-nu-arab")}</strong></article>
         </section>
 
         <section className="mk-mrefer2-card">
@@ -114,8 +114,8 @@ export default function ReferMobileScreen() {
         </section>
 
         <section className="mk-mrefer2-rewards">
-          <article><Gift size={22} /><span>مكافأتك بعد أول طلب مؤهل لصديقك</span><strong>{data ? (data.settings.inviter_reward_type === "points" ? `${data.settings.inviter_reward_value.toLocaleString("ar-SA")} نقطة` : data.settings.inviter_reward_type === "coupon_percentage" ? `${data.settings.inviter_reward_value.toLocaleString("ar-SA")}%` : accountCurrency.format(data.settings.inviter_reward_value, data.settings.currency)) : "—"}</strong><small>لا تُضاف بمجرد مشاركة الرابط.</small></article>
-          {data?.settings.invited_reward_type && data.settings.invited_reward_type !== "none" ? <article><Users size={22} /><span>مكافأة صديقك بعد أول طلب مؤهل</span><strong>{(data.settings.invited_reward_type === "points" ? `${data.settings.invited_reward_value.toLocaleString("ar-SA")} نقطة` : data.settings.invited_reward_type === "coupon_percentage" ? `${data.settings.invited_reward_value.toLocaleString("ar-SA")}%` : accountCurrency.format(data.settings.invited_reward_value, data.settings.currency))}</strong></article> : null}
+          <article><Gift size={22} /><span>مكافأتك بعد أول طلب مؤهل لصديقك</span><strong>{data ? (data.settings.inviter_reward_type === "points" ? `${data.settings.inviter_reward_value.toLocaleString("ar-SA-u-nu-arab")} نقطة` : data.settings.inviter_reward_type === "coupon_percentage" ? `${data.settings.inviter_reward_value.toLocaleString("ar-SA-u-nu-arab")}%` : accountCurrency.format(data.settings.inviter_reward_value, data.settings.currency)) : "—"}</strong><small>لا تُضاف بمجرد مشاركة الرابط.</small></article>
+          {data?.settings.invited_reward_type && data.settings.invited_reward_type !== "none" ? <article><Users size={22} /><span>مكافأة صديقك بعد أول طلب مؤهل</span><strong>{(data.settings.invited_reward_type === "points" ? `${data.settings.invited_reward_value.toLocaleString("ar-SA-u-nu-arab")} نقطة` : data.settings.invited_reward_type === "coupon_percentage" ? `${data.settings.invited_reward_value.toLocaleString("ar-SA-u-nu-arab")}%` : accountCurrency.format(data.settings.invited_reward_value, data.settings.currency))}</strong></article> : null}
         </section>
 
         <section className="mk-mrefer2-invites">
@@ -126,7 +126,7 @@ export default function ReferMobileScreen() {
               <article key={item.id}>
                 <strong>{item.customer_name}</strong>
                 <span>{referralStatusLabel(item.status)}</span>
-                <b>{inviterReward ? (inviterReward.type === "points" ? `${inviterReward.value.toLocaleString("ar-SA")} نقطة` : inviterReward.type === "coupon_percentage" ? `${inviterReward.value.toLocaleString("ar-SA")}%` : accountCurrency.format(inviterReward.value, inviterReward.currency)) : "—"}</b>
+                <b>{inviterReward ? (inviterReward.type === "points" ? `${inviterReward.value.toLocaleString("ar-SA-u-nu-arab")} نقطة` : inviterReward.type === "coupon_percentage" ? `${inviterReward.value.toLocaleString("ar-SA-u-nu-arab")}%` : accountCurrency.format(inviterReward.value, inviterReward.currency)) : "—"}</b>
                 <small>{formatReferralDate(item.registered_at)}</small>
               </article>
             );

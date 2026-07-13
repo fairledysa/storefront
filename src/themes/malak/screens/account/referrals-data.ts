@@ -102,15 +102,15 @@ export function rewardTypeLabel(type: string) {
 }
 
 export function formatReferralReward(reward: Pick<ReferralReward, "type" | "value" | "currency">) {
-  if (reward.type === "points") return `${reward.value.toLocaleString("ar-SA")} نقطة`;
-  if (reward.type === "coupon_percentage") return `${reward.value.toLocaleString("ar-SA")}%`;
-  return `${reward.value.toLocaleString("ar-SA")} ${reward.currency}`;
+  if (reward.type === "points") return `${reward.value.toLocaleString("ar-SA-u-nu-arab")} نقطة`;
+  if (reward.type === "coupon_percentage") return `${reward.value.toLocaleString("ar-SA-u-nu-arab")}%`;
+  return `${reward.value.toLocaleString("ar-SA-u-nu-arab")} ${reward.currency}`;
 }
 
 export function formatReferralDate(value: string | null) {
   if (!value) return "—";
   try {
-    return new Intl.DateTimeFormat("ar-SA", { dateStyle: "medium" }).format(new Date(value));
+    return new Intl.DateTimeFormat("ar-SA-u-nu-arab", { dateStyle: "medium" }).format(new Date(value));
   } catch {
     return "—";
   }

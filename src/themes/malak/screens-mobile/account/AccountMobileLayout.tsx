@@ -1,31 +1,41 @@
 // FILE: apps/storefront/src/themes/malak/screens-mobile/account/AccountMobileLayout.tsx
 "use client";
 
+import {
+  Gift,
+  Heart,
+  MapPin,
+  Package,
+  Ticket,
+  Trophy,
+  UserRound,
+  UserRoundPlus,
+  WalletCards,
+  Home,
+  ChevronLeft,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
+
+type IconProps = { size?: number; strokeWidth?: number; className?: string };
 
 type Item = {
   key: string;
   label: string;
   href: string;
-  icon: string;
+  icon: ComponentType<IconProps>;
 };
 
 const ITEMS: Item[] = [
-  { key: "account", label: "حسابي", href: "/account", icon: "👤" },
-  { key: "orders", label: "طلباتي", href: "/account/orders", icon: "📦" },
-  { key: "addresses", label: "عناويني", href: "/account/addresses", icon: "📍" },
-  { key: "wallet", label: "الرصيد", href: "/account/wallet", icon: "💳" },
-  { key: "rewards", label: "مكافآتي", href: "/account/rewards", icon: "🎁" },
-  {
-    key: "gift_balance",
-    label: "إهداء رصيد",
-    href: "/account/gift-balance",
-    icon: "🎀",
-  },
-  { key: "tickets", label: "تذاكري", href: "/account/tickets", icon: "🎫" },
-  { key: "refer", label: "أدع صديقًا", href: "/account/refer", icon: "🤝" },
-  { key: "favorites", label: "المفضلة", href: "/account/favorites", icon: "❤️" },
+  { key: "account", label: "حسابي", href: "/account", icon: UserRound },
+  { key: "orders", label: "طلباتي", href: "/account/orders", icon: Package },
+  { key: "addresses", label: "عناويني", href: "/account/addresses", icon: MapPin },
+  { key: "wallet", label: "الرصيد والمحفظة", href: "/account/wallet", icon: WalletCards },
+  { key: "rewards", label: "مكافآتي", href: "/account/rewards", icon: Trophy },
+  { key: "gift_balance", label: "إهداء رصيد", href: "/account/gift-balance", icon: Gift },
+  { key: "tickets", label: "تذاكري", href: "/account/tickets", icon: Ticket },
+  { key: "refer", label: "أدعُ صديقًا", href: "/account/refer", icon: UserRoundPlus },
+  { key: "favorites", label: "المفضلة", href: "/account/favorites", icon: Heart },
 ];
 
 export default function AccountMobileLayout({
@@ -40,19 +50,19 @@ export default function AccountMobileLayout({
   const router = useRouter();
 
   return (
-    <div dir="rtl" className="mk-maccount">
-      <div className="mk-maccount__header">
+    <div dir="rtl" lang="ar" className="mk-maccount">
+      <header className="mk-maccount__header">
         <div className="mk-maccount__headerRow">
           <button
             type="button"
             onClick={() => router.push("/")}
-            aria-label="الرئيسية"
+            aria-label="العودة إلى الرئيسية"
             className="mk-maccount__headerBtn"
           >
-            ⌂
+            <Home size={17} strokeWidth={2} />
           </button>
 
-          <div className="mk-maccount__title">{title}</div>
+          <h1 className="mk-maccount__title">{title}</h1>
 
           <button
             type="button"
@@ -60,48 +70,36 @@ export default function AccountMobileLayout({
             aria-label="رجوع"
             className="mk-maccount__headerBtn"
           >
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M9 18L15 12L9 6"
-                stroke="currentColor"
-                strokeWidth="2.2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+            <ChevronLeft size={19} strokeWidth={2.2} />
           </button>
         </div>
-      </div>
+      </header>
 
-      <div className="mk-maccount__body">
-        <div className="mk-maccount__nav">
+      <main className="mk-maccount__body">
+        <nav className="mk-maccount__nav" aria-label="أدوات الحساب">
           {ITEMS.map((item) => {
             const isActive = item.key === active;
+            const Icon = item.icon;
 
             return (
               <button
                 key={item.key}
                 type="button"
                 onClick={() => router.push(item.href)}
-                className={`mk-maccount__navItem ${
-                  isActive ? "is-active" : ""
-                }`}
+                className={`mk-maccount__navItem${isActive ? " is-active" : ""}`}
+                aria-current={isActive ? "page" : undefined}
               >
-                <span className="mk-maccount__navIcon">{item.icon}</span>
+                <span className="mk-maccount__navIcon" aria-hidden="true">
+                  <Icon size={20} strokeWidth={1.9} />
+                </span>
                 <span className="mk-maccount__navLabel">{item.label}</span>
               </button>
             );
           })}
-        </div>
+        </nav>
 
         {children}
-      </div>
+      </main>
     </div>
   );
 }

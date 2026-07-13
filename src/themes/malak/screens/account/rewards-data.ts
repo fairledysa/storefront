@@ -170,7 +170,7 @@ export async function redeemLoyaltyReward(
 }
 
 export function formatPoints(value: number) {
-  return new Intl.NumberFormat("ar-SA", { maximumFractionDigits: 0 }).format(
+  return new Intl.NumberFormat("ar-SA-u-nu-arab", { maximumFractionDigits: 0 }).format(
     Number.isFinite(value) ? value : 0,
   );
 }
