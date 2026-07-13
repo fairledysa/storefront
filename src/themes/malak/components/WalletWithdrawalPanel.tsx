@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { AlertCircle, Building2, CheckCircle2, Clock3, Loader2, RefreshCcw, X, XCircle } from "lucide-react";
+import { useAccountCurrency } from "../screens/account/account-currency";
 
 type WithdrawalItem = {
   id: string;
@@ -74,6 +75,9 @@ export default function WalletWithdrawalPanel({
   compact = false,
   disabled = false,
 }: Props) {
+  const accountCurrency = useAccountCurrency();
+  const displayBalance = accountCurrency.toDisplay(availableBalance, currency);
+  const displayMinimum = accountCurrency.toDisplay(minimumAmount, currency);
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [items, setItems] = useState<WithdrawalItem[]>([]);
@@ -84,10 +88,10 @@ export default function WalletWithdrawalPanel({
   const [success, setSuccess] = useState("");
   const [form, setForm] = useState({ amount: "", bank_name: "", account_holder_name: "", iban: "", customer_note: "" });
 
-  const canRequest = enabled && !disabled && availableBalance >= minimumAmount;
+  const canRequest = enabled && !disabled && displayBalance >= displayMinimum;
   const normalizedIban = form.iban.replace(/\s+/g, "").toUpperCase();
   const amount = Number(form.amount);
-  const validAmount = Number.isFinite(amount) && amount >= minimumAmount && amount <= availableBalance;
+  const validAmount = Number.isFinite(amount) && amount >= displayMinimum && amount <= displayBalance;
   const validIban = /^SA\d{22}$/.test(normalizedIban);
   const canSubmit = validAmount && validIban && form.bank_name.trim().length >= 2 && form.account_holder_name.trim().length >= 2;
 
@@ -145,7 +149,7 @@ export default function WalletWithdrawalPanel({
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          amount,
+          amount: accountCurrency.toBase(amount),
           currency,
           bank_name: form.bank_name.trim(),
           account_holder_name: form.account_holder_name.trim(),
@@ -222,8 +226,8 @@ export default function WalletWithdrawalPanel({
             </div>
 
             <div className="wallet-withdrawal-summary">
-              <div><span>الرصيد المتاح</span><strong>{money(availableBalance, currency)}</strong></div>
-              <div><span>الحد الأدنى</span><strong>{money(minimumAmount, currency)}</strong></div>
+              <div><span>الرصيد المتاح</span><strong>{accountCurrency.format(availableBalance, currency)}</strong></div>
+              <div><span>الحد الأدنى</span><strong>{accountCurrency.format(minimumAmount, currency)}</strong></div>
               <div><span>مدة المعالجة المتوقعة</span><strong>{processingDays} أيام</strong></div>
             </div>
 
@@ -233,12 +237,12 @@ export default function WalletWithdrawalPanel({
             {activeRequest ? (
               <div className="wallet-withdrawal-active">
                 <Clock3 size={18} />
-                <div><strong>لديك طلب نشط حاليًا</strong><span>{money(activeRequest.amount, activeRequest.currency)} · {labels[activeRequest.status]}</span></div>
+                <div><strong>لديك طلب نشط حاليًا</strong><span>{accountCurrency.format(activeRequest.amount, activeRequest.currency)} · {labels[activeRequest.status]}</span></div>
               </div>
             ) : null}
 
             <div className="wallet-withdrawal-grid">
-              <label><span>المبلغ</span><input type="number" min={minimumAmount} max={availableBalance} step="0.01" value={form.amount} onChange={(e) => setForm((v) => ({ ...v, amount: e.target.value }))} placeholder={`من ${minimumAmount}`} /></label>
+              <label><span>المبلغ</span><input type="number" min={displayMinimum} max={displayBalance} step="0.01" value={form.amount} onChange={(e) => setForm((v) => ({ ...v, amount: e.target.value }))} placeholder={`من ${new Intl.NumberFormat("ar-SA",{maximumFractionDigits:accountCurrency.active.decimals}).format(displayMinimum)} ${accountCurrency.active.symbol || accountCurrency.active.code}`} /></label>
               <label><span>اسم البنك</span><input value={form.bank_name} onChange={(e) => setForm((v) => ({ ...v, bank_name: e.target.value }))} placeholder="مثال: مصرف الراجحي" /></label>
               <label><span>اسم صاحب الحساب</span><input value={form.account_holder_name} onChange={(e) => setForm((v) => ({ ...v, account_holder_name: e.target.value }))} placeholder="كما هو مسجل لدى البنك" /></label>
               <label><span>رقم الآيبان</span><input dir="ltr" value={form.iban} onChange={(e) => setForm((v) => ({ ...v, iban: e.target.value.toUpperCase() }))} placeholder="SA0000000000000000000000" /></label>
@@ -254,7 +258,7 @@ export default function WalletWithdrawalPanel({
               <div className="wallet-withdrawal-history-head"><h3>طلباتك السابقة</h3><button type="button" onClick={() => void load()} disabled={loading}><RefreshCcw size={15} /> تحديث</button></div>
               {loading ? <div className="wallet-withdrawal-empty"><Loader2 className="animate-spin" size={18} /> جارٍ التحميل...</div> : items.length === 0 ? <div className="wallet-withdrawal-empty">لا توجد طلبات سحب حتى الآن.</div> : items.map((item) => (
                 <article key={item.id} className="wallet-withdrawal-item">
-                  <div><strong>{money(item.amount, item.currency)}</strong><span>{labels[item.status] || item.status} · {formatDate(item.requested_at)}</span></div>
+                  <div><strong>{accountCurrency.format(item.amount, item.currency)}</strong><span>{labels[item.status] || item.status} · {formatDate(item.requested_at)}</span></div>
                   <div className="wallet-withdrawal-item-side"><span>{item.bank_name}</span>{item.status === "pending" ? <button type="button" onClick={() => void cancel(item.id)} disabled={busyId === item.id}>{busyId === item.id ? <Loader2 className="animate-spin" size={14} /> : <XCircle size={14} />} إلغاء</button> : null}</div>
                   {item.rejection_reason ? <p>سبب الرفض: {item.rejection_reason}</p> : null}
                   {item.transfer_reference ? <p>مرجع التحويل: {item.transfer_reference}</p> : null}

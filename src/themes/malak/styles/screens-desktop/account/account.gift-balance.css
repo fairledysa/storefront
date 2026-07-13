@@ -581,3 +581,9 @@
     padding: 14px;
   }
 }
+.mk-gb-submit:disabled,
+.mk-gb-previewBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  filter: grayscale(0.15);
+}

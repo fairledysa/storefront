@@ -19,6 +19,7 @@ import { copyCartOrderOptionsToOrder } from "../lib/order-options";
 import { evaluateCodRestrictions } from "../lib/cod-restrictions";
 import { recordCartOfferRedemptions } from "../lib/cart-offers";
 import { notifyMerchantNewOrder } from "@/lib/merchant-notifications.server";
+import { awardPaidOrderLoyaltyPoints } from "@/lib/loyalty/order-award.server";
 export const dynamic = "force-dynamic";
 
 function n(x: any) {
@@ -3235,6 +3236,21 @@ export async function POST(req: Request) {
 
   if (cleanupError) {
     console.error("CHECKOUT_CART_CLEANUP_FAILED", cleanupError);
+  }
+
+  if (walletCoversOrder && cart.user_id) {
+    try {
+      await awardPaidOrderLoyaltyPoints({
+        db: sb,
+        storeId: store_id,
+        orderId: String(order.id),
+        source: "storefront_wallet_checkout",
+      });
+    } catch (error: any) {
+      // Loyalty must never make a paid checkout fail. The deterministic
+      // idempotency key allows safe replay from another paid-order path.
+      console.error("LOYALTY_ORDER_AWARD_FAILED", error?.message || error);
+    }
   }
 
   try {

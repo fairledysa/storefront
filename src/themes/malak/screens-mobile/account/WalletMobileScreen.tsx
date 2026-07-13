@@ -21,6 +21,8 @@ import { useRouter } from "next/navigation";
 import AccountMobileLayout from "./AccountMobileLayout";
 import RequireMobileCustomer from "./_components/RequireMobileCustomer";
 import WalletWithdrawalPanel from "../../components/WalletWithdrawalPanel";
+import WalletTopupPanel from "../../components/WalletTopupPanel";
+import { useAccountCurrency } from "../../screens/account/account-currency";
 
 type WalletFilter = "all" | "credit" | "debit";
 type WalletStatus = "active" | "frozen" | "closed" | string;
@@ -49,14 +51,25 @@ type WalletTransaction = {
   expires_at: string | null;
   created_at: string | null;
   order: { id: string; display_no: number } | null;
-  metadata: { source?: string; phase?: string };
+  metadata: {
+    source?: string;
+    phase?: string;
+    sender_customer_id?: string;
+    recipient_customer_id?: string;
+  };
+  counterparty?: {
+    id: string;
+    name: string;
+    email?: string | null;
+    phone?: string | null;
+  } | null;
 };
 
 type WalletApiSuccess = {
   ok: true;
   wallet: WalletSummary;
   transactions: WalletTransaction[];
-  settings?: { withdrawal_enabled?: boolean; minimum_withdrawal_amount?: number; withdrawal_processing_days?: number; topup_enabled?: boolean; gifting_enabled?: boolean };
+  settings?: { withdrawal_enabled?: boolean; minimum_withdrawal_amount?: number; withdrawal_processing_days?: number; topup_enabled?: boolean; gifting_enabled?: boolean; minimum_topup_amount?: number; maximum_topup_amount?: number | null; moyasar_ready?: boolean };
 };
 
 type LoadState =
@@ -85,6 +98,8 @@ const TRANSACTION_LABELS: Record<string, string> = {
   adjustment_debit: "تسوية رصيد بالخصم",
   refund_credit: "استرجاع مبلغ",
   cashback_credit: "مكافأة نقدية",
+  gift_credit: "هدية رصيد",
+  gift_debit: "إهداء رصيد",
   order_payment_debit: "استخدام الرصيد في طلب",
   order_payment_reversal: "إعادة رصيد طلب",
   expiry_debit: "انتهاء صلاحية رصيد",
@@ -156,6 +171,15 @@ function transactionTitle(transaction: WalletTransaction) {
   const source = String(transaction.metadata?.source ?? "").trim();
   const phase = String(transaction.metadata?.phase ?? "").trim();
   const suffix = orderSuffix(transaction);
+  const otherName = String(transaction.counterparty?.name ?? "").trim();
+
+  if (transaction.transaction_type === "gift_credit") {
+    return otherName ? `هدية رصيد من ${otherName}` : "هدية رصيد";
+  }
+
+  if (transaction.transaction_type === "gift_debit") {
+    return otherName ? `إهداء رصيد إلى ${otherName}` : "إهداء رصيد";
+  }
 
   if (
     source === "merchant_order_edit_wallet_refund" ||
@@ -261,6 +285,7 @@ function WalletSkeleton() {
 }
 
 function WalletContent() {
+  const accountCurrency = useAccountCurrency();
   const router = useRouter();
   const [filter, setFilter] = useState<WalletFilter>("all");
   const [state, setState] = useState<LoadState>({ kind: "loading" });
@@ -364,14 +389,14 @@ function WalletContent() {
           </span>
         </div>
         <div className="mk-mwallet__label">رصيد محفظتك</div>
-        <div dir="ltr" className="mk-mwallet__amount">{money(wallet.available_balance, wallet.currency)}</div>
+        <div dir="ltr" className="mk-mwallet__amount">{accountCurrency.format(wallet.available_balance, wallet.currency)}</div>
         <div className="mk-mwallet__hint"><Info size={14} /> الرصيد المتاح للاستخدام</div>
 
         {wallet.pending_balance > 0 ? (
           <div className="mk-mwallet__pending">
             <Clock3 size={15} />
             <span>قيد المعالجة</span>
-            <strong dir="ltr">{money(wallet.pending_balance, wallet.currency)}</strong>
+            <strong dir="ltr">{accountCurrency.format(wallet.pending_balance, wallet.currency)}</strong>
           </div>
         ) : null}
 
@@ -385,11 +410,7 @@ function WalletContent() {
             processingDays={Number(settings?.withdrawal_processing_days || 3)}
             disabled={isRestricted}
           />
-          <button type="button" className="mk-mwallet__btn" disabled title="قريبًا">
-            <Plus size={17} />
-            <span>إضافة رصيد</span>
-            <small>قريبًا</small>
-          </button>
+          <WalletTopupPanel compact enabled={!!settings?.topup_enabled} providerReady={!!settings?.moyasar_ready} disabled={isRestricted} currency={wallet.currency} minimumAmount={Number(settings?.minimum_topup_amount || 10)} maximumAmount={settings?.maximum_topup_amount == null ? null : Number(settings.maximum_topup_amount)} />
         </div>
 
         <button
@@ -406,14 +427,14 @@ function WalletContent() {
           <span className="mk-mwallet-stat__icon is-credit"><ArrowDownLeft size={18} /></span>
           <div>
             <span>إجمالي الإضافات</span>
-            <strong dir="ltr">{money(wallet.lifetime_credit, wallet.currency)}</strong>
+            <strong dir="ltr">{accountCurrency.format(wallet.lifetime_credit, wallet.currency)}</strong>
           </div>
         </div>
         <div className="mk-mwallet-stat">
           <span className="mk-mwallet-stat__icon is-debit"><ArrowUpRight size={18} /></span>
           <div>
             <span>إجمالي الخصومات</span>
-            <strong dir="ltr">{money(wallet.lifetime_debit, wallet.currency)}</strong>
+            <strong dir="ltr">{accountCurrency.format(wallet.lifetime_debit, wallet.currency)}</strong>
           </div>
         </div>
       </section>
@@ -461,10 +482,7 @@ function WalletContent() {
                       </div>
                     </div>
                     <div dir="ltr" className={`mk-mwallet-row__amount ${isDebit ? "is-negative" : "is-positive"}`}>
-                      {money(transaction.amount, transaction.currency || wallet.currency, {
-                        signed: true,
-                        direction: transaction.direction,
-                      })}
+                      {accountCurrency.format(transaction.amount, transaction.currency || wallet.currency, isDebit ? "debit" : "credit")}
                     </div>
                   </div>
 
