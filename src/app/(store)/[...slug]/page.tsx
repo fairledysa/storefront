@@ -2584,10 +2584,10 @@ export default async function Page(props: PageProps) {
     }
 
     const orderNo =
-      order.public_no != null
-        ? String(order.public_no)
-        : order.order_number != null
-          ? String(order.order_number)
+      order.order_number != null
+        ? String(order.order_number)
+        : order.public_no != null
+          ? String(order.public_no)
           : order.public_token != null
             ? String(order.public_token)
             : token;

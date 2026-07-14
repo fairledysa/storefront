@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getOrdersDb } from "@/data/db/orders-db.server";
 import { signSession, verifyOAuthTransfer } from "@/lib/auth/session";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
+import { attachPendingReferral } from "@/lib/referrals/attach-referral.server";
 
 import {
   getRequestOrigin,
@@ -248,6 +249,7 @@ export async function GET(request: NextRequest) {
   });
 
   await setSessionCookie(session);
+  await attachPendingReferral(storeId, String(payload.customer_id));
 
   const jar = await cookies();
   const sid = jar.get(CART_COOKIE)?.value || "";

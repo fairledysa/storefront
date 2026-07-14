@@ -20,6 +20,8 @@ import { evaluateCodRestrictions } from "../lib/cod-restrictions";
 import { recordCartOfferRedemptions } from "../lib/cart-offers";
 import { notifyMerchantNewOrder } from "@/lib/merchant-notifications.server";
 import { awardPaidOrderLoyaltyPoints } from "@/lib/loyalty/order-award.server";
+import { processPaidOrderReferral } from "@/lib/referrals/order-referral.server";
+import { attachPendingReferral } from "@/lib/referrals/attach-referral.server";
 export const dynamic = "force-dynamic";
 
 function n(x: any) {
@@ -3238,6 +3240,14 @@ export async function POST(req: Request) {
     console.error("CHECKOUT_CART_CLEANUP_FAILED", cleanupError);
   }
 
+  if (cart.user_id) {
+    try {
+      await attachPendingReferral(store_id, String(cart.user_id));
+    } catch (error: any) {
+      console.error("REFERRAL_CUSTOMER_ATTACH_FAILED", error?.message || error);
+    }
+  }
+
   if (walletCoversOrder && cart.user_id) {
     try {
       await awardPaidOrderLoyaltyPoints({
@@ -3250,6 +3260,16 @@ export async function POST(req: Request) {
       // Loyalty must never make a paid checkout fail. The deterministic
       // idempotency key allows safe replay from another paid-order path.
       console.error("LOYALTY_ORDER_AWARD_FAILED", error?.message || error);
+    }
+    try {
+      await processPaidOrderReferral({
+        db: sb as any,
+        storeId: store_id,
+        orderId: String(order.id),
+        source: "storefront_wallet_checkout",
+      });
+    } catch (error: any) {
+      console.error("REFERRAL_ORDER_REWARD_FAILED", error?.message || error);
     }
   }
 

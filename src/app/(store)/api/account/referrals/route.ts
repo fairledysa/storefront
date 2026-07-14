@@ -60,7 +60,6 @@ export async function GET() {
         p_code: referralCode,
         p_invited_customer_id: customerId,
         p_session_key: referralSession || null,
-        p_idempotency_key: attachKey,
       });
       if (attachError) {
         console.warn("[referrals] attach skipped", attachError.message);
@@ -72,7 +71,7 @@ export async function GET() {
         db
           .from("store_referral_settings")
           .select(
-            "enabled,attribution_window_days,require_first_paid_order,minimum_order_amount,reward_delay_days,inviter_reward_type,inviter_reward_value,invited_reward_type,invited_reward_value,coupon_validity_days,currency,terms_text",
+            "enabled,attribution_window_days,require_first_paid_order,allow_existing_customers_without_paid_orders,minimum_order_amount,reward_delay_days,inviter_reward_type,inviter_reward_value,invited_reward_type,invited_reward_value,coupon_validity_days,currency,terms_text",
           )
           .eq("store_id", storeId)
           .maybeSingle(),
@@ -161,6 +160,7 @@ export async function GET() {
         enabled: Boolean(settings?.enabled),
         attribution_window_days: numberValue(settings?.attribution_window_days || 30),
         require_first_paid_order: settings?.require_first_paid_order !== false,
+        allow_existing_customers_without_paid_orders: Boolean(settings?.allow_existing_customers_without_paid_orders),
         minimum_order_amount: numberValue(settings?.minimum_order_amount),
         reward_delay_days: numberValue(settings?.reward_delay_days),
         inviter_reward_type: String(settings?.inviter_reward_type ?? "none"),

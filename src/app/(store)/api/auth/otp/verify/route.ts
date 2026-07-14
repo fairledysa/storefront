@@ -7,6 +7,7 @@ import { getOrdersDb } from "@/data/db/orders-db.server";
 import { getStoreDb } from "@/data/db/store-db.server";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
 import { hashOtp, signSession } from "@/lib/auth/session";
+import { attachPendingReferral } from "@/lib/referrals/attach-referral.server";
 
 const CART_COOKIE = "darb_cart_session";
 const SESSION_COOKIE = "elyaia_session";

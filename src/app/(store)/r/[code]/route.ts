@@ -15,6 +15,23 @@ function hashIp(value: string) {
   return normalized ? createHash("sha256").update(normalized).digest("hex") : null;
 }
 
+function getStoreRedirectUrl(request: NextRequest) {
+  const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+  const directHost = request.headers.get("host")?.trim();
+  const host = forwardedHost || directHost;
+
+  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  const protocol = forwardedProto || request.nextUrl.protocol.replace(":", "") || "https";
+
+  // Preserve the real storefront host (including local subdomains such as
+  // elyavya.localhost:3003) instead of Next.js' internal request origin.
+  if (host && /^[a-z0-9.-]+(?::\d+)?$/i.test(host)) {
+    return new URL("/", `${protocol}://${host}`);
+  }
+
+  return new URL("/", request.nextUrl.origin);
+}
+
 export async function GET(
   request: NextRequest,
   context: { params: Promise<{ code: string }> },
@@ -24,7 +41,7 @@ export async function GET(
   const { code: rawCode } = await context.params;
   const code = String(rawCode ?? "").trim().toUpperCase();
 
-  const redirectUrl = new URL("/", request.url);
+  const redirectUrl = getStoreRedirectUrl(request);
   if (!storeId || !code) return NextResponse.redirect(redirectUrl);
 
   const cookieStore = await cookies();

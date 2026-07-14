@@ -103,24 +103,69 @@ function logDbError(scope: string, error: any, meta?: Record<string, any>) {
 /* ---------------------- DB lookups (control db) ---------------------- */
 
 async function fetchStoreBySlug(slug: string): Promise<StoreRow | null> {
+  const cleanSlug = String(slug || "").trim().toLowerCase();
+
+  if (!cleanSlug) return null;
+
   try {
     const sb = controlDb();
 
     const r = await sb
       .from("stores")
       .select(STORE_SELECT)
-      .eq("slug", slug)
+      .eq("slug", cleanSlug)
       .limit(1)
       .maybeSingle();
 
-    if (r.error) {
-      logDbError("fetchStoreBySlug failed", r.error, { slug });
+    if (!r.error) {
+      return (r.data as StoreRow | null) ?? null;
+    }
+
+    const errorMessage = String(r.error?.message ?? "");
+    const isNetworkFailure =
+      errorMessage.includes("fetch failed") ||
+      errorMessage.includes("ConnectTimeoutError") ||
+      errorMessage.includes("UND_ERR_CONNECT_TIMEOUT");
+
+    // عند انقطاع الاتصال لا نكرر نفس الطلب باستعلام fallback؛ هذا كان يضاعف
+    // مدة التعليق ويحوّل عطل الشبكة المؤقت إلى STORE_NOT_FOUND مضلل.
+    if (isNetworkFailure) {
+      logDbError("fetchStoreBySlug network failed", r.error, {
+        slug: cleanSlug,
+      });
+      throw r.error;
+    }
+
+    // fallback فقط لأخطاء الحقول الاختيارية أو schema cache.
+    logDbError("fetchStoreBySlug full select failed", r.error, {
+      slug: cleanSlug,
+    });
+
+    const fallback = await sb
+      .from("stores")
+      .select("id,slug,name,status")
+      .eq("slug", cleanSlug)
+      .limit(1)
+      .maybeSingle();
+
+    if (fallback.error) {
+      logDbError("fetchStoreBySlug fallback failed", fallback.error, {
+        slug: cleanSlug,
+      });
       return null;
     }
 
-    return (r.data as StoreRow | null) ?? null;
+    if (!fallback.data) return null;
+
+    return {
+      ...(fallback.data as Pick<StoreRow, "id" | "slug" | "name" | "status">),
+      default_currency: "SAR",
+      description: null,
+      logo_url: null,
+      favicon_url: null,
+    };
   } catch (e: any) {
-    logDbError("fetchStoreBySlug crashed", e, { slug });
+    logDbError("fetchStoreBySlug crashed", e, { slug: cleanSlug });
     return null;
   }
 }
@@ -642,6 +687,8 @@ async function resolveStoreContextByHost(host: string): Promise<StoreContext> {
   const localSlug = localSubdomainSlug(host);
 
   if (localSlug) {
+    // استخدم نفس الكاش الآمن محليًا بدل ضرب قاعدة البيانات في كل request.
+    // أخطاء الشبكة تُرمى ولا تُحوّل إلى متجر غير موجود.
     const store0 = await cachedStoreBySlug(localSlug);
 
     if (store0 && isPublicStoreStatus(store0.status)) {
