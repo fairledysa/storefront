@@ -4,7 +4,7 @@
   "crons": [
     {
       "path": "/api/analytics/flush",
-      "schedule": "*/15 * * * *"
+      "schedule": "15 3 * * *"
     }
   ]
 }
