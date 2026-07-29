@@ -1,6 +1,7 @@
 // FILE: apps/storefront/src/themes/malak/screens/page/PageScreen.tsx
 
 import SafePageHtml from "./SafePageHtml";
+import HtmlThemeSections from "../../components/theme-page-tools/HtmlThemeSections";
 
 type StorePageData = {
   id: string;
@@ -15,7 +16,7 @@ type StorePageData = {
 };
 
 type Props = {
-  data: StorePageData;
+  data: StorePageData & { theme?: any; themeOptions?: any; theme_options?: any };
 };
 
 function isHtmlPage(type: string) {
@@ -65,6 +66,7 @@ export default function PageScreen({ data }: Props) {
             </div>
           )}
         </article>
+        <HtmlThemeSections data={data} pageKey="page" entityId={String(data?.id || "")} />
       </div>
     </main>
   );

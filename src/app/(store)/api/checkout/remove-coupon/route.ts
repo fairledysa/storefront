@@ -247,7 +247,8 @@ export async function POST() {
         summary,
       },
     });
-  } catch (e: any) {
-    return jsonError(e?.message || "REMOVE_COUPON_FAILED", 500);
+  } catch (error: any) {
+    console.error("REMOVE_COUPON_FAILED", error);
+    return jsonError("REMOVE_COUPON_FAILED", 500);
   }
 }

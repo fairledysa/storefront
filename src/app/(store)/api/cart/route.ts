@@ -295,7 +295,16 @@ function applyCartTaxToConvertedPrices(
   };
 }
 
-async function readSelectedCurrencyCodeFromCookies() {
+async function readSelectedCurrencyCode(
+  request?: Request,
+) {
+  const headerCode = cleanCurrencyCode(
+    request?.headers.get("x-currency-code"),
+    "",
+  );
+
+  if (headerCode) return headerCode;
+
   try {
     const jar = await cookies();
 
@@ -1719,8 +1728,8 @@ async function writeCartTracking(args: {
 
 export async function GET(request: Request) {
   try {
-    const store_id = await getStoreIdOrThrow();
-    const sid = await getCartSessionIdFromCookie();
+    const store_id = await getStoreIdOrThrow(request);
+    const sid = await getCartSessionIdFromCookie(request);
 
     const [ordersDb, storeDb] = await Promise.all([
       getOrdersDb(store_id),
@@ -1728,7 +1737,7 @@ export async function GET(request: Request) {
     ]);
 
     const [cart, storeCurrencyInfo] = await Promise.all([
-      getExistingOpenCart({ store_id, session_id: sid }),
+      getExistingOpenCart({ store_id, session_id: sid, request }),
       getStoreCurrencyInfo(store_id),
     ]);
 
@@ -1795,7 +1804,7 @@ await writeCartTracking({
 
     const [selectedCookieCurrency, currencyRows, cartTaxContext] =
       await Promise.all([
-        readSelectedCurrencyCodeFromCookies(),
+        readSelectedCurrencyCode(request),
         fetchStoreCurrenciesForRuntime(storeDb, store_id),
         cartTaxContextPromise,
       ]);

@@ -13,7 +13,7 @@ function s(value: unknown) {
 
 export async function GET(req: NextRequest) {
   try {
-    const storeId = await getStoreIdOrThrow();
+    const storeId = await getStoreIdOrThrow(req);
     const sb: any = await getOrdersDb(storeId);
 
     const url = new URL(req.url);

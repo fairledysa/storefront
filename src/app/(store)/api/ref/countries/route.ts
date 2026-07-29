@@ -11,9 +11,9 @@ function s(value: unknown) {
   return String(value ?? "").trim();
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const storeId = await getStoreIdOrThrow();
+    const storeId = await getStoreIdOrThrow(req);
     const sb: any = await getOrdersDb(storeId);
 
     const { data, error } = await sb

@@ -252,7 +252,10 @@ export async function GET() {
         summary,
       },
     });
-  } catch (e: any) {
-    return jsonError(e?.message || "PREPARE_FAILED", 500);
+  } catch (error: any) {
+    console.error("CHECKOUT_PREPARE_FAILED", {
+      message: String(error?.message || error || "PREPARE_FAILED"),
+    });
+    return jsonError("PREPARE_FAILED", 500);
   }
 }

@@ -1,0 +1,26 @@
+import "server-only";
+import { getCategoriesTree, type CategoryNode } from "@/data/catalog/categories";
+import { getProductsByCategory, type ProductRow } from "@/data/catalog/products";
+import { getStoreOptions } from "@/data/store/options";
+import type { BootstrapRequest } from "../bootstrap/bootstrap.types";
+import { getMobileCommerceContext } from "../commerce-context.server";
+import { resolveActiveMobileStoreApp } from "../store-app.server";
+import type { MobileProductCard } from "../home/home.types";
+import { buildMobileProductOptions } from "../product-options.server";
+import type { MobileCategoriesPayload, MobileCategoryNode } from "./categories.types";
+import { canShowPurchaseCount, loadProductSocialPolicy, loadProductSocialStats } from "../product-social.server";
+import { buildMobileProductCard } from "../mobile-product-card.server";
+import { loadMobileProductMarketingMap, type MobileMarketingBadge } from "../marketing/marketing.server";
+
+function object(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
+function number(value: unknown): number | null { const parsed=Number(value); return Number.isFinite(parsed)?parsed:null; }
+function mobileNode(node: CategoryNode): MobileCategoryNode { return { id:node.id,name:node.name,slug:node.slug,public_no:node.public_no,parent_id:node.parent_id,depth:node.depth,image_url:node.image?.url??null,children:node.children.map(mobileNode) }; }
+function flatten(nodes: MobileCategoryNode[]): MobileCategoryNode[] { return nodes.flatMap((node)=>[node,...flatten(node.children)]); }
+function ancestorsFor(nodes: MobileCategoryNode[], selected: MobileCategoryNode | null) { if(!selected)return []; const byId=new Map(flatten(nodes).map((node)=>[node.id,node])); const out:MobileCategoryNode[]=[]; let current:MobileCategoryNode|null=selected; while(current){out.unshift(current); current=current.parent_id?byId.get(current.parent_id)??null:null;} return out; }
+
+function mobileProductOptions(row: ProductRow): MobileProductCard["options"] { return (Array.isArray(row.options)?row.options:[]).map((option)=>({id:String(option.id),name:String(option.name??"").trim(),option_field_type:option.option_field_type?String(option.option_field_type):null,display_type:option.display_type?String(option.display_type):null,values:(Array.isArray(option.values)?option.values:[]).map((value)=>({id:String(value.id),name:String(value.name??"").trim(),display_value:value.display_value==null?null:String(value.display_value),image_url:value.image_url==null?null:String(value.image_url)})).filter((value)=>value.name||value.display_value)})).filter((option)=>option.name&&option.values.length>0); }
+function productMetaText(row:ProductRow,...keys:string[]):string|null { const metadata=object(row.metadata); for(const key of keys){const value=String(metadata[key]??"").trim(); if(value)return value;} return null; }
+function productMetaNumber(row:ProductRow,...keys:string[]):number|null { const metadata=object(row.metadata); for(const key of keys){const value=number(metadata[key]); if(value!==null)return value;} return null; }
+export async function getMobileCategories(input: BootstrapRequest, args: { categoryId?: string | null; sort?: string | null; offset?: string | number | null; limit?: string | number | null }): Promise<MobileCategoriesPayload> {
+  const app=await resolveActiveMobileStoreApp(input.publicAppId); const commerceContext=await getMobileCommerceContext(app,input); const tree=(await getCategoriesTree({store_id:app.storeId,max_depth:6})).map(mobileNode); const all=flatten(tree); const selected=args.categoryId?all.find((item)=>item.id===args.categoryId)??null:null; const storeOptions=await getStoreOptions(app.storeId); const parsedOffset=Math.max(0,Math.floor(Number(args.offset)||0)); const parsedLimit=Math.max(1,Math.min(48,Math.floor(Number(args.limit)||24))); const rows=selected?await getProductsByCategory({store_id:app.storeId,category_id:selected.id,limit:parsedLimit+1,offset:parsedOffset,sort:args.sort??"recommended"}):[]; const hasMore=rows.length>parsedLimit; const products=hasMore?rows.slice(0,parsedLimit):rows; const [socialPolicy,socialStats,productMarketing]=await Promise.all([loadProductSocialPolicy(app.storeId,storeOptions),loadProductSocialStats(app.storeId,products),loadMobileProductMarketingMap({storeId:app.storeId,productIds:products.map((row)=>String(row.id))})]); const native=object(object(app.branding).native_design); return {config_version:app.configVersion,branding:app.branding,navigation:app.navigation,design:object(native.categories_design),tree,selected,ancestors:ancestorsFor(tree,selected),products:products.map((row)=>{const stats=socialStats.get(row.id)??{rating:null,reviewCount:0,soldQty:Math.max(0,Number(row.sold_qty??0)||0)};return buildMobileProductCard(row,storeOptions,buildMobileProductOptions(row),{...stats,showRating:socialPolicy.showRatingsOnApp,showPurchaseCount:canShowPurchaseCount(socialPolicy,row)},productMarketing.get(String(row.id))??null,commerceContext);}),pagination:{offset:parsedOffset,limit:parsedLimit,next_offset:hasMore?parsedOffset+products.length:null,has_more:hasMore}};
+}

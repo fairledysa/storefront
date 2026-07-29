@@ -601,7 +601,7 @@ async function computeShippingAmount(args: {
     new Set(itemsRaw.map((x: any) => String(x.product_id)).filter(Boolean)),
   );
 
-  let visibleIds = new Set<string>();
+  const visibleIds = new Set<string>();
 
   if (productIds.length) {
     const productsR = await sb

@@ -164,7 +164,7 @@ async function fetchThemeVersionOptions(args: {
   const sb = (await getStoreDb(storeId)) as any;
   const wantedStatus = args.preview ? "draft" : "published";
 
-  let versionQuery = await sb
+  const versionQuery = await sb
     .from("store_theme_versions")
     .select("id, theme_id, status, is_default, last_updated_at, created_at")
     .eq("store_id", storeId)

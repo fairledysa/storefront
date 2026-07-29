@@ -22,6 +22,7 @@ import { notifyMerchantNewOrder } from "@/lib/merchant-notifications.server";
 import { awardPaidOrderLoyaltyPoints } from "@/lib/loyalty/order-award.server";
 import { processPaidOrderReferral } from "@/lib/referrals/order-referral.server";
 import { attachPendingReferral } from "@/lib/referrals/attach-referral.server";
+import { verifyUploadProof } from "@/lib/uploads/upload-proof.server";
 export const dynamic = "force-dynamic";
 
 function n(x: any) {
@@ -247,6 +248,23 @@ async function cleanupFailedOrder(args: {
   }
 
   if (releaseR.data?.id) {
+    const couponRelease = await releaseCouponReservation({
+      sb,
+      store_id,
+      order_id,
+    });
+
+    if (!couponRelease.ok) {
+      logCheckoutFailure({
+        stage: `${stage}:release_coupon_reservation`,
+        store_id,
+        cart_id,
+        order_id,
+        request_id,
+        error: couponRelease.error,
+      });
+    }
+
     return { ok: true as const, error: null, completedOrder: null };
   }
 
@@ -551,12 +569,17 @@ async function validateCodPayment(args: {
     .maybeSingle();
 
   if (rateR.error) {
+    logCheckoutFailure({
+      stage: "validate_cod_shipping_rate",
+      store_id,
+      cart_id: cartId,
+      error: rateR.error,
+    });
     return {
       ok: false as const,
       error: "PAYMENT_SHIPPING_RATE_FAILED",
       message_ar: "تعذر التحقق من طريقة الشحن.",
       status: 500,
-      debug: rateR.error.message,
     };
   }
 
@@ -598,12 +621,17 @@ async function validateCodPayment(args: {
     .maybeSingle();
 
   if (carrierR.error) {
+    logCheckoutFailure({
+      stage: "validate_cod_shipping_carrier",
+      store_id,
+      cart_id: cartId,
+      error: carrierR.error,
+    });
     return {
       ok: false as const,
       error: "PAYMENT_SHIPPING_CARRIER_FAILED",
       message_ar: "تعذر التحقق من شركة الشحن.",
       status: 500,
-      debug: carrierR.error.message,
     };
   }
 
@@ -684,12 +712,16 @@ async function validateBankTransferPayment(args: {
     .maybeSingle();
 
   if (r.error) {
+    logCheckoutFailure({
+      stage: "validate_bank_transfer_availability",
+      store_id: args.store_id,
+      error: r.error,
+    });
     return {
       ok: false as const,
       error: "PAYMENT_BANK_CHECK_FAILED",
       message_ar: "تعذر التحقق من التحويل البنكي.",
       status: 500,
-      debug: r.error.message,
     };
   }
 
@@ -710,6 +742,7 @@ async function validateBankTransferPayment(args: {
 async function validateBankTransferProof(args: {
   sb: any;
   store_id: string;
+  customer_id: string;
   value: any;
 }) {
   const proof = args.value && typeof args.value === "object" ? args.value : {};
@@ -720,6 +753,9 @@ async function validateBankTransferProof(args: {
   const receiptFilename = toStr(proof.receiptFilename);
   const receiptMimeType = toStr(proof.receiptMimeType).toLowerCase();
   const receiptSizeBytes = Math.max(0, Math.floor(n(proof.receiptSizeBytes)));
+  const uploadProofToken = toStr(
+    proof.uploadProofToken ?? proof.upload_proof_token,
+  );
 
   if (!bankAccountId || !isUuid(bankAccountId)) {
     return {
@@ -730,7 +766,7 @@ async function validateBankTransferProof(args: {
     };
   }
 
-  if (!senderAccountName) {
+  if (!senderAccountName || senderAccountName.length > 120) {
     return {
       ok: false as const,
       error: "BANK_TRANSFER_SENDER_REQUIRED",
@@ -744,6 +780,28 @@ async function validateBankTransferProof(args: {
       ok: false as const,
       error: "BANK_TRANSFER_RECEIPT_REQUIRED",
       message_ar: "ارفع صورة إيصال التحويل قبل تأكيد الطلب.",
+      status: 400,
+    };
+  }
+
+  let parsedReceiptUrl: URL | null = null;
+
+  try {
+    parsedReceiptUrl = new URL(receiptUrl);
+  } catch {
+    parsedReceiptUrl = null;
+  }
+
+  if (
+    !parsedReceiptUrl ||
+    (parsedReceiptUrl.protocol !== "https:" &&
+      process.env.NODE_ENV === "production") ||
+    !["https:", "http:"].includes(parsedReceiptUrl.protocol)
+  ) {
+    return {
+      ok: false as const,
+      error: "BANK_TRANSFER_RECEIPT_INVALID_URL",
+      message_ar: "رابط إيصال التحويل غير صالح. ارفع الصورة مرة أخرى.",
       status: 400,
     };
   }
@@ -766,6 +824,25 @@ async function validateBankTransferProof(args: {
     };
   }
 
+  if (
+    !uploadProofToken ||
+    !verifyUploadProof(uploadProofToken, {
+      store_id: args.store_id,
+      customer_id: args.customer_id,
+      public_url: parsedReceiptUrl.toString(),
+      mime_type: receiptMimeType,
+      size_bytes: receiptSizeBytes,
+    })
+  ) {
+    return {
+      ok: false as const,
+      error: "BANK_TRANSFER_RECEIPT_PROOF_INVALID",
+      message_ar:
+        "تعذر التحقق من إيصال التحويل. ارفع الصورة من جديد ثم حاول مرة أخرى.",
+      status: 400,
+    };
+  }
+
   const bankR = await args.sb
     .from("store_bank_accounts")
     .select("id,status")
@@ -776,12 +853,16 @@ async function validateBankTransferProof(args: {
     .maybeSingle();
 
   if (bankR.error) {
+    logCheckoutFailure({
+      stage: "validate_bank_transfer_account",
+      store_id: args.store_id,
+      error: bankR.error,
+    });
     return {
       ok: false as const,
       error: "BANK_TRANSFER_ACCOUNT_CHECK_FAILED",
       message_ar: "تعذر التحقق من حساب التحويل البنكي.",
       status: 500,
-      debug: bankR.error.message,
     };
   }
 
@@ -800,7 +881,7 @@ async function validateBankTransferProof(args: {
       bank_account_id: bankAccountId,
       sender_account_name: senderAccountName,
       receipt_url: receiptUrl,
-      receipt_filename: receiptFilename || "receipt",
+      receipt_filename: (receiptFilename || "receipt").slice(0, 180),
       receipt_mime_type: receiptMimeType,
       receipt_size_bytes: receiptSizeBytes,
     },
@@ -823,38 +904,195 @@ async function validateProviderPayment(args: {
     };
   }
 
-  const r = await args.sb
-    .from("store_payment_methods")
-    .select("id,provider_code,enabled,status")
+  return {
+    ok: false as const,
+    error: "PAYMENT_PROVIDER_CHECKOUT_NOT_IMPLEMENTED",
+    message_ar:
+      "الدفع الإلكتروني غير متاح حتى يكتمل ربط إنشاء الدفع والتحقق منه على الخادم.",
+    status: 503,
+  };
+}
+
+type CouponReservationInput = {
+  coupon_id: string;
+  usage_limit: number | null;
+  usage_limit_per_user: number | null;
+};
+
+function dateIsAfterNow(value: unknown) {
+  const parsed = Date.parse(toStr(value));
+  return Number.isFinite(parsed) && parsed > Date.now();
+}
+
+function dateIsBeforeNow(value: unknown) {
+  const parsed = Date.parse(toStr(value));
+  return Number.isFinite(parsed) && parsed < Date.now();
+}
+
+async function prepareCouponReservation(args: {
+  ordersDb: any;
+  storeDb: any;
+  store_id: string;
+  cart_id: string;
+  customer_id: string | null;
+  coupon_id: string;
+  summary: any;
+}) {
+  const couponR = await args.storeDb
+    .from("coupons")
+    .select(
+      "id,status,start_at,end_at,usage_limit,usage_limit_per_user",
+    )
+    .eq("id", args.coupon_id)
     .eq("store_id", args.store_id)
-    .ilike("provider_code", providerCode)
     .limit(1)
     .maybeSingle();
 
-  if (r.error) {
+  if (couponR.error) {
     return {
       ok: false as const,
-      error: "PAYMENT_PROVIDER_CHECK_FAILED",
-      message_ar: "تعذر التحقق من طريقة الدفع الإلكتروني.",
+      error: "COUPON_REVALIDATION_FAILED",
       status: 500,
-      debug: r.error.message,
     };
   }
 
-  const row = r.data;
+  const coupon = couponR.data;
+  const summaryCoupon = args.summary?.coupon;
 
-  if (!row?.id || !row.enabled || toStr(row.status) !== "active") {
+  if (
+    !coupon?.id ||
+    toStr(coupon.status) !== "active" ||
+    dateIsAfterNow(coupon.start_at) ||
+    dateIsBeforeNow(coupon.end_at) ||
+    !summaryCoupon?.code
+  ) {
     return {
       ok: false as const,
-      error: "PAYMENT_PROVIDER_NOT_AVAILABLE",
-      message_ar: "طريقة الدفع الإلكتروني غير متاحة حاليًا.",
-      status: 400,
+      error: "COUPON_NO_LONGER_VALID",
+      status: 409,
+    };
+  }
+
+  const usageLimit =
+    coupon.usage_limit == null
+      ? null
+      : Math.max(0, Math.floor(n(coupon.usage_limit)));
+  const usageLimitPerUser =
+    coupon.usage_limit_per_user == null
+      ? null
+      : Math.max(0, Math.floor(n(coupon.usage_limit_per_user)));
+
+  if (usageLimitPerUser != null && !args.customer_id) {
+    return {
+      ok: false as const,
+      error: "COUPON_LOGIN_REQUIRED",
+      status: 401,
+    };
+  }
+
+  const abandonedR = await args.ordersDb
+    .from("abandoned_cart_offer_coupons")
+    .select("id,cart_id,expires_at,used_at,max_cart_total")
+    .eq("store_id", args.store_id)
+    .eq("coupon_id", args.coupon_id)
+    .limit(1)
+    .maybeSingle();
+
+  if (abandonedR.error) {
+    return {
+      ok: false as const,
+      error: "COUPON_REVALIDATION_FAILED",
+      status: 500,
+    };
+  }
+
+  const abandoned = abandonedR.data;
+  if (
+    abandoned?.id &&
+    (toStr(abandoned.cart_id) !== args.cart_id ||
+      Boolean(abandoned.used_at) ||
+      dateIsBeforeNow(abandoned.expires_at) ||
+      (n(abandoned.max_cart_total) > 0 &&
+        n(args.summary?.subtotal) > n(abandoned.max_cart_total)))
+  ) {
+    return {
+      ok: false as const,
+      error: "ABANDONED_OFFER_NO_LONGER_VALID",
+      status: 409,
     };
   }
 
   return {
     ok: true as const,
+    reservation: {
+      coupon_id: toStr(coupon.id),
+      usage_limit: usageLimit,
+      usage_limit_per_user: usageLimitPerUser,
+    } satisfies CouponReservationInput,
   };
+}
+
+async function reserveCouponRedemption(args: {
+  sb: any;
+  store_id: string;
+  cart_id: string;
+  order_id: string;
+  customer_id: string | null;
+  subtotal: number;
+  reservation: CouponReservationInput;
+}) {
+  const result = await args.sb.rpc("checkout_reserve_coupon_redemption", {
+    p_store_id: args.store_id,
+    p_coupon_id: args.reservation.coupon_id,
+    p_order_id: args.order_id,
+    p_cart_id: args.cart_id,
+    p_customer_id: args.customer_id,
+    p_usage_limit: args.reservation.usage_limit,
+    p_usage_limit_per_user: args.reservation.usage_limit_per_user,
+    p_subtotal: args.subtotal,
+  });
+
+  if (result.error) {
+    return {
+      ok: false as const,
+      error: result.error,
+      code: "COUPON_RESERVATION_UNAVAILABLE",
+      status: 503,
+    };
+  }
+
+  const payload = Array.isArray(result.data) ? result.data[0] : result.data;
+  if (payload?.ok !== true) {
+    return {
+      ok: false as const,
+      error: payload,
+      code: toStr(payload?.error) || "COUPON_LIMIT_REACHED",
+      status: 409,
+    };
+  }
+
+  return { ok: true as const };
+}
+
+async function releaseCouponReservation(args: {
+  sb: any;
+  store_id: string;
+  order_id: string;
+}) {
+  try {
+    const result = await args.sb.rpc("checkout_release_coupon_redemption", {
+      p_store_id: args.store_id,
+      p_order_id: args.order_id,
+    });
+
+    if (result.error) {
+      return { ok: false as const, error: result.error };
+    }
+
+    return { ok: true as const, error: null };
+  } catch (error: any) {
+    return { ok: false as const, error };
+  }
 }
 
 async function validateSelectedPaymentMethod(args: {
@@ -2288,17 +2526,16 @@ export async function POST(req: Request) {
   const sb: any = await Promise.resolve(getOrdersDb(store_id) as any);
 
   if (!sb || typeof sb.from !== "function") {
+    console.error("ORDERS_DB_INVALID", {
+      typeof_getOrdersDb: typeof getOrdersDb,
+      typeof_sb: typeof sb,
+      typeof_sb_from: typeof sb?.from,
+    });
     return NextResponse.json(
       {
         ok: false,
         error: "ORDERS_DB_INVALID",
         message_ar: "اتصال قاعدة بيانات الطلبات غير صحيح.",
-        debug: {
-          typeof_getOrdersDb: typeof getOrdersDb,
-          typeof_sb: typeof sb,
-          typeof_sb_from: typeof sb?.from,
-          keys: sb && typeof sb === "object" ? Object.keys(sb).slice(0, 20) : [],
-        },
       },
       { status: 500 },
     );
@@ -2458,8 +2695,19 @@ export async function POST(req: Request) {
       );
     }
 
+    logCheckoutFailure({
+      stage: "normalize_cart",
+      store_id,
+      cart_id: String(cart.id),
+      request_id,
+      error: e,
+    });
     return NextResponse.json(
-      { ok: false, error: msg || "CART_NORMALIZE_FAILED" },
+      {
+        ok: false,
+        error: "CART_NORMALIZE_FAILED",
+        message_ar: "تعذر تجهيز عناصر السلة. حدّث الصفحة وحاول مرة أخرى.",
+      },
       { status: 500 },
     );
   }
@@ -2508,10 +2756,6 @@ export async function POST(req: Request) {
         Object.assign(paymentExtra, paymentCheck.extra);
       }
 
-      if ("debug" in paymentCheck && paymentCheck.debug) {
-        paymentExtra.debug = paymentCheck.debug;
-      }
-
       return paymentValidationError({
         error: paymentCheck.error,
         message_ar: paymentCheck.message_ar,
@@ -2520,12 +2764,18 @@ export async function POST(req: Request) {
       });
     }
   } catch (e: any) {
+    logCheckoutFailure({
+      stage: "validate_payment",
+      store_id,
+      cart_id: String(cart.id),
+      request_id,
+      error: e,
+    });
     return NextResponse.json(
       {
         ok: false,
         error: "PAYMENT_VALIDATION_FAILED",
         message_ar: "تعذر التحقق من طريقة الدفع. حاول مرة أخرى.",
-        debug: toStr(e?.message),
       },
       { status: 500 },
     );
@@ -2537,6 +2787,7 @@ export async function POST(req: Request) {
     const proofCheck = await validateBankTransferProof({
       sb,
       store_id,
+      customer_id: toStr(cart?.user_id),
       value: body?.bankTransfer,
     });
 
@@ -2545,10 +2796,6 @@ export async function POST(req: Request) {
         error: proofCheck.error,
         message_ar: proofCheck.message_ar,
         status: proofCheck.status,
-        extra:
-          "debug" in proofCheck && proofCheck.debug
-            ? { debug: proofCheck.debug }
-            : undefined,
       });
     }
 
@@ -2563,13 +2810,52 @@ export async function POST(req: Request) {
     .maybeSingle();
 
   if (ccR.error) {
+    logCheckoutFailure({
+      stage: "read_cart_coupon",
+      store_id,
+      cart_id: String(cart.id),
+      request_id,
+      error: ccR.error,
+    });
     return NextResponse.json(
-      { ok: false, error: ccR.error.message },
+      {
+        ok: false,
+        error: "CART_COUPON_READ_FAILED",
+        message_ar: "تعذر التحقق من الكوبون. حدّث الصفحة وحاول مرة أخرى.",
+      },
       { status: 500 },
     );
   }
 
   const coupon_id = ccR.data?.coupon_id ? String(ccR.data.coupon_id) : null;
+  let couponReservation: CouponReservationInput | null = null;
+
+  if (coupon_id) {
+    const storeDb = await getStoreDb(store_id);
+    const couponCheck = await prepareCouponReservation({
+      ordersDb: sb,
+      storeDb,
+      store_id,
+      cart_id: String(cart.id),
+      customer_id: cart.user_id ? String(cart.user_id) : null,
+      coupon_id,
+      summary,
+    });
+
+    if (!couponCheck.ok) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: couponCheck.error,
+          message_ar:
+            "تغيرت صلاحية الكوبون أو وصل إلى حد الاستخدام. حدّث ملخص الطلب وحاول مرة أخرى.",
+        },
+        { status: couponCheck.status },
+      );
+    }
+
+    couponReservation = couponCheck.reservation;
+  }
 
   let shipping_address_snapshot: any = null;
 
@@ -2580,11 +2866,18 @@ export async function POST(req: Request) {
       });
     }
   } catch (e: any) {
+    logCheckoutFailure({
+      stage: "address_snapshot",
+      store_id,
+      cart_id: String(cart.id),
+      request_id,
+      error: e,
+    });
     return NextResponse.json(
       {
         ok: false,
         error: "ADDRESS_SNAPSHOT_FAILED",
-        debug: toStr(e?.message),
+        message_ar: "تعذر تجهيز عنوان الشحن. راجع العنوان وحاول مرة أخرى.",
       },
       { status: 500 },
     );
@@ -2615,11 +2908,18 @@ export async function POST(req: Request) {
       summary,
     });
   } catch (e: any) {
+    logCheckoutFailure({
+      stage: "shipping_snapshot",
+      store_id,
+      cart_id: String(cart.id),
+      request_id,
+      error: e,
+    });
     return NextResponse.json(
       {
         ok: false,
         error: "SHIPPING_SNAPSHOT_FAILED",
-        debug: toStr(e?.message),
+        message_ar: "تعذر تجهيز طريقة الشحن. اخترها من جديد وحاول مرة أخرى.",
       },
       { status: 500 },
     );
@@ -2669,15 +2969,65 @@ export async function POST(req: Request) {
       return buildOrderProcessingResponse(null);
     }
 
+    logCheckoutFailure({
+      stage: "insert_order",
+      store_id,
+      cart_id: String(cart.id),
+      request_id,
+      error: e,
+    });
     return NextResponse.json(
       {
         ok: false,
         error: "ORDER_INSERT_FAILED",
         message_ar: "تعذر إنشاء الطلب. حاول مرة أخرى.",
-        debug: msg,
       },
       { status: 500 },
     );
+  }
+
+  if (couponReservation) {
+    const couponReserve = await reserveCouponRedemption({
+      sb,
+      store_id,
+      cart_id: String(cart.id),
+      order_id: String(order.id),
+      customer_id: cart.user_id ? String(cart.user_id) : null,
+      subtotal: round2(Math.max(0, n(summary?.subtotal))),
+      reservation: couponReservation,
+    });
+
+    if (!couponReserve.ok) {
+      await cleanupFailedOrder({
+        sb,
+        store_id,
+        order_id: String(order.id),
+        stage: "coupon_reservation",
+        cart_id: String(cart.id),
+        request_id,
+      });
+
+      logCheckoutFailure({
+        stage: "coupon_reservation",
+        store_id,
+        cart_id: String(cart.id),
+        order_id: String(order.id),
+        request_id,
+        error: couponReserve.error,
+      });
+
+      return NextResponse.json(
+        {
+          ok: false,
+          error: couponReserve.code,
+          message_ar:
+            couponReserve.status === 503
+              ? "تعذر تأمين استخدام الكوبون على الخادم. حاول لاحقًا."
+              : "وصل الكوبون إلى حد الاستخدام أو لم يعد متاحًا.",
+        },
+        { status: couponReserve.status },
+      );
+    }
   }
 
   try {
@@ -2946,6 +3296,14 @@ export async function POST(req: Request) {
     });
 
     if (holdR.error || !holdR.data?.hold?.id) {
+      logCheckoutFailure({
+        stage: "wallet_hold",
+        store_id,
+        cart_id: String(cart.id),
+        order_id: String(order.id),
+        request_id,
+        error: holdR.error || new Error("WALLET_HOLD_MISSING"),
+      });
       await cleanupFailedOrder({
         sb, store_id, order_id: String(order.id), stage: "wallet_hold_failed",
         cart_id: String(cart.id), request_id,
@@ -2957,7 +3315,6 @@ export async function POST(req: Request) {
           message_ar: toStr(holdR.error?.message).includes("INSUFFICIENT_WALLET_BALANCE")
             ? "رصيد المحفظة غير كافٍ."
             : "تعذر حجز رصيد المحفظة. حاول مرة أخرى.",
-          debug: toStr(holdR.error?.message) || null,
         },
         { status: 409 },
       );
@@ -3156,17 +3513,6 @@ export async function POST(req: Request) {
       },
       { status: 500 },
     );
-  }
-
-  if (coupon_id) {
-    const red = await sb.from("coupon_redemptions").insert({
-      store_id,
-      coupon_id,
-      order_id: order.id,
-      customer_id: cart.user_id ? String(cart.user_id) : null,
-    });
-
-    void red;
   }
 
   const cartOffersApplied = Array.isArray(summary?.cartOffers?.appliedOffers)

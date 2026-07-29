@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getStoreDb } from "@/data/db/store-db.server";
 import { verifySession } from "@/lib/auth/session";
+import { storeCustomerExists } from "@/lib/auth/store-customer.server";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
 
 export const dynamic = "force-dynamic";
@@ -250,6 +251,10 @@ async function getContext() {
   }
 
   if (!customerId) {
+    return { error: json({ ok: false, error: "UNAUTHENTICATED" }, 401) } as const;
+  }
+
+  if (!(await storeCustomerExists(db, storeId, customerId))) {
     return { error: json({ ok: false, error: "UNAUTHENTICATED" }, 401) } as const;
   }
 

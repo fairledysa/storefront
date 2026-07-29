@@ -8,6 +8,7 @@ import { controlDb } from "@/data/db/control-db.server";
 import { getOrdersDb } from "@/data/db/orders-db.server";
 import { getStoreDb } from "@/data/db/store-db.server";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
+import { resolveActiveMobileStoreApp } from "@/data/mobile/store-app.server";
 import { verifySession } from "@/lib/auth/session";
 
 const CART_COOKIE = "darb_cart_session";
@@ -17,7 +18,16 @@ function cryptoRandomId() {
   return crypto.randomUUID();
 }
 
-export async function getStoreIdOrThrow() {
+export async function getStoreIdOrThrow(request?: Request) {
+  const publicAppId = String(
+    request?.headers.get("x-store-app-id") ?? "",
+  ).trim();
+
+  if (publicAppId) {
+    const app = await resolveActiveMobileStoreApp(publicAppId);
+    return app.storeId;
+  }
+
   const ctx = await resolveStoreContext();
   const store = ctx.store;
 
@@ -235,7 +245,18 @@ async function ensureCartCurrency(
   return up.data;
 }
 
-export async function getCartSessionId() {
+function readCartSessionHeader(request?: Request) {
+  const value = String(
+    request?.headers.get("x-cart-session-id") ?? "",
+  ).trim();
+
+  return /^[A-Za-z0-9:_-]{16,160}$/.test(value) ? value : "";
+}
+
+export async function getCartSessionId(request?: Request) {
+  const headerSessionId = readCartSessionHeader(request);
+  if (headerSessionId) return headerSessionId;
+
   const jar = await cookies();
   let sid = jar.get(CART_COOKIE)?.value || "";
 
@@ -244,7 +265,10 @@ export async function getCartSessionId() {
   return sid;
 }
 
-export async function getCartSessionIdFromCookie() {
+export async function getCartSessionIdFromCookie(request?: Request) {
+  const headerSessionId = readCartSessionHeader(request);
+  if (headerSessionId) return headerSessionId;
+
   const jar = await cookies();
   return String(jar.get(CART_COOKIE)?.value || "").trim();
 }
@@ -266,14 +290,35 @@ export function cartSessionCookie(sid: string) {
  * لا نثق في customer_id من الكوكي مباشرة.
  * لازم نتأكد أن العميل مربوط بنفس المتجر الحالي في store_customers.
  */
-async function getCustomerIdMaybe(store_id: string): Promise<string | null> {
+function readBearerToken(request?: Request) {
+  const authorization = String(
+    request?.headers.get("authorization") ?? "",
+  ).trim();
+
+  if (!authorization.toLowerCase().startsWith("bearer ")) {
+    return "";
+  }
+
+  return authorization.slice(7).trim();
+}
+
+async function readSessionToken(request?: Request) {
+  const bearer = readBearerToken(request);
+  if (bearer) return bearer;
+
+  const jar = await cookies();
+  return String(jar.get(SESSION_COOKIE)?.value || "").trim();
+}
+
+async function getCustomerIdMaybe(
+  store_id: string,
+  request?: Request,
+): Promise<string | null> {
   const storeId = String(store_id ?? "").trim();
   if (!storeId) return null;
 
   try {
-    const jar = await cookies();
-    const token = jar.get(SESSION_COOKIE)?.value || "";
-
+    const token = await readSessionToken(request);
     if (!token) return null;
 
     const payload = verifySession(token);
@@ -341,6 +386,7 @@ function pickBestExistingCart(carts: any[]) {
 export async function getExistingOpenCart(args: {
   store_id: string;
   session_id?: string | null;
+  request?: Request;
 }) {
   const storeId = String(args.store_id ?? "").trim();
   const sessionId = String(args.session_id ?? "").trim();
@@ -348,7 +394,7 @@ export async function getExistingOpenCart(args: {
   if (!storeId) throw new Error("STORE_NOT_FOUND");
 
   const ordersDb: any = await getOrdersDb(storeId);
-  const customer_id = await getCustomerIdMaybe(storeId);
+  const customer_id = await getCustomerIdMaybe(storeId, args.request);
 
   const carts: any[] = [];
   const seen = new Set<string>();
@@ -977,6 +1023,7 @@ async function mergeSessionCartIntoCustomerCart(args: {
 export async function getOrCreateOpenCart(args: {
   store_id: string;
   session_id: string;
+  request?: Request;
 }) {
   const storeId = String(args.store_id ?? "").trim();
   const sessionId = String(args.session_id ?? "").trim();
@@ -987,7 +1034,7 @@ export async function getOrCreateOpenCart(args: {
   const storeDb: any = await getStoreDb(storeId);
 
   const currency = await getStoreCurrency(storeId);
-  const customer_id = await getCustomerIdMaybe(storeId);
+  const customer_id = await getCustomerIdMaybe(storeId, args.request);
 
   if (customer_id) {
     return await mergeSessionCartIntoCustomerCart({
@@ -1040,6 +1087,7 @@ export async function getOrCreateOpenCart(args: {
 export async function getExistingOpenCartsForInitialCount(args: {
   store_id: string;
   session_id: string;
+  request?: Request;
 }) {
   const storeId = String(args.store_id ?? "").trim();
   const sessionId = String(args.session_id ?? "").trim();
@@ -1047,7 +1095,7 @@ export async function getExistingOpenCartsForInitialCount(args: {
   if (!storeId) return [];
 
   const ordersDb: any = await getOrdersDb(storeId);
-  const customer_id = await getCustomerIdMaybe(storeId);
+  const customer_id = await getCustomerIdMaybe(storeId, args.request);
 
   const carts: any[] = [];
   const seen = new Set<string>();

@@ -180,6 +180,7 @@ type BankTransferPayload = {
   receiptFilename: string;
   receiptMimeType: string;
   receiptSizeBytes: number;
+  uploadProofToken: string;
 };
 
 type MoneyFormatInfo = {

@@ -2,7 +2,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useSyncExternalStore, useTransition } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import Icon from "@/components/icon/Icon";
@@ -22,6 +22,13 @@ type Props = {
 };
 
 type SortKey = "" | "latest" | "popular" | "price_asc" | "price_desc";
+
+type MarketingNavigationItem = {
+  type: string;
+  label: string;
+  href: string;
+  icon?: string;
+};
 
 const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
   { value: "", label: "التوصية" },
@@ -124,6 +131,40 @@ export default function CategoriesMobileScreen({ data, mode, seoMode }: Props) {
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
   const { tree, loading, error } = useCategoriesTree({ maxDepth: 6 });
+  const [marketingNavigation, setMarketingNavigation] = useState<MarketingNavigationItem[]>([]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    void fetch("/api/catalog/marketing-navigation", {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return response.json();
+      })
+      .then((payload) => {
+        if (controller.signal.aborted) return;
+
+        const items = Array.isArray(payload?.data?.items) ? payload.data.items : [];
+        setMarketingNavigation(
+          items
+            .map((item: any) => ({
+              type: s(item?.type),
+              label: s(item?.label),
+              href: s(item?.href),
+              icon: s(item?.icon),
+            }))
+            .filter((item: MarketingNavigationItem) => item.label && item.href),
+        );
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setMarketingNavigation([]);
+      });
+
+    return () => controller.abort();
+  }, []);
 
   /*
    * أثناء SSR وأول hydration نرجع false في الطرفين،
@@ -178,6 +219,19 @@ export default function CategoriesMobileScreen({ data, mode, seoMode }: Props) {
           <span className="mk-mcat__rootChipMedia">#</span>
           <strong>كل الأقسام</strong>
         </span>
+
+        {marketingNavigation.map((item) => (
+          <Link
+            key={`marketing-${item.type || item.href}`}
+            href={item.href}
+            className="mk-mcat__rootChip mk-mcat__rootChip--marketing"
+          >
+            <span className="mk-mcat__rootChipMedia" aria-hidden="true">
+              {item.icon || "✦"}
+            </span>
+            <strong>{item.label}</strong>
+          </Link>
+        ))}
 
         {visibleRoots.map((root) => {
           const imageUrl = getImageUrl(root);

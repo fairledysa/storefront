@@ -2,6 +2,8 @@
 
 "use client";
 
+import HtmlThemeSections from "../../components/theme-page-tools/HtmlThemeSections";
+
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
@@ -1519,6 +1521,7 @@ export default function CategoryScreen({ data, mode }: Props) {
                             .join(" ")}
                           style={{ "--cat-depth": depth } as any}
                           role="treeitem"
+                          aria-selected={active}
                           aria-expanded={hasChildren ? isOpen : undefined}
                         >
                           <button
@@ -1781,6 +1784,7 @@ export default function CategoryScreen({ data, mode }: Props) {
           </aside>
         </div>
       </div>
+      <HtmlThemeSections data={data} pageKey="category" entityId={String(data?.category?.id || data?.category_id || "")} />
     </div>
   );
 }

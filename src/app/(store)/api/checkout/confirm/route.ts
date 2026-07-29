@@ -92,10 +92,11 @@ async function getCheckoutCustomerId(args: { sb: any; store_id: string }) {
       .maybeSingle();
 
     if (linkR.error) {
+      console.error("CHECKOUT_CUSTOMER_LINK_FAILED", linkR.error);
       return {
         ok: false as const,
         status: 500,
-        error: linkR.error.message,
+        error: "CUSTOMER_LINK_CHECK_FAILED",
       };
     }
 
@@ -139,10 +140,11 @@ async function getCheckoutCart(args: {
     .maybeSingle();
 
   if (customerCartR.error) {
+    console.error("CHECKOUT_CUSTOMER_CART_FAILED", customerCartR.error);
     return {
       ok: false as const,
       status: 500,
-      error: customerCartR.error.message,
+      error: "CHECKOUT_CART_LOOKUP_FAILED",
       cart: null,
     };
   }
@@ -178,10 +180,11 @@ async function getCheckoutCart(args: {
     .maybeSingle();
 
   if (sessionCartR.error) {
+    console.error("CHECKOUT_SESSION_CART_FAILED", sessionCartR.error);
     return {
       ok: false as const,
       status: 500,
-      error: sessionCartR.error.message,
+      error: "CHECKOUT_CART_LOOKUP_FAILED",
       cart: null,
     };
   }
@@ -210,10 +213,11 @@ async function getCheckoutCart(args: {
     .maybeSingle();
 
   if (claimR.error) {
+    console.error("CHECKOUT_CART_CLAIM_FAILED", claimR.error);
     return {
       ok: false as const,
       status: 500,
-      error: claimR.error.message,
+      error: "CHECKOUT_CART_CLAIM_FAILED",
       cart: null,
     };
   }
@@ -266,7 +270,8 @@ async function getAddressCity(args: {
     .maybeSingle();
 
   if (r.error) {
-    return { ok: false as const, error: r.error.message, city_id: null };
+    console.error("CHECKOUT_ADDRESS_CITY_FAILED", r.error);
+    return { ok: false as const, error: "ADDRESS_CHECK_FAILED", city_id: null };
   }
 
   if (!r.data?.id) {
@@ -326,7 +331,8 @@ async function validateShippingSelection(args: {
     .maybeSingle();
 
   if (rateR.error) {
-    return { ok: false, error: rateR.error.message };
+    console.error("CHECKOUT_SHIPPING_RATE_FAILED", rateR.error);
+    return { ok: false, error: "SHIPPING_RATE_CHECK_FAILED" };
   }
 
   if (rateR.data?.id) {
@@ -351,7 +357,8 @@ async function validateShippingSelection(args: {
       .maybeSingle();
 
     if (carrierR.error) {
-      return { ok: false, error: carrierR.error.message };
+      console.error("CHECKOUT_SHIPPING_CARRIER_FAILED", carrierR.error);
+      return { ok: false, error: "SHIPPING_CARRIER_CHECK_FAILED" };
     }
 
     if (!carrierR.data?.id) {
@@ -387,7 +394,8 @@ async function validateShippingSelection(args: {
     .maybeSingle();
 
   if (pointR.error) {
-    return { ok: false, error: pointR.error.message };
+    console.error("CHECKOUT_PICKUP_POINT_FAILED", pointR.error);
+    return { ok: false, error: "PICKUP_POINT_CHECK_FAILED" };
   }
 
   if (!pointR.data?.id) {
@@ -410,7 +418,8 @@ async function validateShippingSelection(args: {
     .maybeSingle();
 
   if (carrierR.error) {
-    return { ok: false, error: carrierR.error.message };
+    console.error("CHECKOUT_PICKUP_CARRIER_FAILED", carrierR.error);
+    return { ok: false, error: "SHIPPING_CARRIER_CHECK_FAILED" };
   }
 
   if (!carrierR.data?.id) {
@@ -541,7 +550,10 @@ async function validatePaymentMethod(args: {
       .limit(1)
       .maybeSingle();
 
-    if (rateR.error) return { ok: false as const, error: rateR.error.message };
+    if (rateR.error) {
+      console.error("CHECKOUT_COD_RATE_FAILED", rateR.error);
+      return { ok: false as const, error: "SHIPPING_RATE_CHECK_FAILED" };
+    }
     if (!rateR.data?.id) return { ok: false as const, error: "COD_NOT_AVAILABLE" };
 
     if (rateR.data.cod_enabled !== true) {
@@ -557,7 +569,8 @@ async function validatePaymentMethod(args: {
       .maybeSingle();
 
     if (carrierR.error) {
-      return { ok: false as const, error: carrierR.error.message };
+      console.error("CHECKOUT_COD_CARRIER_FAILED", carrierR.error);
+      return { ok: false as const, error: "SHIPPING_CARRIER_CHECK_FAILED" };
     }
 
     if (!carrierR.data?.id) {
@@ -609,7 +622,8 @@ async function validatePaymentMethod(args: {
       .eq("store_id", store_id);
 
     if (banksR.error) {
-      return { ok: false as const, error: banksR.error.message };
+      console.error("CHECKOUT_BANKS_FAILED", banksR.error);
+      return { ok: false as const, error: "BANK_TRANSFER_CHECK_FAILED" };
     }
 
     const hasActive = (banksR.data ?? []).some(
@@ -624,35 +638,12 @@ async function validatePaymentMethod(args: {
   }
 
   if (isProviderMethod(pm)) {
-    const code = providerCode(pm);
-
-    if (!code) {
-      return { ok: false as const, error: "PROVIDER_NOT_AVAILABLE" };
-    }
-
-    const pmR = await sb
-      .from("store_payment_methods")
-      .select("id,provider_code,enabled,status")
-      .eq("store_id", store_id)
-      .eq("provider_code", code)
-      .limit(1)
-      .maybeSingle();
-
-    if (pmR.error) {
-      return { ok: false as const, error: pmR.error.message };
-    }
-
-    const row = pmR.data;
-
-    if (!row?.id) {
-      return { ok: false as const, error: "PROVIDER_NOT_AVAILABLE" };
-    }
-
-    if (!Boolean(row.enabled) || s(row.status) !== "active") {
-      return { ok: false as const, error: "PROVIDER_NOT_AVAILABLE" };
-    }
-
-    return { ok: true as const };
+    return {
+      ok: false as const,
+      error: providerCode(pm)
+        ? "PAYMENT_PROVIDER_CHECKOUT_NOT_IMPLEMENTED"
+        : "PROVIDER_NOT_AVAILABLE",
+    };
   }
 
   return { ok: false as const, error: "PAYMENT_METHOD_INVALID" };
@@ -818,11 +809,11 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (uR.error) {
-      return jsonError("CONFIRM_UPDATE_FAILED", 500, {
-        error: uR.error.message,
+      console.error("CONFIRM_UPDATE_FAILED", {
+        error: uR.error,
         cart_id,
-        patch,
       });
+      return jsonError("CONFIRM_UPDATE_FAILED", 500);
     }
 
     if (!uR.data?.id) {
@@ -851,7 +842,10 @@ export async function POST(req: Request) {
         },
       },
     });
-  } catch (e: any) {
-    return jsonError(e?.message || "CONFIRM_FAILED", 500);
+  } catch (error: any) {
+    console.error("CHECKOUT_CONFIRM_FAILED", {
+      message: String(error?.message || error || "CONFIRM_FAILED"),
+    });
+    return jsonError("CONFIRM_FAILED", 500);
   }
 }

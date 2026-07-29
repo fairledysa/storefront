@@ -132,6 +132,8 @@ export async function getCategoriesForGrid(args: {
     .order("is_primary", { ascending: false })
     .order("sort_order", { ascending: true });
 
+  if (mediaResult.error) throw new Error(mediaResult.error.message);
+
   const mediaByCategory = new Map<string, any[]>();
 
   for (const media of (mediaResult.data || []) as any[]) {
@@ -210,6 +212,8 @@ export async function getCategoriesTree(args: {
     .in("category_id", ids)
     .order("is_primary", { ascending: false })
     .order("sort_order", { ascending: true });
+
+  if (mediaResult.error) throw new Error(mediaResult.error.message);
 
   const mediaByCategory = new Map<string, any[]>();
 

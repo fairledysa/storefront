@@ -43,13 +43,22 @@ function s(x: any) {
   return String(x ?? "").trim();
 }
 
-async function getCustomerIdFromCookie() {
+async function getCustomerIdFromRequest(req?: Request) {
+  const authorization = String(
+    req?.headers.get("authorization") ?? "",
+  ).trim();
+  const bearer = authorization.toLowerCase().startsWith("bearer ")
+    ? authorization.slice(7).trim()
+    : "";
+
   const jar = await cookies();
-  const token = jar.get("elyaia_session")?.value || "";
+  const token =
+    bearer || jar.get("elyaia_session")?.value || "";
+
   if (!token) return null;
 
   try {
-    const session: any = await verifySession(token);
+    const session: any = verifySession(token);
     return session?.customer_id ? String(session.customer_id) : null;
   } catch {
     return null;
@@ -228,12 +237,12 @@ async function validateAddressLocation(args: {
   };
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const store_id = await getStoreIdOrThrow();
+    const store_id = await getStoreIdOrThrow(req);
     const sb: any = await getOrdersDb(store_id);
 
-    const customer_id = await getCustomerIdFromCookie();
+    const customer_id = await getCustomerIdFromRequest(req);
 
     if (!customer_id) {
       return NextResponse.json({ ok: true, addresses: [] as AddressOut[] });
@@ -284,10 +293,10 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const store_id = await getStoreIdOrThrow();
+    const store_id = await getStoreIdOrThrow(req);
     const sb: any = await getOrdersDb(store_id);
 
-    const customer_id = await getCustomerIdFromCookie();
+    const customer_id = await getCustomerIdFromRequest(req);
 
     if (!customer_id) {
       return NextResponse.json(
@@ -393,10 +402,10 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
-    const store_id = await getStoreIdOrThrow();
+    const store_id = await getStoreIdOrThrow(req);
     const sb: any = await getOrdersDb(store_id);
 
-    const customer_id = await getCustomerIdFromCookie();
+    const customer_id = await getCustomerIdFromRequest(req);
 
     if (!customer_id) {
       return NextResponse.json(
@@ -523,10 +532,10 @@ export async function PATCH(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
-    const store_id = await getStoreIdOrThrow();
+    const store_id = await getStoreIdOrThrow(req);
     const sb: any = await getOrdersDb(store_id);
 
-    const customer_id = await getCustomerIdFromCookie();
+    const customer_id = await getCustomerIdFromRequest(req);
 
     if (!customer_id) {
       return NextResponse.json(

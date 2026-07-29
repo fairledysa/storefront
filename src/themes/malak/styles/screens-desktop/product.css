@@ -3470,3 +3470,85 @@
     var(--mk-color-primary-hover, #111827)
   );
 }
+
+/* Marketing identity shown on the product details page. */
+.mk-dproduct-marketingBanner {
+  width: 100%;
+  min-height: 72px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(139, 92, 246, 0.09), rgba(255, 255, 255, 0.96));
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: inherit;
+  text-decoration: none;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.mk-dproduct-marketingBanner:hover {
+  transform: translateY(-1px);
+  border-color: rgba(139, 92, 246, 0.36);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.09);
+}
+
+.mk-dproduct-marketingBanner__badge {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 7px 11px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.mk-dproduct-marketingBanner__content {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.mk-dproduct-marketingBanner__content strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 850;
+  color: #171717;
+}
+
+.mk-dproduct-marketingBanner__content small {
+  font-size: 12px;
+  color: #667085;
+}
+
+.mk-dproduct-marketingBanner__action {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 800;
+  color: #6d28d9;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .mk-dproduct-marketingBanner {
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    border-radius: 14px;
+  }
+
+  .mk-dproduct-marketingBanner__action {
+    display: none;
+  }
+}

@@ -243,6 +243,16 @@ export function isFaqSection(section: HomeDynamicSection) {
   return sectionHasToken(section, "faq");
 }
 
+export function isHtmlContentSection(section: HomeDynamicSection) {
+  return (
+    sectionHasToken(section, "html_content") ||
+    sectionHasToken(section, "html5") ||
+    sectionHasToken(section, "custom_html") ||
+    sectionHasToken(section, "content_html") ||
+    sectionHasToken(section, "html")
+  );
+}
+
 export function isTestimonialsSection(section: HomeDynamicSection) {
   return (
     sectionHasToken(section, "testimonials") ||
@@ -292,6 +302,7 @@ export function buildDynamicSections(
       if (isStatsSection(section)) return true;
       if (isFaqSection(section)) return true;
       if (isTestimonialsSection(section)) return true;
+      if (isHtmlContentSection(section)) return true;
 
       return section.items.length > 0;
     });

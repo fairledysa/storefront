@@ -1,6 +1,8 @@
 // FILE: apps/storefront/src/themes/malak/screens/product/ProductScreen.tsx
 "use client";
 
+import HtmlThemeSections from "../../components/theme-page-tools/HtmlThemeSections";
+
 import { useMemo, useState } from "react";
 
 import ProductGallery from "./_components/ProductGallery";
@@ -10,6 +12,7 @@ import ProductReviews from "./_components/ProductReviews";
 import StickyAddToCart from "./_components/StickyAddToCart";
 import RecommendedProducts from "./_components/RecommendedProducts";
 import ProductBreadcrumbs from "./_components/ProductBreadcrumbs";
+import ProductMarketingBanner from "./_components/ProductMarketingBanner";
 
 import {
   toProductDetailVM,
@@ -2008,6 +2011,8 @@ const shouldShowProductReviews = Boolean(
         </div>
 
         <div className="mk-dproduct-side">
+          <ProductMarketingBanner productId={String(productVm.id ?? "")} />
+
           <ProductInfo
             storeOptions={storeOptions}
             productOptions={productOptions}
@@ -2260,6 +2265,7 @@ const shouldShowProductReviews = Boolean(
           },
         }}
       />
+      <HtmlThemeSections data={data} pageKey="product" entityId={String(data?.product?.id || data?.product_id || "")} />
     </div>
   );
 }

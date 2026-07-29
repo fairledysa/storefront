@@ -5,6 +5,7 @@ import crypto from "crypto";
 
 import { getStoreDb } from "@/data/db/store-db.server";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
+import { resolveActiveMobileStoreApp } from "@/data/mobile/store-app.server";
 import { hashOtp } from "@/lib/auth/session";
 
 const emailOtpsTable = "auth_email_otps" as any;
@@ -56,13 +57,23 @@ async function sendEmailOtp(to: string, code: string) {
 }
 
 export async function POST(req: Request) {
-  const ctx = await resolveStoreContext();
+  const publicAppId = String(
+    req.headers.get("x-store-app-id") ?? "",
+  ).trim();
 
-  if (!ctx.store?.id) {
-    return NextResponse.json({ error: "STORE_NOT_FOUND" }, { status: 404 });
+  let storeId = "";
+
+  if (publicAppId) {
+    const app = await resolveActiveMobileStoreApp(publicAppId);
+    storeId = app.storeId;
+  } else {
+    const ctx = await resolveStoreContext();
+    storeId = String(ctx.store?.id ?? "");
   }
 
-  const storeId = String(ctx.store.id);
+  if (!storeId) {
+    return NextResponse.json({ error: "STORE_NOT_FOUND" }, { status: 404 });
+  }
 
   const body = await req.json().catch(() => ({}));
   const rawTarget = String(body?.target || "").trim();

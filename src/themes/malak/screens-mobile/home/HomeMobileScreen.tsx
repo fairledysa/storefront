@@ -55,12 +55,14 @@ import {
   isStatsHeroSplitSection,
   isStatsSection,
   isTestimonialsSection,
+  isHtmlContentSection,
   isTripleBannerSection,
   isWideBannerSection,
   maskCustomerName,
 } from "../../screens/home/_dynamic/section-utils";
 
 import SmartSearchFromData from "../../components/smart-search/SmartSearchFromData";
+import HtmlThemeSections from "../../components/theme-page-tools/HtmlThemeSections";
 
 import MobileHero, {
   type MobileHeroSlide,
@@ -2391,6 +2393,16 @@ export default function HomeMobileScreen({ data, seoMode }: Props) {
   return (
     <div className="mk-mobile-home">
       {dynamicSections.map((section, sectionIndex) => {
+        if (isHtmlContentSection(section)) {
+          return (
+            <HtmlThemeSections
+              key={section.id}
+              data={{ ...data, theme: { ...(data?.theme || {}), options: { homepage: { sections: [section.raw] } } } }}
+              pageKey="homepage"
+            />
+          );
+        }
+
         const shouldSkipMergedCircle =
           hasResponsiveHero &&
           mergedMobileCircleSection?.id === section.id &&

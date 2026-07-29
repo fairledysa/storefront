@@ -1,5 +1,7 @@
 // FILE: apps/storefront/src/themes/malak/screens-mobile/product/ProductMobileScreen.tsx
 "use client";
+
+import HtmlThemeSections from "../../components/theme-page-tools/HtmlThemeSections";
 import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 
@@ -2342,6 +2344,7 @@ const productBackHref = useMemo(() => {
           />
         </div>
       ) : null}
+      <HtmlThemeSections data={data} pageKey="product" entityId={String(data?.product?.id || data?.product_id || "")} />
     </main>
   );
 }

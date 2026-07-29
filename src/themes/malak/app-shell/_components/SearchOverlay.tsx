@@ -1439,7 +1439,6 @@ export default function SearchOverlay({
               className="mk-desktop-search__input"
               autoComplete="off"
               aria-label="البحث في المتجر"
-              aria-expanded={open}
             />
 
             <input type="hidden" name="sort" value="newest" />

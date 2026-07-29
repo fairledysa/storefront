@@ -6,6 +6,7 @@ import { cookies } from "next/headers";
 import { getOrdersDb } from "@/data/db/orders-db.server";
 import { getStoreDb } from "@/data/db/store-db.server";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
+import { resolveActiveMobileStoreApp } from "@/data/mobile/store-app.server";
 import { hashOtp, signSession } from "@/lib/auth/session";
 import { attachPendingReferral } from "@/lib/referrals/attach-referral.server";
 
@@ -219,13 +220,24 @@ async function mergeCartAfterLogin(args: {
 }
 
 export async function POST(req: Request) {
-  const ctx = await resolveStoreContext();
+  const publicAppId = String(
+    req.headers.get("x-store-app-id") ?? "",
+  ).trim();
 
-  if (!ctx.store?.id) {
+  let storeId = "";
+
+  if (publicAppId) {
+    const app = await resolveActiveMobileStoreApp(publicAppId);
+    storeId = app.storeId;
+  } else {
+    const ctx = await resolveStoreContext();
+    storeId = String(ctx.store?.id ?? "");
+  }
+
+  if (!storeId) {
     return NextResponse.json({ error: "STORE_NOT_FOUND" }, { status: 404 });
   }
 
-  const storeId = String(ctx.store.id);
   const body = await req.json().catch(() => ({}));
 
   const rawTarget = String(body?.target || "").trim();
@@ -493,7 +505,10 @@ export async function POST(req: Request) {
   await setSessionCookie(session);
 
   const jar = await cookies();
-  const sid = jar.get(CART_COOKIE)?.value || "";
+  const sid =
+    String(req.headers.get("x-cart-session-id") ?? "").trim() ||
+    jar.get(CART_COOKIE)?.value ||
+    "";
 
   let merged_cart_id: string | null = null;
 
@@ -515,5 +530,6 @@ export async function POST(req: Request) {
     store_id: storeId,
     customer_id,
     merged_cart_id,
+    ...(publicAppId ? { session_token: session } : {}),
   });
 }

@@ -4047,11 +4047,15 @@ export async function getMalakBootstrap(input: {
   seoMode: SeoUrlMode;
   themeOptions?: Record<string, any> | null;
   version_id?: string | null;
+  selectedCurrencyCode?: string | null;
 }): Promise<MalakBootstrap> {
   const stableBootstrap = await loadMalakBootstrapStable(input);
-  const selectedCurrencyCode = await readSelectedCurrencyCodeForRequest(
-    input.store.id,
+  const explicitSelectedCurrencyCode = normalizeCurrencyCode(
+    input.selectedCurrencyCode,
   );
+  const selectedCurrencyCode =
+    explicitSelectedCurrencyCode ||
+    (await readSelectedCurrencyCodeForRequest(input.store.id));
 
   return {
     ...stableBootstrap,

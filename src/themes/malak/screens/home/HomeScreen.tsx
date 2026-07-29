@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import ProductsSlider from "./_components/ProductsSlider";
 import SmartSearchFromData from "@/themes/malak/components/smart-search/SmartSearchFromData";
+import HtmlThemeSections from "@/themes/malak/components/theme-page-tools/HtmlThemeSections";
 
 import type {
   HomeDynamicItem,
@@ -53,6 +54,7 @@ import {
   isStatsHeroSplitSection,
   isStatsSection,
   isTestimonialsSection,
+  isHtmlContentSection,
   isWideBannerSection,
   maskCustomerName,
 } from "./_dynamic/section-utils";
@@ -2401,6 +2403,16 @@ const tax = resolveTaxFromData(data);
     <div>
       {dynamicSections.map((section, sectionIndex) => {
         const key = section.id;
+
+        if (isHtmlContentSection(section)) {
+          return (
+            <HtmlThemeSections
+              key={key}
+              data={{ ...data, theme: { ...(data?.theme || {}), options: { homepage: { sections: [section.raw] } } } }}
+              pageKey="homepage"
+            />
+          );
+        }
 
         if (isSmartSearchSection(section)) {
           return (

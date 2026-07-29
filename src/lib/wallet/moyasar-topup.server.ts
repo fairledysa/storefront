@@ -66,6 +66,10 @@ export async function verifyAndCompleteMoyasarTopup(args: {
     return { ok: true, idempotent: true, session };
   }
 
+  if (session.status === "paid") {
+    throw new Error("TOPUP_ALREADY_PAID_WITH_DIFFERENT_PAYMENT");
+  }
+
   const payment = await fetchMoyasarPayment(paymentId);
   const metadata = payment?.metadata && typeof payment.metadata === "object" ? payment.metadata : {};
   const expectedMinor = Math.round(number(session.amount) * 100);
@@ -73,9 +77,10 @@ export async function verifyAndCompleteMoyasarTopup(args: {
   const paymentCurrency = text(payment.currency).toUpperCase();
   const sessionCurrency = text(session.currency).toUpperCase();
 
-  if (text(metadata.store_id) && text(metadata.store_id) !== storeId) throw new Error("MOYASAR_STORE_MISMATCH");
-  if (text(metadata.topup_session_id) && text(metadata.topup_session_id) !== sessionId) throw new Error("MOYASAR_SESSION_MISMATCH");
-  if (text(metadata.customer_id) && text(metadata.customer_id) !== text(session.customer_id)) throw new Error("MOYASAR_CUSTOMER_MISMATCH");
+  if (text(metadata.store_id) !== storeId) throw new Error("MOYASAR_STORE_MISMATCH");
+  if (text(metadata.topup_session_id) !== sessionId) throw new Error("MOYASAR_SESSION_MISMATCH");
+  if (text(metadata.customer_id) !== text(session.customer_id)) throw new Error("MOYASAR_CUSTOMER_MISMATCH");
+  if (text(metadata.purpose) !== "wallet_topup") throw new Error("MOYASAR_PURPOSE_MISMATCH");
   if (paymentAmount !== expectedMinor) throw new Error("MOYASAR_AMOUNT_MISMATCH");
   if (paymentCurrency !== sessionCurrency) throw new Error("MOYASAR_CURRENCY_MISMATCH");
 

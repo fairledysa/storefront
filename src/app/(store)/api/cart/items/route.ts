@@ -1264,15 +1264,15 @@ export async function POST(req: Request) {
       );
     }
 
-    const store_id = await getStoreIdOrThrow();
-    const sid = await getCartSessionId();
+    const store_id = await getStoreIdOrThrow(req);
+    const sid = await getCartSessionId(req);
 
     const [ordersDb, storeDb] = await Promise.all([
       getOrdersDb(store_id),
       getStoreDb(store_id),
     ]);
 
-    const cart = await getOrCreateOpenCart({ store_id, session_id: sid });
+    const cart = await getOrCreateOpenCart({ store_id, session_id: sid, request: req });
 
     const prodR = await storeDb
       .from("products")
@@ -1579,15 +1579,15 @@ export async function PATCH(req: Request) {
   try {
     const body = (await req.json()) as PatchBody;
 
-    const store_id = await getStoreIdOrThrow();
-    const sid = await getCartSessionIdFromCookie();
+    const store_id = await getStoreIdOrThrow(req);
+    const sid = await getCartSessionIdFromCookie(req);
 
     const [ordersDb, storeDb] = await Promise.all([
       getOrdersDb(store_id),
       getStoreDb(store_id),
     ]);
 
-    const cart = await getExistingOpenCart({ store_id, session_id: sid });
+    const cart = await getExistingOpenCart({ store_id, session_id: sid, request: req });
 
     if (!cart?.id) {
       return cartNotFoundResponse();
@@ -2145,11 +2145,11 @@ export async function DELETE(req: Request) {
       );
     }
 
-    const store_id = await getStoreIdOrThrow();
-    const sid = await getCartSessionIdFromCookie();
+    const store_id = await getStoreIdOrThrow(req);
+    const sid = await getCartSessionIdFromCookie(req);
     const ordersDb = await getOrdersDb(store_id);
 
-    const cart = await getExistingOpenCart({ store_id, session_id: sid });
+    const cart = await getExistingOpenCart({ store_id, session_id: sid, request: req });
 
     if (!cart?.id) {
       return cartNotFoundResponse();

@@ -5,20 +5,41 @@ import { cookies } from "next/headers";
 
 import { getStoreDb } from "@/data/db/store-db.server";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
+import { resolveActiveMobileStoreApp } from "@/data/mobile/store-app.server";
 import { verifySession } from "@/lib/auth/session";
 
-export async function GET() {
-  const ctx = await resolveStoreContext();
+export async function GET(req: Request) {
+  const publicAppId = String(
+    req.headers.get("x-store-app-id") ?? "",
+  ).trim();
 
-  if (!ctx.store) {
+  let storeId = "";
+
+  if (publicAppId) {
+    const app = await resolveActiveMobileStoreApp(publicAppId);
+    storeId = app.storeId;
+  } else {
+    const ctx = await resolveStoreContext();
+    storeId = String(ctx.store?.id ?? "");
+  }
+
+  if (!storeId) {
     return NextResponse.json(
       { authed: false },
       { headers: { "Cache-Control": "no-store" } },
     );
   }
 
+  const authorization = String(
+    req.headers.get("authorization") ?? "",
+  ).trim();
+  const bearer = authorization.toLowerCase().startsWith("bearer ")
+    ? authorization.slice(7).trim()
+    : "";
+
   const cookieStore = await cookies();
-  const token = cookieStore.get("elyaia_session")?.value;
+  const token =
+    bearer || cookieStore.get("elyaia_session")?.value || "";
 
   if (!token) {
     return NextResponse.json(
@@ -42,7 +63,6 @@ export async function GET() {
     );
   }
 
-  const storeId = ctx.store.id;
   const sb: any = await getStoreDb(storeId);
 
   const customerR = await sb

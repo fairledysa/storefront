@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { getStoreDb } from "@/data/db/store-db.server";
 import { verifySession } from "@/lib/auth/session";
+import { storeCustomerExists } from "@/lib/auth/store-customer.server";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ async function context() {
  let customerId=text(session?.customer_id);
  if(!customerId && (session?.auth_user_id||session?.user_id)){ const r=await db.from("customers").select("id").eq("auth_user_id",text(session.auth_user_id||session.user_id)).maybeSingle(); customerId=text(r.data?.id); }
  if(!customerId) return {error:json({ok:false,error:"UNAUTHENTICATED"},401)} as const;
+ if(!(await storeCustomerExists(db,storeId,customerId))) return {error:json({ok:false,error:"UNAUTHENTICATED"},401)} as const;
  return {storeId,customerId,db,currency:text(store?.store?.default_currency||"SAR").toUpperCase()} as const;
 }
 function idem(prefix:string){ return `${prefix}:${crypto.randomUUID()}`; }

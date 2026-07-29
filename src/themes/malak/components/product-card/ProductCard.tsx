@@ -122,6 +122,14 @@ export type ProductCardItem = {
 
   badge?: { text: string; bg: string; color: string } | null;
 
+  marketing_badge?: { text?: string | null; bg?: string | null; color?: string | null; icon?: string | null } | null;
+  marketingCollection?: {
+    id?: string | null;
+    slug?: string | null;
+    type?: string | null;
+    name?: string | null;
+  } | null;
+
   tax?: ProductCardTax | null;
 
   isOutOfStock?: boolean;
@@ -1120,6 +1128,84 @@ function getProductCardId(item: ProductCardItem) {
   );
 }
 
+
+type ProductMarketingCardInfo = {
+  badge: { text: string; bg: string; color: string } | null;
+  collection: {
+    id: string;
+    slug: string;
+    type: string;
+    name: string;
+  } | null;
+};
+
+const productMarketingCache = new Map<string, ProductMarketingCardInfo | null>();
+const productMarketingListeners = new Map<string, Set<() => void>>();
+const productMarketingPendingIds = new Set<string>();
+let productMarketingFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+function notifyProductMarketing(productId: string) {
+  for (const listener of productMarketingListeners.get(productId) ?? []) listener();
+}
+
+async function flushProductMarketingRequests() {
+  productMarketingFlushTimer = null;
+  const ids = Array.from(productMarketingPendingIds);
+  productMarketingPendingIds.clear();
+  if (!ids.length) return;
+
+  try {
+    const params = new URLSearchParams({ ids: ids.join(",") });
+    const response = await fetch(`/api/catalog/product-marketing?${params.toString()}`, {
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+    const payload = response.ok ? await response.json() : null;
+    const items = payload?.ok && payload?.items && typeof payload.items === "object"
+      ? payload.items
+      : {};
+
+    for (const productId of ids) {
+      productMarketingCache.set(productId, items[productId] ?? null);
+      notifyProductMarketing(productId);
+    }
+  } catch {
+    for (const productId of ids) {
+      productMarketingCache.set(productId, null);
+      notifyProductMarketing(productId);
+    }
+  }
+}
+
+function queueProductMarketing(productId: string) {
+  if (!productId || productMarketingCache.has(productId)) return;
+  productMarketingPendingIds.add(productId);
+  if (!productMarketingFlushTimer) {
+    productMarketingFlushTimer = setTimeout(flushProductMarketingRequests, 0);
+  }
+}
+
+function useGlobalProductMarketing(productId: string) {
+  const [version, setVersion] = useState(0);
+
+  useEffect(() => {
+    if (!productId) return;
+    const listener = () => setVersion((value) => value + 1);
+    const listeners = productMarketingListeners.get(productId) ?? new Set<() => void>();
+    listeners.add(listener);
+    productMarketingListeners.set(productId, listeners);
+    queueProductMarketing(productId);
+
+    return () => {
+      listeners.delete(listener);
+      if (!listeners.size) productMarketingListeners.delete(productId);
+    };
+  }, [productId]);
+
+  void version;
+  return productId ? productMarketingCache.get(productId) ?? null : null;
+}
+
 function isProductCardButtonClick(target: EventTarget | null) {
   if (!(target instanceof Element)) return false;
 
@@ -1237,6 +1323,18 @@ export default function ProductCard({ item }: { item: ProductCardItem }) {
 
   const pct = calcDiscountPct(item.price, item.compareAtPrice);
   const topBadgeText = s(item.badge?.text) || promo;
+
+  const globalMarketing = useGlobalProductMarketing(productCardId);
+  const effectiveMarketingBadge: {
+    text?: string | null;
+    bg?: string | null;
+    color?: string | null;
+    icon?: string | null;
+  } | null = item.marketing_badge ?? globalMarketing?.badge ?? null;
+  const effectiveMarketingCollection = item.marketingCollection ?? globalMarketing?.collection ?? null;
+  const marketingBadgeText = s(effectiveMarketingBadge?.text);
+  const marketingCollectionName = s(effectiveMarketingCollection?.name);
+  const showMarketingCollectionName = Boolean(marketingCollectionName);
 
   const isOutOfStock = Boolean(item.isOutOfStock);
   const showDashInstead = item.showDashInstead ?? true;
@@ -1420,6 +1518,28 @@ export default function ProductCard({ item }: { item: ProductCardItem }) {
           </div>
 
           <div className="mkpc-body">
+            {marketingBadgeText || marketingCollectionName ? (
+              <div className="mkpc-marketing-row" aria-label="المجموعة التسويقية">
+                {marketingBadgeText ? (
+                  <span
+                    className="mkpc-marketing-badge"
+                    style={{
+                      background: effectiveMarketingBadge?.bg || "#8b5cf6",
+                      color: effectiveMarketingBadge?.color || "#ffffff",
+                    }}
+                  >
+                    {s(effectiveMarketingBadge?.icon) ? <span aria-hidden="true">{s(effectiveMarketingBadge?.icon)} </span> : null}{marketingBadgeText}
+                  </span>
+                ) : null}
+
+                {showMarketingCollectionName ? (
+                  <span className="mkpc-marketing-name" title={marketingCollectionName}>
+                    {marketingCollectionName}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+
             <div className="mkpc-info">
               <div className="mkpc-title" title={title}>
                 {title}

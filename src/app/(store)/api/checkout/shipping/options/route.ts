@@ -234,10 +234,11 @@ async function getCheckoutCustomerId(args: { sb: any; store_id: string }) {
       .maybeSingle();
 
     if (linkR.error) {
+      console.error("SHIPPING_OPTIONS_CUSTOMER_LINK_FAILED", linkR.error);
       return {
         ok: false as const,
         status: 500,
-        error: linkR.error.message,
+        error: "CUSTOMER_LINK_CHECK_FAILED",
       };
     }
 
@@ -1228,7 +1229,10 @@ export async function GET() {
       customer_id: customer.customer_id,
     });
 
-    if (cartR.error) return jsonError(cartR.error.message, 500);
+    if (cartR.error) {
+      console.error("SHIPPING_OPTIONS_CART_FAILED", cartR.error);
+      return jsonError("SHIPPING_OPTIONS_CART_FAILED", 500);
+    }
     if (!cartR.data?.id) return jsonError("CART_NOT_FOUND", 404);
 
     const cart = cartR.data as any;
@@ -1265,8 +1269,13 @@ export async function GET() {
         .maybeSingle(),
     ]);
 
-    if (storeR?.error) return jsonError(storeR.error.message, 500);
-    if (addressR?.error) return jsonError(addressR.error.message, 500);
+    if (storeR?.error || addressR?.error) {
+      console.error("SHIPPING_OPTIONS_CONTEXT_FAILED", {
+        store: storeR?.error || null,
+        address: addressR?.error || null,
+      });
+      return jsonError("SHIPPING_OPTIONS_CONTEXT_FAILED", 500);
+    }
     if (!addressR?.data?.id) return jsonError("ADDRESS_NOT_FOUND", 404);
 
     const address = addressR.data as any;
@@ -1374,7 +1383,10 @@ export async function GET() {
       country_id = s(cityR.data.country_id);
     }
 
-    if (ratesR?.error) return jsonError(ratesR.error.message, 500);
+    if (ratesR?.error) {
+      console.error("SHIPPING_OPTIONS_RATES_FAILED", ratesR.error);
+      return jsonError("SHIPPING_OPTIONS_RATES_FAILED", 500);
+    }
 
     const rates: any[] = Array.isArray((ratesR as any)?.data)
       ? ((ratesR as any).data as any[])
@@ -1421,7 +1433,10 @@ export async function GET() {
         .eq("store_id", store_id)
         .in("id", carrierIds);
 
-      if (carriersR?.error) return jsonError(carriersR.error.message, 500);
+      if (carriersR?.error) {
+        console.error("SHIPPING_OPTIONS_CARRIERS_FAILED", carriersR.error);
+        return jsonError("SHIPPING_OPTIONS_CARRIERS_FAILED", 500);
+      }
 
       const carriersArr: any[] = Array.isArray((carriersR as any)?.data)
         ? ((carriersR as any).data as any[])
@@ -1598,6 +1613,7 @@ export async function GET() {
       session_id,
     );
   } catch (error: any) {
-    return jsonError(error?.message || "SHIPPING_OPTIONS_FAILED", 500);
+    console.error("SHIPPING_OPTIONS_FAILED", error);
+    return jsonError("SHIPPING_OPTIONS_FAILED", 500);
   }
 }

@@ -174,10 +174,11 @@ async function getCheckoutCustomerId(args: { sb: any; store_id: string }) {
       .maybeSingle();
 
     if (linkR.error) {
+      console.error("PAYMENT_OPTIONS_CUSTOMER_LINK_FAILED", linkR.error);
       return {
         ok: false as const,
         status: 500,
-        error: linkR.error.message,
+        error: "CUSTOMER_LINK_CHECK_FAILED",
       };
     }
 
@@ -609,7 +610,10 @@ export async function GET() {
       customer_id: customer.customer_id,
     });
 
-    if (cartR.error) return jsonError(cartR.error.message, 500);
+    if (cartR.error) {
+      console.error("PAYMENT_OPTIONS_CART_FAILED", cartR.error);
+      return jsonError("PAYMENT_OPTIONS_CART_FAILED", 500);
+    }
     if (!cartR.data?.id) return jsonError("CART_NOT_FOUND", 404);
 
     const cart_id = s(cartR.data.id);
@@ -642,9 +646,14 @@ export async function GET() {
         .order("updated_at", { ascending: false }),
     ]);
 
-    if (storeR.error) return jsonError(storeR.error.message, 500);
-    if (pmR.error) return jsonError(pmR.error.message, 500);
-    if (banksR.error) return jsonError(banksR.error.message, 500);
+    if (storeR.error || pmR.error || banksR.error) {
+      console.error("PAYMENT_OPTIONS_DATA_FAILED", {
+        store: storeR.error || null,
+        methods: pmR.error || null,
+        banks: banksR.error || null,
+      });
+      return jsonError("PAYMENT_OPTIONS_DATA_FAILED", 500);
+    }
 
     const storeCurrency = cleanCurrencyCode(
       storeR.data?.default_currency,
@@ -866,9 +875,11 @@ export async function GET() {
         id: `provider:${code}`,
         type: "provider",
         title: `الدفع الإلكتروني (${code})`,
-        subtitle: "بطاقة / مدى / محافظ (حسب المزوّد)",
+        subtitle:
+          "غير متاح حتى يكتمل إنشاء الدفع والتحقق منه على الخادم",
         recommended: false,
-        disabled: false,
+        disabled: true,
+        disabled_reason: "PAYMENT_PROVIDER_CHECKOUT_NOT_IMPLEMENTED",
       });
     }
 
@@ -898,7 +909,10 @@ export async function GET() {
       },
       session_id,
     );
-  } catch (e: any) {
-    return jsonError(e?.message || "PAYMENT_OPTIONS_FAILED", 500);
+  } catch (error: any) {
+    console.error("PAYMENT_OPTIONS_FAILED", {
+      message: String(error?.message || error || "PAYMENT_OPTIONS_FAILED"),
+    });
+    return jsonError("PAYMENT_OPTIONS_FAILED", 500);
   }
 }

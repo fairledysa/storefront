@@ -224,8 +224,8 @@ export async function POST(req: Request) {
       return jsonError("MISSING_CODE", "أدخل كود الخصم.", 400);
     }
 
-    const store_id = await getStoreIdOrThrow();
-    const sid = await getCartSessionId();
+    const store_id = await getStoreIdOrThrow(req);
+    const sid = await getCartSessionId(req);
 
     const [ordersDb, storeDb] = await Promise.all([
       getOrdersDb(store_id),
@@ -235,6 +235,7 @@ export async function POST(req: Request) {
     const cart = await getOrCreateOpenCart({
       store_id,
       session_id: sid,
+      request: req,
     });
 
     const cartId = s(cart?.id);
@@ -461,15 +462,16 @@ export async function POST(req: Request) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(req: Request) {
   try {
-    const store_id = await getStoreIdOrThrow();
-    const sid = await getCartSessionId();
+    const store_id = await getStoreIdOrThrow(req);
+    const sid = await getCartSessionId(req);
     const ordersDb = await getOrdersDb(store_id);
 
     const cart = await getOrCreateOpenCart({
       store_id,
       session_id: sid,
+      request: req,
     });
 
     const cartId = s(cart?.id);

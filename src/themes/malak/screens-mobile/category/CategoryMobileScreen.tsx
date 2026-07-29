@@ -1,6 +1,8 @@
 // FILE: apps/storefront/src/themes/malak/screens-mobile/category/CategoryMobileScreen.tsx
 "use client";
 
+import HtmlThemeSections from "../../components/theme-page-tools/HtmlThemeSections";
+
 import { useMemo, useState, useTransition } from "react";
 import {
   usePathname,
@@ -1439,6 +1441,7 @@ function setSort(value: string) {
           </div>
         </div>
       ) : null}
+      <HtmlThemeSections data={data} pageKey="category" entityId={String(data?.category?.id || data?.category_id || "")} />
     </div>
   );
 }

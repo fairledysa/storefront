@@ -6,7 +6,7 @@
  Detected additional lockfiles: 
    * D:\projects\elyaia-sala-main2026\apps\storefront\package-lock.json
 
-TypeError: controller[kState].transformAlgorithm is not a function
-    at ignore-listed frames
-TypeError: controller[kState].transformAlgorithm is not a function
-    at ignore-listed frames
+ ⚠ Cross origin request detected from elyavya.172.20.10.8.sslip.io to /_next/* resource. In a future major version of Next.js, you will need to explicitly configure "allowedDevOrigins" in next.config to allow this.
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+ ⚠ Cross origin request detected from 172.20.10.8 to /_next/* resource. In a future major version of Next.js, you will need to explicitly configure "allowedDevOrigins" in next.config to allow this.
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins

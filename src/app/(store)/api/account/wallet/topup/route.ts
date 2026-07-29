@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { getStoreDb } from "@/data/db/store-db.server";
 import { verifySession } from "@/lib/auth/session";
+import { storeCustomerExists } from "@/lib/auth/store-customer.server";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
 import { isMoyasarConfigured } from "@/lib/wallet/moyasar-topup.server";
 
@@ -27,7 +28,20 @@ async function context() {
     customerId = text(row.data?.id);
   }
   if (!customerId) return { error: json({ ok: false, error: "UNAUTHENTICATED" }, 401) } as const;
-  return { storeId, customerId, db, currency: text(store?.store?.default_currency || "SAR").toUpperCase(), storeName: text(store?.store?.name || "المتجر") } as const;
+  if (!(await storeCustomerExists(db, storeId, customerId))) {
+    return { error: json({ ok: false, error: "UNAUTHENTICATED" }, 401) } as const;
+  }
+  const host = text(store?.host).toLowerCase();
+  const storeOrigin = host
+    ? `${process.env.NODE_ENV === "production" ? "https" : "http"}://${host}`
+    : "";
+  return { storeId, customerId, db, currency: text(store?.store?.default_currency || "SAR").toUpperCase(), storeName: text(store?.store?.name || "المتجر"), storeOrigin } as const;
+}
+
+function idempotencyKey(value: unknown, prefix: string) {
+  const key = text(value);
+  if (/^[A-Za-z0-9:_-]{16,180}$/.test(key)) return key;
+  return `${prefix}:${crypto.randomUUID()}`;
 }
 
 export async function POST(req: NextRequest) {
@@ -46,23 +60,27 @@ export async function POST(req: NextRequest) {
     if (amount < min) return json({ ok: false, error: "TOPUP_AMOUNT_BELOW_MINIMUM", minimum: min }, 400);
     if (max != null && amount > max) return json({ ok: false, error: "TOPUP_AMOUNT_ABOVE_MAXIMUM", maximum: max }, 400);
 
-    const idempotencyKey = text(body.idempotency_key) || `topup:${c.storeId}:${c.customerId}:${crypto.randomUUID()}`;
+    const operationKey = idempotencyKey(
+      body.idempotency_key,
+      `topup:${c.storeId}:${c.customerId}`,
+    );
     const rpc = await c.db.rpc("wallet_create_topup_session", {
       p_store_id: c.storeId,
       p_customer_id: c.customerId,
       p_amount: amount,
-      p_currency: text(body.currency || c.currency),
+      p_currency: c.currency,
       p_payment_method: "card",
       p_payment_provider: "moyasar",
-      p_idempotency_key: idempotencyKey,
+      p_idempotency_key: operationKey,
       p_expires_at: null,
-      p_metadata: { source: "storefront_customer_wallet", store_origin: req.nextUrl.origin },
+      p_metadata: { source: "storefront_customer_wallet", store_origin: c.storeOrigin },
     });
     if (rpc.error) throw rpc.error;
     const session = rpc.data?.session || rpc.data;
     if (!session?.id) throw new Error("TOPUP_SESSION_CREATE_FAILED");
 
-    const callbackUrl = new URL("/api/account/wallet/topup/callback", req.nextUrl.origin);
+    if (!c.storeOrigin) throw new Error("STORE_ORIGIN_UNAVAILABLE");
+    const callbackUrl = new URL("/api/account/wallet/topup/callback", c.storeOrigin);
     callbackUrl.searchParams.set("store", c.storeId);
     callbackUrl.searchParams.set("session", String(session.id));
 
@@ -82,7 +100,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: any) {
     console.error("[wallet/topup]", error);
-    return json({ ok: false, error: text(error?.message) || "TOPUP_CREATE_FAILED" }, 400);
+    return json({ ok: false, error: "TOPUP_CREATE_FAILED" }, 400);
   }
 }
 
@@ -101,6 +119,7 @@ export async function PATCH(req: NextRequest) {
     if (result.error) throw result.error;
     return json({ ok: true });
   } catch (error: any) {
-    return json({ ok: false, error: text(error?.message) || "TOPUP_PAYMENT_ATTACH_FAILED" }, 400);
+    console.error("[wallet/topup/attach]", error);
+    return json({ ok: false, error: "TOPUP_PAYMENT_ATTACH_FAILED" }, 400);
   }
 }

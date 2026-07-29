@@ -34,6 +34,7 @@ type BankTransferReceipt = {
   filename: string;
   mimeType: string;
   sizeBytes: number;
+  uploadProofToken: string;
 };
 
 type BankTransferPayload = {
@@ -43,6 +44,7 @@ type BankTransferPayload = {
   receiptFilename: string;
   receiptMimeType: string;
   receiptSizeBytes: number;
+  uploadProofToken: string;
 };
 
 const BANK_RECEIPT_MIMES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
@@ -133,7 +135,7 @@ async function fetchPaymentOptionsFresh() {
 
 async function uploadBankTransferReceipt(file: File) {
   const form = new FormData();
-  form.append("kind", "product-attachment");
+  form.append("kind", "bank-transfer-receipt");
   form.append("file", file);
 
   const r = await fetch("/api/uploads/r2/put", {
@@ -149,9 +151,11 @@ async function uploadBankTransferReceipt(file: File) {
   }
 
   const url = s(j.publicUrl) || s(j.public_url);
+  const uploadProofToken =
+    s(j.uploadProofToken) || s(j.upload_proof_token);
 
-  if (!url) {
-    throw new Error("تم رفع الصورة لكن لم يصل رابط الإيصال.");
+  if (!url || !uploadProofToken) {
+    throw new Error("تعذر التحقق من رفع الإيصال. أعد رفع الصورة.");
   }
 
   return {
@@ -159,6 +163,7 @@ async function uploadBankTransferReceipt(file: File) {
     filename: s(j.fileName) || file.name,
     mimeType: s(j.fileType) || file.type,
     sizeBytes: Number(j.fileSize ?? file.size) || file.size,
+    uploadProofToken,
   } satisfies BankTransferReceipt;
 }
 
@@ -229,6 +234,7 @@ export default function PaymentStep({
       receiptFilename: receipt.filename,
       receiptMimeType: receipt.mimeType,
       receiptSizeBytes: receipt.sizeBytes,
+      uploadProofToken: receipt.uploadProofToken,
     };
   }, [
     bankAccountId,

@@ -2,6 +2,8 @@
 
 import crypto from "crypto";
 
+import { requireRuntimeSecret } from "@/lib/security/runtime-secrets.server";
+
 function b64url(input: Buffer | string) {
   const buf = Buffer.isBuffer(input) ? input : Buffer.from(input);
   return buf
@@ -45,6 +47,14 @@ function verifyJwtLike(token: string, secret: string) {
   if (parts.length !== 3) return null;
 
   const [h, p, s] = parts;
+
+  try {
+    const header = JSON.parse(fromB64Url(h));
+    if (header?.alg !== "HS256" || header?.typ !== "JWT") return null;
+  } catch {
+    return null;
+  }
+
   const data = `${h}.${p}`;
   const sig = crypto.createHmac("sha256", secret).update(data).digest();
   const expected = b64url(sig);
@@ -63,7 +73,7 @@ function verifyJwtLike(token: string, secret: string) {
 }
 
 export function hashOtp(email: string, code: string) {
-  const secret = process.env.AUTH_OTP_SECRET || "dev-secret";
+  const secret = requireRuntimeSecret("AUTH_OTP_SECRET");
 
   return crypto
     .createHmac("sha256", secret)
@@ -72,7 +82,7 @@ export function hashOtp(email: string, code: string) {
 }
 
 export function signSession(payload: { customer_id: string; exp: number }) {
-  const secret = process.env.AUTH_SESSION_SECRET || "dev-secret";
+  const secret = requireRuntimeSecret("AUTH_SESSION_SECRET");
 
   return signJwtLike(payload, secret);
 }
@@ -80,7 +90,7 @@ export function signSession(payload: { customer_id: string; exp: number }) {
 export function verifySession(
   token: string,
 ): { customer_id: string; exp: number } | null {
-  const secret = process.env.AUTH_SESSION_SECRET || "dev-secret";
+  const secret = requireRuntimeSecret("AUTH_SESSION_SECRET");
   const payload = verifyJwtLike(token, secret);
 
   if (!payload?.customer_id || !payload?.exp) return null;
@@ -99,11 +109,7 @@ export type OAuthTransferPayload = {
 };
 
 function getOAuthTransferSecret() {
-  return (
-    process.env.AUTH_OAUTH_TRANSFER_SECRET ||
-    process.env.AUTH_SESSION_SECRET ||
-    "dev-secret"
-  );
+  return requireRuntimeSecret("AUTH_OAUTH_TRANSFER_SECRET");
 }
 
 export function signOAuthTransfer(payload: OAuthTransferPayload) {

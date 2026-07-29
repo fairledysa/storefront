@@ -84,6 +84,17 @@ export type ProductRow = {
     id: string;
     name: string;
     sort_order: number;
+    option_field_type?: string | null;
+    display_type?: string | null;
+    values?: Array<{
+      id: string;
+      name: string;
+      display_value?: string | null;
+      image_url?: string | null;
+      quantity?: number | null;
+      is_default?: boolean;
+      sort_order: number;
+    }>;
   }>;
 
   variants?: Array<{
@@ -93,6 +104,14 @@ export type ProductRow = {
     stock_quantity: number;
     unlimited_quantity: boolean;
     is_default: boolean;
+    option_value_ids?: string[];
+    option_values?: Array<{
+      id: string;
+      option_id: string;
+      name: string;
+      display_value: string | null;
+      image_url: string | null;
+    }>;
   }>;
 };
 
@@ -665,6 +684,19 @@ function mapBaseProductRowFromBulk(row: any, maps: ProductBulkMaps): ProductRow 
       id: String(o.id),
       name: String(o.name ?? ""),
       sort_order: Number(o.sort_order ?? 0),
+      option_field_type: o.option_field_type == null ? null : String(o.option_field_type),
+      display_type: o.display_type == null ? null : String(o.display_type),
+      values: Array.isArray(o.values)
+        ? o.values.map((v: any) => ({
+            id: String(v.id),
+            name: String(v.name ?? ""),
+            display_value: v.display_value == null ? null : String(v.display_value),
+            image_url: v.image_url == null ? null : String(v.image_url),
+            quantity: v.quantity === null || v.quantity === undefined ? null : Number(v.quantity),
+            is_default: !!v.is_default,
+            sort_order: Number(v.sort_order ?? 0),
+          }))
+        : [],
     })),
 
     variants: variantsRows.map((v) => ({
@@ -677,6 +709,14 @@ function mapBaseProductRowFromBulk(row: any, maps: ProductBulkMaps): ProductRow 
       stock_quantity: Number(v.stock_quantity ?? 0),
       unlimited_quantity: !!v.unlimited_quantity,
       is_default: !!v.is_default,
+      option_value_ids: Array.isArray(v.option_value_ids) ? v.option_value_ids.map(String).filter(Boolean) : [],
+      option_values: Array.isArray(v.option_values) ? v.option_values.map((value: any) => ({
+        id: String(value.id),
+        option_id: String(value.option_id),
+        name: String(value.name ?? ""),
+        display_value: value.display_value == null ? null : String(value.display_value),
+        image_url: value.image_url == null ? null : String(value.image_url),
+      })) : [],
     })),
   };
 }
@@ -731,7 +771,7 @@ async function mapProductRowsBulk(
 
     sb
       .from("product_options")
-      .select("id,product_id,name,sort_order")
+      .select("id,product_id,name,option_field_type,display_type,sort_order")
       .in("product_id", productIds)
       .order("sort_order", { ascending: true }),
 
@@ -753,6 +793,56 @@ async function mapProductRowsBulk(
       .select("product_id,category_id,is_primary")
       .in("product_id", productIds),
   ]);
+
+  const optionRows = (optionsR.data || []) as any[];
+  const optionIds = optionRows.map((row) => String(row.id)).filter(Boolean);
+  const optionValuesR = optionIds.length
+    ? await sb
+        .from("product_option_values")
+        .select("id,option_id,name,display_value,image_url,quantity,is_default,sort_order")
+        .in("option_id", optionIds)
+        .order("sort_order", { ascending: true })
+    : ({ data: [] } as any);
+
+  const optionValueRows = (optionValuesR.data || []) as any[];
+  const optionValueById = new Map<string, any>(
+    optionValueRows.map((value) => [String(value.id), value]),
+  );
+
+  const variantRows = (variantsR.data || []) as any[];
+  const variantIds = variantRows.map((variant) => String(variant.id)).filter(Boolean);
+  const variantLinksR = variantIds.length
+    ? await sb
+        .from("variant_option_values")
+        .select("variant_id,option_value_id")
+        .in("variant_id", variantIds)
+    : ({ data: [] } as any);
+
+  if ((variantLinksR as any).error) {
+    throw new Error(`PRODUCT_VARIANT_OPTION_LINKS_FAILED: ${(variantLinksR as any).error.message}`);
+  }
+
+  const optionValueIdsByVariantId = new Map<string, string[]>();
+  for (const link of variantLinksR.data || []) {
+    const variantId = String(link.variant_id ?? "");
+    const optionValueId = String(link.option_value_id ?? "");
+    if (!variantId || !optionValueId) continue;
+    const current = optionValueIdsByVariantId.get(variantId) || [];
+    if (!current.includes(optionValueId)) current.push(optionValueId);
+    optionValueIdsByVariantId.set(variantId, current);
+  }
+
+  const valuesByOptionId = new Map<string, any[]>();
+  for (const value of optionValueRows) {
+    const optionId = String(value.option_id);
+    const values = valuesByOptionId.get(optionId) || [];
+    values.push(value);
+    valuesByOptionId.set(optionId, values);
+  }
+
+  for (const option of optionRows) {
+    option.values = valuesByOptionId.get(String(option.id)) || [];
+  }
 
   const pricingByProductId = new Map<string, any>();
   for (const row of pricingR.data || []) {
@@ -781,10 +871,19 @@ async function mapProductRowsBulk(
   }
 
   const variantsByProductId = new Map<string, any[]>();
-  for (const row of variantsR.data || []) {
+  for (const row of variantRows) {
     const productId = String(row.product_id);
+    const variantId = String(row.id);
+    const optionValueIds = optionValueIdsByVariantId.get(variantId) || [];
+    const enrichedVariant = {
+      ...row,
+      option_value_ids: optionValueIds,
+      option_values: optionValueIds
+        .map((valueId) => optionValueById.get(valueId))
+        .filter(Boolean),
+    };
     const arr = variantsByProductId.get(productId) || [];
-    arr.push(row);
+    arr.push(enrichedVariant);
     variantsByProductId.set(productId, arr);
   }
 
@@ -1089,7 +1188,7 @@ export async function getProductById(opts: { store_id: string; id: string }) {
   if (!fn) {
     fn = unstable_cache(
       () => getProductByIdRaw(opts),
-      ["product-by-id-v2-display-order", opts.store_id, opts.id],
+      ["product-by-id-v3-variant-stock", opts.store_id, opts.id],
       { revalidate: 60 },
     );
 
@@ -1109,7 +1208,7 @@ export async function getProductByPublicNo(opts: {
   if (!fn) {
     fn = unstable_cache(
       () => getProductByPublicNoRaw(opts),
-      ["product-by-public-no-v2-display-order", opts.store_id, String(opts.public_no)],
+      ["product-by-public-no-v3-variant-stock", opts.store_id, String(opts.public_no)],
       { revalidate: 60 },
     );
 
@@ -1129,7 +1228,7 @@ export async function getProductByShortUrl(opts: {
   if (!fn) {
     fn = unstable_cache(
       () => getProductByShortUrlRaw(opts),
-      ["product-by-short-url-v2-display-order", opts.store_id, opts.short_url],
+      ["product-by-short-url-v3-variant-stock", opts.store_id, opts.short_url],
       { revalidate: 60 },
     );
 
@@ -1279,7 +1378,7 @@ export async function getProductsByCategory(opts: {
     ? Math.max(0, Math.min(Math.floor(offsetValue), 5000))
     : 0;
   const sort = normalizeCatalogProductSort(opts.sort);
-  const key = `${opts.store_id}:${opts.category_id}:${limit}:${offset}:${sort}:catalog-sort-v1`;
+  const key = `${opts.store_id}:${opts.category_id}:${limit}:${offset}:${sort}:variant-stock-v2`;
 
   let fn = productsByCategoryCache.get(key);
 
@@ -1287,7 +1386,7 @@ export async function getProductsByCategory(opts: {
     fn = unstable_cache(
       () => getProductsByCategoryRaw({ ...opts, limit, offset, sort }),
       [
-        "products-by-category-v4-catalog-sort",
+        "products-by-category-v5-variant-stock",
         opts.store_id,
         opts.category_id,
         String(limit),
@@ -1322,7 +1421,7 @@ export async function getProductsByCategories(opts: {
   if (!storeId || !categoryIds.length) return [] as ProductRow[];
 
   const sortedCategoryIds = [...categoryIds].sort();
-  const key = `${storeId}:${sortedCategoryIds.join(",")}:${limit}:${offset}:${sort}:catalog-sort-v1`;
+  const key = `${storeId}:${sortedCategoryIds.join(",")}:${limit}:${offset}:${sort}:variant-stock-v2`;
 
   let fn = productsByCategoryCache.get(key);
 
@@ -1337,7 +1436,7 @@ export async function getProductsByCategories(opts: {
           sort,
         }),
       [
-        "products-by-categories-v4-catalog-sort",
+        "products-by-categories-v5-variant-stock",
         storeId,
         sortedCategoryIds.join(","),
         String(limit),
@@ -1385,14 +1484,14 @@ export async function getProductsForGrid(opts: {
   limit?: number;
 }): Promise<ProductRow[]> {
   const limit = Math.min(Math.max(Number(opts.limit ?? 12), 1), 60);
-  const key = `${opts.store_id}:${limit}:display-order-v2`;
+  const key = `${opts.store_id}:${limit}:variant-stock-v3`;
 
   let fn = productsForGridCache.get(key);
 
   if (!fn) {
     fn = unstable_cache(
       () => getProductsForGridRaw({ ...opts, limit }),
-      ["products-for-grid-v2-display-order", opts.store_id, String(limit)],
+      ["products-for-grid-v3-variant-stock", opts.store_id, String(limit)],
       { revalidate: 60 },
     );
 
@@ -1628,7 +1727,7 @@ export async function getBestSellingProductsForGrid(opts: {
   if (!fn) {
     fn = unstable_cache(
       () => getBestSellingProductsForGridRaw({ ...opts, limit }),
-      ["best-selling-products-for-grid-v2-display-order", opts.store_id, String(limit)],
+      ["best-selling-products-for-grid-v3-variant-stock", opts.store_id, String(limit)],
       { revalidate: 120 },
     );
 
@@ -1926,7 +2025,7 @@ export async function getProductsByIds(opts: {
   if (!storeId || !ids.length) return [];
 
   const sortedIds = [...ids].sort();
-  const key = `${storeId}:${limit}:${sortedIds.join(",")}:display-order-v2`;
+  const key = `${storeId}:${limit}:${sortedIds.join(",")}:variant-stock-v3`;
 
   let fn = productsByIdsCache.get(key);
 
@@ -1939,7 +2038,7 @@ export async function getProductsByIds(opts: {
           limit,
         }),
       [
-        "products-by-ids-v2-display-order",
+        "products-by-ids-v3-variant-stock",
         storeId,
         String(limit),
         sortedIds.join(","),
@@ -2282,7 +2381,7 @@ export async function getProductsBySearch(opts: {
 
   if (!q || q.length < 2) return [];
 
-  const key = `${opts.store_id}:${normalizeArabicSearchText(q)}:${limit}:display-order-v2`;
+  const key = `${opts.store_id}:${normalizeArabicSearchText(q)}:${limit}:variant-stock-v3`;
 
   let fn = productsBySearchCache.get(key);
 
@@ -2295,7 +2394,7 @@ export async function getProductsBySearch(opts: {
           limit,
         }),
       [
-        "products-by-smart-search-v2-display-order",
+        "products-by-smart-search-v3-variant-stock",
         opts.store_id,
         normalizeArabicSearchText(q),
         String(limit),

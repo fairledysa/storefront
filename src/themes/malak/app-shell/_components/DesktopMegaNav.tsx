@@ -5,6 +5,7 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
+  Fragment,
   useCallback,
   useEffect,
   useMemo,
@@ -30,6 +31,13 @@ const CurrencySwitcher = dynamic(() => import("./CurrencySwitcher"), {
   ssr: false,
   loading: () => null,
 });
+
+type MarketingNavigation = {
+  type: string;
+  label: string;
+  href: string;
+  icon?: string;
+};
 
 type Props = {
   className?: string;
@@ -114,6 +122,8 @@ export default function DesktopMegaNav({
   const [cartCount, setCartCount] = useState(() =>
     safeNumber(initialCartCount),
   );
+  const [marketingNavigation, setMarketingNavigation] =
+    useState<MarketingNavigation[]>([]);
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const openTimer = useRef<number | null>(null);
@@ -127,6 +137,38 @@ export default function DesktopMegaNav({
   useEffect(() => {
     setCartCount(safeNumber(initialCartCount));
   }, [initialCartCount]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    void fetch("/api/catalog/marketing-navigation", {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return response.json();
+      })
+      .then((payload) => {
+        if (controller.signal.aborted) return;
+        const items = Array.isArray(payload?.data?.items) ? payload.data.items : [];
+        setMarketingNavigation(
+          items
+            .map((item: any) => ({
+              type: s(item?.type),
+              label: s(item?.label),
+              href: s(item?.href),
+              icon: s(item?.icon),
+            }))
+            .filter((item: MarketingNavigation) => item.label && item.href),
+        );
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setMarketingNavigation([]);
+      });
+
+    return () => controller.abort();
+  }, []);
 
   const loadCartCount = useCallback(async () => {
     try {
@@ -494,89 +536,106 @@ export default function DesktopMegaNav({
         {roots.map((root: any) => {
           const href = s(root.href) || "/";
           const rootHasChildren = hasChildren(root);
+          const rootName = s(root.name);
+          const isNewArrivalRoot = /وصل\s*حديث/i.test(rootName);
+          const visibleMarketingItems = marketingNavigation.filter(
+            (item) => !(item.type === "new_arrival" && roots.some((entry: any) => /وصل\s*حديث/i.test(s(entry?.name)))),
+          );
 
-          const isActiveRoot =
-            showRootMega &&
-            rootHasChildren &&
-            String(activeRootId) === String(root.id);
+          const marketingLinks = isNewArrivalRoot ? visibleMarketingItems.map((item) => (
+            <Link
+              key={`marketing-${item.type}`}
+              href={item.href}
+              prefetch={false}
+              className="mk-desktop-nav__rootLink mk-desktop-nav__rootLink--marketing"
+              onMouseEnter={() => {
+                clearTimers();
+                setOpen(false);
+                setShowAll(false);
+                setActiveRootId(null);
+              }}
+              onFocus={() => {
+                closeNow();
+                setShowAll(false);
+                setActiveRootId(null);
+              }}
+            >
+              {item.icon ? <span aria-hidden="true" className="mk-desktop-nav__marketingIcon">{item.icon}</span> : null}
+              <span>{item.label}</span>
+            </Link>
+          )) : null;
+
+          const isActiveRoot = showRootMega && rootHasChildren && String(activeRootId) === String(root.id);
 
           if (!rootHasChildren) {
             return (
-              <Link
-                key={root.id}
-                href={href}
-                prefetch={false}
-                className="mk-desktop-nav__rootLink"
-                onMouseEnter={() => {
-                  clearTimers();
-                  setOpen(false);
-                  setShowAll(false);
-                  setActiveRootId(null);
-                }}
-                onFocus={() => {
-                  closeNow();
-                  setShowAll(false);
-                  setActiveRootId(null);
-                }}
-              >
-                {root.name}
-              </Link>
+              <Fragment key={root.id}>
+                {marketingLinks}
+                <Link
+                  href={href}
+                  prefetch={false}
+                  className="mk-desktop-nav__rootLink"
+                  onMouseEnter={() => {
+                    clearTimers();
+                    setOpen(false);
+                    setShowAll(false);
+                    setActiveRootId(null);
+                  }}
+                  onFocus={() => {
+                    closeNow();
+                    setShowAll(false);
+                    setActiveRootId(null);
+                  }}
+                >
+                  {root.name}
+                </Link>
+              </Fragment>
             );
           }
 
           return (
-            <div
-              key={root.id}
-              className="mk-desktop-nav__itemWrap"
-              onMouseEnter={() => openRootSoon(root)}
-              onMouseLeave={closeSoon}
-            >
-              <Link
-                href={href}
-                prefetch={false}
-                className="mk-desktop-nav__rootLink"
-                onFocus={() => openRootSoon(root)}
+            <Fragment key={root.id}>
+              {marketingLinks}
+              <div
+                className="mk-desktop-nav__itemWrap"
+                onMouseEnter={() => openRootSoon(root)}
+                onMouseLeave={closeSoon}
               >
-                {root.name}
+                <Link href={href} prefetch={false} className="mk-desktop-nav__rootLink" onFocus={() => openRootSoon(root)}>
+                  {root.name}
+                  {isActiveRoot ? <span className="mk-desktop-nav__underline" /> : null}
+                </Link>
 
                 {isActiveRoot ? (
-                  <span className="mk-desktop-nav__underline" />
+                  <>
+                    <button type="button" aria-label="Close categories overlay" className="mk-desktop-nav__overlay" onClick={closeNow} />
+                    <div
+                      className="mk-desktop-nav__megaWrap"
+                      onMouseEnter={() => {
+                        clearTimers();
+                        setOpen(true);
+                        setShowAll(false);
+                        setActiveRootId(String(root.id));
+                      }}
+                      onMouseLeave={closeSoon}
+                    >
+                      <MegaMenu categories={megaCategories} megaMenu={megaMenu} showSide={false} initialActiveId={activeRootId} onNavigate={closeNow} seoMode={seoMode} />
+                    </div>
+                  </>
                 ) : null}
-              </Link>
-
-              {isActiveRoot ? (
-                <>
-                  <button
-                    type="button"
-                    aria-label="Close categories overlay"
-                    className="mk-desktop-nav__overlay"
-                    onClick={closeNow}
-                  />
-
-                  <div
-                    className="mk-desktop-nav__megaWrap"
-                    onMouseEnter={() => {
-                      clearTimers();
-                      setOpen(true);
-                      setShowAll(false);
-                      setActiveRootId(String(root.id));
-                    }}
-                    onMouseLeave={closeSoon}
-                  >
-                    <MegaMenu
-                      categories={megaCategories}
-                      megaMenu={megaMenu}
-                      showSide={false}
-                      initialActiveId={activeRootId}
-                      onNavigate={closeNow}
-                      seoMode={seoMode}
-                    />
-                  </div>
-                </>
-              ) : null}
-            </div>
+              </div>
+            </Fragment>
           );
         })}
+
+        {!roots.some((root: any) => /وصل\s*حديث/i.test(s(root?.name)))
+          ? marketingNavigation.map((item) => (
+              <Link key={`marketing-fallback-${item.type}`} href={item.href} prefetch={false} className="mk-desktop-nav__rootLink mk-desktop-nav__rootLink--marketing">
+                {item.icon ? <span aria-hidden="true" className="mk-desktop-nav__marketingIcon">{item.icon}</span> : null}
+                <span>{item.label}</span>
+              </Link>
+            ))
+          : null}
       </div>
     </div>
   );

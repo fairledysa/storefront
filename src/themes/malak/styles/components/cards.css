@@ -1408,3 +1408,57 @@
     -webkit-tap-highlight-color: transparent !important;
   }
 }
+
+/* Marketing collection context inside the unified product card. */
+.mkpc-marketing-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 5px;
+  min-width: 0;
+  margin: 0 0 7px;
+  direction: rtl;
+  overflow: hidden;
+}
+
+.mkpc-marketing-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-height: 22px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.mkpc-marketing-name {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  border-radius: 3px;
+  color: var(--mk-product-card-muted, #7c3aed);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 760px) {
+  .mkpc-marketing-row {
+    gap: 4px;
+    margin-bottom: 5px;
+  }
+
+  .mkpc-marketing-badge,
+  .mkpc-marketing-name {
+    font-size: 10px;
+  }
+}

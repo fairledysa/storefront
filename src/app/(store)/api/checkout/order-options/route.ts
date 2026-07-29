@@ -662,7 +662,8 @@ export async function GET() {
       },
       session_id,
     );
-  } catch (e: any) {
-    return jsonError(e?.message || "ORDER_OPTIONS_FAILED", 500);
+  } catch (error: any) {
+    console.error("ORDER_OPTIONS_FAILED", error);
+    return jsonError("ORDER_OPTIONS_FAILED", 500);
   }
 }

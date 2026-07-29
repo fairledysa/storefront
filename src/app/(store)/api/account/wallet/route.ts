@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import { getStoreDb } from "@/data/db/store-db.server";
 import { verifySession } from "@/lib/auth/session";
+import { storeCustomerExists } from "@/lib/auth/store-customer.server";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
 import { isMoyasarConfigured } from "@/lib/wallet/moyasar-topup.server";
 
@@ -67,6 +68,9 @@ export async function GET() {
     if (!customerId) return json({ ok: false, error: "UNAUTHENTICATED" }, 401);
 
     const db: any = await getStoreDb(String(storeId));
+    if (!(await storeCustomerExists(db, String(storeId), customerId))) {
+      return json({ ok: false, error: "UNAUTHENTICATED" }, 401);
+    }
     const defaultCurrency = currencyCode(context.store?.default_currency);
     const walletResult = await db
       .from("customer_wallets")
