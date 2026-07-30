@@ -929,6 +929,11 @@ function setSort(value: string) {
         .filter(Boolean)
         .join(" ")}
     >
+      <HtmlThemeSections
+        data={data}
+        pageKey="category"
+        entityId={String(data?.category?.id || data?.category_id || "")}
+      />
       <MobileCategoryHeader title={title} />
 
       {rootCategories.length ? (
@@ -1441,7 +1446,6 @@ function setSort(value: string) {
           </div>
         </div>
       ) : null}
-      <HtmlThemeSections data={data} pageKey="category" entityId={String(data?.category?.id || data?.category_id || "")} />
     </div>
   );
 }

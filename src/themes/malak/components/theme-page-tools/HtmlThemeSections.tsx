@@ -19,7 +19,7 @@ function optionsFromData(data: any) {
   );
 }
 
-function pageSections(data: any, pageKey: string) {
+function pageSections(data: any, pageKey: string, entityId?: string | null) {
   const options = optionsFromData(data);
   const aliases =
     pageKey === "homepage"
@@ -30,9 +30,30 @@ function pageSections(data: any, pageKey: string) {
           ? ["product", "products"]
           : ["page", "pages"];
 
+  const targetId = text(entityId);
+
   for (const key of aliases) {
-    const sections = options?.[key]?.sections;
-    if (Array.isArray(sections)) return sections;
+    const page = options?.[key];
+    if (!page || typeof page !== "object") continue;
+
+    // التخصيص المحدد يتغلب على التخصيص العام.
+    // وجود سجل للمعرف المحدد—even بقائمة فارغة—يعني أن التاجر اختار
+    // تخصيص هذه الصفحة بشكل مستقل، لذلك لا ندمجه مع "تخصيص الكل".
+    if (targetId && page.selected && typeof page.selected === "object") {
+      const hasSelected = Object.prototype.hasOwnProperty.call(page.selected, targetId);
+      if (hasSelected) {
+        const selectedSections = page.selected?.[targetId]?.sections;
+        return Array.isArray(selectedSections) ? selectedSections : [];
+      }
+    }
+
+    // عند عدم وجود تخصيص محدد، نرجع لتخصيص كل المنتجات/التصنيفات.
+    const allSections = page?.all?.sections;
+    if (Array.isArray(allSections)) return allSections;
+
+    // توافق مع البنية القديمة للصفحة الرئيسية وأي بيانات قديمة.
+    const legacySections = page?.sections;
+    if (Array.isArray(legacySections)) return legacySections;
   }
 
   return [];
@@ -126,7 +147,7 @@ export default function HtmlThemeSections({
   pageKey: "homepage" | "product" | "category" | "page";
   entityId?: string | null;
 }) {
-  const sections = pageSections(data, pageKey)
+  const sections = pageSections(data, pageKey, entityId)
     .filter((section: any) => section && section.enabled !== false && section.is_enabled !== false)
     .filter(isHtmlSection)
     .filter((section: any) => matchesScope(section, entityId))

@@ -2097,6 +2097,11 @@ const productBackHref = useMemo(() => {
         .filter(Boolean)
         .join(" ")}
     >
+      <HtmlThemeSections
+        data={data}
+        pageKey="product"
+        entityId={String(productVm.id ?? "")}
+      />
       <section
         className="mk-mproduct-hero"
         data-mk-product-card-id={String(productVm.id ?? "")}
@@ -2344,7 +2349,6 @@ const productBackHref = useMemo(() => {
           />
         </div>
       ) : null}
-      <HtmlThemeSections data={data} pageKey="product" entityId={String(data?.product?.id || data?.product_id || "")} />
     </main>
   );
 }

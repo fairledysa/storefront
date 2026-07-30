@@ -1953,6 +1953,11 @@ const shouldShowProductReviews = Boolean(
         .filter(Boolean)
         .join(" ")}
     >
+      <HtmlThemeSections
+        data={data}
+        pageKey="product"
+        entityId={String(productVm.id ?? "")}
+      />
       <ProductBreadcrumbs items={breadcrumbItems} />
 
       <div className="mk-dproduct-main">
@@ -2265,7 +2270,6 @@ const shouldShowProductReviews = Boolean(
           },
         }}
       />
-      <HtmlThemeSections data={data} pageKey="product" entityId={String(data?.product?.id || data?.product_id || "")} />
     </div>
   );
 }

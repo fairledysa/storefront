@@ -26,6 +26,15 @@ import type { SeoUrlMode } from "@/data/store/settings";
 import type { MalakBootstrap } from "../bootstrap/types";
 import { useNavStack } from "../app-navigation/stack";
 import MalakTrackingRuntime from "@/themes/malak/tracking/MalakTrackingRuntime";
+const DesktopMarketingPopupRenderer = dynamic(
+  () => import("@/themes/malak/screens/_popups/DesktopMarketingPopupRenderer"),
+  { ssr: false, loading: () => null },
+);
+const MobileMarketingPopupRenderer = dynamic(
+  () => import("@/themes/malak/screens-mobile/_popups/MobileMarketingPopupRenderer"),
+  { ssr: false, loading: () => null },
+);
+
 const ProductQuickView = dynamic(
   () => import("@/themes/malak/components/product-quick-view/ProductQuickView"),
   {
@@ -1774,6 +1783,12 @@ export default function AppShell({
       )}
 
       
+      {isMobile ? (
+        <MobileMarketingPopupRenderer data={data} />
+      ) : (
+        <DesktopMarketingPopupRenderer data={data} />
+      )}
+
       <MalakTrackingRuntime
   data={data}
   bootstrap={bootstrap}

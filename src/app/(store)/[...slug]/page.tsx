@@ -55,6 +55,10 @@ import PageScreen from "@/themes/malak/screens/page/PageScreen";
 import TagScreen from "@/themes/malak/screens/tag/TagScreen";
 
 import { getSeoUrlMode } from "@/data/store/settings";
+import {
+  loadThemePageComponents,
+  withThemePageSections,
+} from "@/data/themes/page-components.server";
 
 type SP = Record<string, string | string[] | undefined>;
 type PreviewDevice = "mobile" | "desktop";
@@ -454,13 +458,30 @@ async function renderMalakCategoryPage(args: {
     seoMode,
   });
 
+  const categoryId = String(
+    args.data?.category?.id ?? args.data?.category_id ?? "",
+  );
+  const categorySections = await loadThemePageComponents({
+    storeId: args.ctx.store.id,
+    themeVersionId: args.ctx?.theme?.version_id,
+    pageKey: "category",
+    entityId: categoryId,
+  });
+  const categoryThemeOptions = withThemePageSections(
+    args.ctx?.theme?.options,
+    "category",
+    categorySections,
+  );
+
   const pageData = {
     ...(args.data ?? {}),
     route: args.data?.route ?? "category",
     bootstrap,
+    themeOptions: categoryThemeOptions,
+    theme_options: categoryThemeOptions,
     theme: {
       bootstrap,
-      options: args.ctx?.theme?.options ?? {},
+      options: categoryThemeOptions,
       version_id: args.ctx?.theme?.version_id ?? "published",
     },
   };
@@ -565,14 +586,31 @@ async function renderMalakProductPage(args: {
 
   const { bootstrap, initialCartCount } = shellData;
 
+  const productId = String(
+    args.data?.product?.id ?? args.data?.product_id ?? "",
+  );
+  const productSections = await loadThemePageComponents({
+    storeId: args.ctx.store.id,
+    themeVersionId: args.ctx?.theme?.version_id,
+    pageKey: "product",
+    entityId: productId,
+  });
+  const productThemeOptions = withThemePageSections(
+    args.ctx?.theme?.options,
+    "product",
+    productSections,
+  );
+
   const dataWithMode = {
     ...(args.data ?? {}),
     mode: seoMode,
     route: "product",
     bootstrap,
+    themeOptions: productThemeOptions,
+    theme_options: productThemeOptions,
     theme: {
       bootstrap,
-      options: args.ctx?.theme?.options ?? {},
+      options: productThemeOptions,
       version_id: args.ctx?.theme?.version_id ?? "published",
     },
   };
@@ -619,13 +657,27 @@ async function renderMalakInfoPage(args: {
     seoMode,
   });
 
+  const pageSections = await loadThemePageComponents({
+    storeId: args.ctx.store.id,
+    themeVersionId: args.ctx?.theme?.version_id,
+    pageKey: "page",
+    entityId: args.page.id,
+  });
+  const pageThemeOptions = withThemePageSections(
+    args.ctx?.theme?.options,
+    "page",
+    pageSections,
+  );
+
   const pageData = {
     ...(args.page ?? {}),
     route: "page",
     bootstrap,
+    themeOptions: pageThemeOptions,
+    theme_options: pageThemeOptions,
     theme: {
       bootstrap,
-      options: args.ctx?.theme?.options ?? {},
+      options: pageThemeOptions,
       version_id: args.ctx?.theme?.version_id ?? "published",
     },
   };

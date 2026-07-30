@@ -1263,6 +1263,11 @@ export default function CategoryScreen({ data, mode }: Props) {
           .filter(Boolean)
           .join(" ")}
       >
+        <HtmlThemeSections
+          data={data}
+          pageKey="category"
+          entityId={String(data?.category?.id || data?.category_id || "")}
+        />
         <div className="mk-dcat__container">
           {isTagPage ? (
             <div className="mk-dcat__tagHead">
@@ -1339,6 +1344,11 @@ export default function CategoryScreen({ data, mode }: Props) {
 
   return (
     <div dir="rtl" className="mk-dcat mk-dcat--filters">
+      <HtmlThemeSections
+        data={data}
+        pageKey="category"
+        entityId={String(data?.category?.id || data?.category_id || "")}
+      />
       <LoadingOverlay show={isPending} mode="page" />
 
       <button
@@ -1784,7 +1794,6 @@ export default function CategoryScreen({ data, mode }: Props) {
           </aside>
         </div>
       </div>
-      <HtmlThemeSections data={data} pageKey="category" entityId={String(data?.category?.id || data?.category_id || "")} />
     </div>
   );
 }
