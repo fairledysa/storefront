@@ -3,7 +3,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-type Item = { id: string; name: string; description?: string | null };
+type Item = {
+  id: string;
+  name: string;
+  description?: string | null;
+  href?: string | null;
+  url?: string | null;
+};
 
 export default function SearchBox() {
   const [q, setQ] = useState("");
@@ -71,7 +77,7 @@ export default function SearchBox() {
             {items.map((it) => (
               <a
                 key={it.id}
-                href={`/p/${it.id}`}
+                href={it.href || it.url || "#"}
                 className="block border-t px-3 py-2 hover:bg-slate-50"
               >
                 <div className="text-sm font-medium text-slate-900">

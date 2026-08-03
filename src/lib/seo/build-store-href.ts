@@ -35,6 +35,50 @@ function cleanSlugSegment(value: unknown, fallback: string) {
   return raw || fallback;
 }
 
+function safeRecord(value: unknown): Record<string, any> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, any>;
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, any>;
+      }
+    } catch {}
+  }
+
+  return {};
+}
+
+function firstText(...values: unknown[]) {
+  for (const value of values) {
+    const text = String(value ?? "").trim();
+    if (text) return text;
+  }
+
+  return "";
+}
+
+function readOneRecord(value: unknown) {
+  const row = Array.isArray(value) ? value[0] : value;
+  return safeRecord(row);
+}
+
+function readRecordShortCode(...values: unknown[]) {
+  for (const value of values) {
+    const code = cleanShortCode(value).split(/[?#]/, 1)[0];
+
+    // الرابط المختصر للمنتج مقطع واحد فقط. لا نحول رابطًا قديمًا كاملًا
+    // إلى short code لأن ذلك ينتج مسارًا مشفرًا وغير قابل للفتح.
+    if (code && !code.includes("/")) return code;
+  }
+
+  return "";
+}
+
 /** CATEGORY */
 export function buildCategoryHref(args: {
   mode: SeoUrlMode | any;
@@ -97,4 +141,76 @@ export function buildProductHref(args: {
   return `/${encodeURIComponent(slug)}/p${encodeURIComponent(
     String(publicNo),
   )}`;
+}
+
+/**
+ * يبني رابط المنتج من سجل قاعدة البيانات حسب نمط المتجر الحالي.
+ * لا يثق في product.href لأنه قد يكون محفوظًا قبل تغيير seo.url_mode.
+ */
+export function buildProductHrefFromRecord(args: {
+  mode: SeoUrlMode | any;
+  product: unknown;
+  fallbackHref?: string | null;
+}) {
+  const product = safeRecord(args.product);
+  const metadata = safeRecord(product.metadata);
+  const seo = safeRecord(product.seo);
+  const productMetadata = readOneRecord(product.product_metadata);
+
+  const publicNo = positivePublicNo(
+    product.public_no ??
+      product.publicNo ??
+      product.public_number ??
+      product.publicNumber ??
+      metadata.public_no ??
+      metadata.publicNo,
+  );
+
+  const shortCode = readRecordShortCode(
+    product.short_url,
+    product.shortUrl,
+    product.short_code,
+    product.shortCode,
+    metadata.short_url,
+    metadata.shortUrl,
+    metadata.short_code,
+    metadata.shortCode,
+    seo.short_url,
+    seo.shortUrl,
+    productMetadata.url,
+  );
+
+  if (!publicNo && !shortCode) {
+    return firstText(args.fallbackHref) || "#";
+  }
+
+  const name = firstText(product.name, product.title, productMetadata.title);
+  const slugAr = firstText(
+    product.seo_slug_ar,
+    product.seo_slug,
+    metadata.seo_slug_ar,
+    metadata.seo_slug,
+    seo.slug_ar,
+    seo.slug,
+    name,
+    "product",
+  );
+  const slugEn = firstText(
+    product.seo_slug_en,
+    product.slug,
+    metadata.seo_slug_en,
+    metadata.slug,
+    seo.slug_en,
+    seo.slug,
+    name,
+    "product",
+  );
+
+  return buildProductHref({
+    mode: args.mode,
+    slugNameAr: slugAr,
+    slugNameEn: slugEn,
+    publicNo,
+    shortCode: shortCode || null,
+  });
 }

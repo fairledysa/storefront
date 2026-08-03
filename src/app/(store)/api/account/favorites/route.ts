@@ -7,7 +7,8 @@ import { getStoreDb } from "@/data/db/store-db.server";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
 import { verifySession } from "@/lib/auth/session";
 import { isProductVisibleInWeb } from "@/data/catalog/products";
-import { buildProductHref } from "@/lib/seo/build-store-href";
+import { getSeoUrlMode, type SeoUrlMode } from "@/data/store/settings";
+import { buildProductHrefFromRecord } from "@/lib/seo/build-store-href";
 
 const AUTH_COOKIE = "elyaia_session";
 const FAVORITES_SESSION_COOKIE = "elyaia_favorites_session";
@@ -455,41 +456,22 @@ async function loadFavoriteRows(args: {
   return r.data;
 }
 
-function productHref(product: any, ctx: any) {
-  const mode =
-    ctx?.seoMode ||
-    ctx?.seo_mode ||
-    ctx?.seoUrlMode ||
-    ctx?.seo_url_mode ||
-    ctx?.urlMode ||
-    "public_no";
-
-  try {
-    return buildProductHref({
-      mode,
-      slugNameAr: product?.name ?? "",
-      slugNameEn:
-        product?.slug ??
-        product?.metadata?.url ??
-        product?.metadata?.slug ??
-        product?.name ??
-        "",
-      publicNo: Number(product?.public_no ?? 0),
-      shortCode: product?.short_url ?? null,
-    });
-  } catch {
-    const publicNo = Number(product?.public_no ?? 0);
-    return publicNo > 0 ? `/p/${publicNo}` : "#";
-  }
+function productHref(product: any, seoMode: SeoUrlMode) {
+  return buildProductHrefFromRecord({
+    mode: seoMode,
+    product,
+    fallbackHref: "#",
+  });
 }
 
 async function hydrateFavorites(args: {
   sb: any;
   storeId: string;
   ctx: any;
+  seoMode: SeoUrlMode;
   favorites: any[];
 }) {
-  const { sb, storeId, ctx, favorites } = args;
+  const { sb, storeId, ctx, seoMode, favorites } = args;
 
   const productIds = Array.from(
     new Set(favorites.map((row) => s(row?.product_id)).filter(Boolean)),
@@ -814,7 +796,7 @@ async function hydrateFavorites(args: {
       price: convertedPricing?.price ?? null,
       sale_price: convertedPricing?.sale_price ?? null,
 
-      href: productHref(product, ctx),
+      href: productHref(product, seoMode),
       media: mediaByProduct.get(productId) || [],
       pricing: convertedPricing,
       product_pricing: convertedPricing,
@@ -901,6 +883,9 @@ export async function GET() {
   const storeId = ctx.store.id;
   const sb: any = await getStoreDb(storeId);
   const owner = await resolveOwner();
+  const seoMode = await getSeoUrlMode(storeId).catch(
+    () => "named_ar" as SeoUrlMode,
+  );
 
   await mergeSessionFavorites({
     sb,
@@ -918,6 +903,7 @@ export async function GET() {
     sb,
     storeId,
     ctx,
+    seoMode,
     favorites,
   });
 

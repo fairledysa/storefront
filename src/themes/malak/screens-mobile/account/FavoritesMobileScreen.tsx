@@ -201,8 +201,7 @@ function normalizeFavorite(row: any): FavoriteItem | null {
     s(product?.title) ||
     "منتج من المفضلة";
 
-  const slug = s(product?.slug || product?.handle);
-  const href = slug ? `/products/${slug}` : `/products/${productId}`;
+  const href = s(row?.href) || s(product?.href) || "#";
 
   return {
     id: s(row?.id || row?.favorite_id || productId),

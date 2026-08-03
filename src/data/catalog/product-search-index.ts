@@ -3,6 +3,8 @@ import "server-only";
 
 import { getStoreDb } from "@/data/db/store-db.server";
 import { isProductVisibleInWeb } from "@/data/catalog/products";
+import { getSeoUrlMode, type SeoUrlMode } from "@/data/store/settings";
+import { buildProductHrefFromRecord } from "@/lib/seo/build-store-href";
 
 const PRODUCT_SELECT =
   "id,store_id,name,description,status,public_no,created_at,brand_id,metadata,product_metadata(url,title,description)";
@@ -66,68 +68,16 @@ function normalizeArabic(value: unknown) {
     .trim();
 }
 
-function normalizeProductSlug(name: string) {
-  const raw = s(name)
-    .replace(/[\u064B-\u065F\u0670]/g, "")
-    .replace(/[^\p{L}\p{N}]+/gu, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
-  return raw || "product";
-}
-
-function normalizeShortPath(value: string) {
-  const raw = s(value);
-  if (!raw) return "";
-
-  if (
-    raw.startsWith("http://") ||
-    raw.startsWith("https://") ||
-    raw.startsWith("/")
-  ) {
-    return raw;
-  }
-
-  return `/${raw}`;
-}
-
 function getProductMetadata(product: any) {
   return readOne(product?.product_metadata);
 }
 
-function buildProductHref(product: any) {
-  const metadata = safeObject(product?.metadata);
-  const productMetadata = getProductMetadata(product);
-
-  const shortUrl = firstText(
-    productMetadata?.url,
-    product?.short_url,
-    product?.shortUrl,
-    product?.short_code,
-    product?.shortCode,
-    metadata.short_url,
-    metadata.shortUrl,
-    metadata.short_code,
-    metadata.shortCode,
-  );
-
-  if (shortUrl) return normalizeShortPath(shortUrl);
-
-  const publicNo = firstNumber(
-    product?.public_no,
-    product?.publicNo,
-    product?.public_number,
-    product?.publicNumber,
-    metadata.public_no,
-    metadata.publicNo,
-  );
-
-  if (publicNo && publicNo > 0) {
-    const slug = normalizeProductSlug(product?.name);
-    return `/${slug}/p${publicNo}`;
+async function getSafeSeoMode(storeId: string): Promise<SeoUrlMode> {
+  try {
+    return await getSeoUrlMode(storeId);
+  } catch {
+    return "named_ar";
   }
-
-  return `/product/${product?.id}`;
 }
 
 function collectTextFromAny(value: any, out: string[], depth = 0) {
@@ -573,6 +523,7 @@ function readProductImage(product: any, mediaUrl = "") {
 
 function buildIndexPayload(args: {
   product: any;
+  seoMode: SeoUrlMode;
   pricing: any;
   imageUrl: string;
   brand: any;
@@ -684,7 +635,11 @@ function buildIndexPayload(args: {
 
     title: s(product?.name),
     description: firstText(product?.description, productMetadata?.description),
-    href: buildProductHref(product),
+    href: buildProductHrefFromRecord({
+      mode: args.seoMode,
+      product,
+      fallbackHref: "#",
+    }),
     image_url: resolvedImageUrl || "",
 
     price: finalPrice,
@@ -719,12 +674,15 @@ export async function syncStoreSearchIndex(args: {
   const sb = await getStoreDb(storeId);
   const limit = Math.min(Math.max(Number(args.limit || 500), 1), 5000);
 
-  const result = await sb
-    .from("products")
-    .select(PRODUCT_SELECT)
-    .eq("store_id", storeId)
-    .order("created_at", { ascending: false })
-    .limit(limit);
+  const [seoMode, result] = await Promise.all([
+    getSafeSeoMode(storeId),
+    sb
+      .from("products")
+      .select(PRODUCT_SELECT)
+      .eq("store_id", storeId)
+      .order("created_at", { ascending: false })
+      .limit(limit),
+  ]);
 
   if (result.error) {
     return {
@@ -764,6 +722,7 @@ export async function syncStoreSearchIndex(args: {
 
     return buildIndexPayload({
       product,
+      seoMode,
       pricing: pricingMap.get(productId) || {},
       imageUrl: mediaMap.get(productId) || "",
       brand: product?.brand_id ? brandMap.get(s(product.brand_id)) : null,

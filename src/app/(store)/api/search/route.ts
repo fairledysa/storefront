@@ -7,6 +7,8 @@ import { cacheKey } from "@/data/cache/cache-keys";
 import { redisCachedWithMeta } from "@/data/cache/redis-cache.server";
 import { getProductsBySearch } from "@/data/catalog/products";
 import { getStoreDb } from "@/data/db/store-db.server";
+import { getSeoUrlMode, type SeoUrlMode } from "@/data/store/settings";
+import { buildProductHrefFromRecord } from "@/lib/seo/build-store-href";
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
 
 export const runtime = "nodejs";
@@ -664,32 +666,72 @@ function getProductImage(product: any) {
   );
 }
 
-function getProductHref(product: any) {
-  return pickText(
-    product?.href,
-    product?.url,
-    product?.short_url ? `/${String(product.short_url).replace(/^\/+/, "")}` : "",
-    product?.public_no ? `/p/${product.public_no}` : "",
+async function getSafeSeoMode(storeId: string): Promise<SeoUrlMode> {
+  try {
+    return await getSeoUrlMode(storeId);
+  } catch {
+    return "named_ar";
+  }
+}
+
+async function loadCurrentProductHrefs(args: {
+  storeId: string;
+  productIds: string[];
+  seoMode: SeoUrlMode;
+}) {
+  const productIds = Array.from(
+    new Set(args.productIds.map(s).filter(Boolean)),
   );
+  const hrefByProductId = new Map<string, string>();
+
+  if (!args.storeId || !productIds.length) return hrefByProductId;
+
+  const sb = (await getStoreDb(args.storeId)) as any;
+  const result = await sb
+    .from("products")
+    .select(
+      "id,name,public_no,metadata,product_metadata(url,title,description)",
+    )
+    .eq("store_id", args.storeId)
+    .in("id", productIds);
+
+  if (result.error || !Array.isArray(result.data)) return hrefByProductId;
+
+  for (const product of result.data) {
+    const productId = s(product?.id);
+    if (!productId) continue;
+
+    const href = buildProductHrefFromRecord({
+      mode: args.seoMode,
+      product,
+      fallbackHref: "#",
+    });
+
+    if (href && href !== "#") hrefByProductId.set(productId, href);
+  }
+
+  return hrefByProductId;
 }
 
 function serializeRow(
   row: SearchIndexRow,
   displayCurrency?: StoreCurrencyDisplay | null,
+  currentHref?: string | null,
 ) {
   const price = toNumber(row.price);
   const comparePrice = toNumber(row.compare_price);
   const rawCurrency = s(row.currency);
   const finalCurrency = getDisplayCurrencyText(rawCurrency, displayCurrency);
   const imageUrl = s(row.image_url);
+  const href = s(currentHref) || s(row.href) || "/";
 
   return {
     id: s(row.product_id),
     name: s(row.title),
     title: s(row.title),
     description: s(row.description),
-    href: s(row.href) || "/",
-    url: s(row.href) || "/",
+    href,
+    url: href,
 
     imageUrl,
     image_url: imageUrl,
@@ -722,6 +764,7 @@ function serializeRow(
 function serializeProductFallback(
   product: any,
   displayCurrency?: StoreCurrencyDisplay | null,
+  seoMode: SeoUrlMode = "named_ar",
 ) {
   const regularPrice = toNumber(
     firstDefined(
@@ -753,7 +796,11 @@ function serializeProductFallback(
 
   const finalCurrency = getDisplayCurrencyText(rawCurrency, displayCurrency);
   const imageUrl = getProductImage(product);
-  const href = getProductHref(product);
+  const href = buildProductHrefFromRecord({
+    mode: seoMode,
+    product,
+    fallbackHref: pickText(product?.href, product?.url, "#"),
+  });
 
   return {
     id: s(product?.id),
@@ -833,6 +880,7 @@ async function buildSearchResponseRaw(args: {
   storeId: string;
   store?: any;
   q: string;
+  seoMode: SeoUrlMode;
 }): Promise<SearchApiResponse> {
   const storeId = s(args.storeId);
   const q = normalizeDbSearchTerm(args.q);
@@ -856,7 +904,18 @@ async function buildSearchResponseRaw(args: {
   const rows = ranked.slice(0, SEARCH_LIMIT).map((item) => item.row);
 
   if (rows.length > 0) {
-    const items = rows.map((row) => serializeRow(row, displayCurrency));
+    const hrefByProductId = await loadCurrentProductHrefs({
+      storeId,
+      productIds: rows.map((row) => s(row.product_id)),
+      seoMode: args.seoMode,
+    });
+    const items = rows.map((row) =>
+      serializeRow(
+        row,
+        displayCurrency,
+        hrefByProductId.get(s(row.product_id)),
+      ),
+    );
 
     return {
       suggestions: buildSuggestions(q, rows, items, didYouMean?.query),
@@ -872,7 +931,9 @@ async function buildSearchResponseRaw(args: {
   });
 
   const fallbackItems = fallbackProducts
-    .map((product) => serializeProductFallback(product, displayCurrency))
+    .map((product) =>
+      serializeProductFallback(product, displayCurrency, args.seoMode),
+    )
     .filter((item) => item.id && item.title && item.href);
 
   return {
@@ -928,10 +989,18 @@ export async function GET(req: Request) {
   }
 
   const storeId = ctx.store.id;
+  const seoMode = await getSafeSeoMode(storeId);
   const qHash = hashText(normalizeArabic(q));
 
   const cached = await redisCachedWithMeta<SearchApiResponse>(
-    cacheKey("api-search", "suggestions", storeId, qHash, String(SEARCH_LIMIT)),
+    cacheKey(
+      "api-search",
+      "suggestions",
+      storeId,
+      seoMode,
+      qHash,
+      String(SEARCH_LIMIT),
+    ),
     {
       ttlSeconds: SEARCH_REDIS_TTL_SECONDS,
     },
@@ -940,6 +1009,7 @@ export async function GET(req: Request) {
         storeId,
         store: ctx.store,
         q,
+        seoMode,
       }),
   );
 
