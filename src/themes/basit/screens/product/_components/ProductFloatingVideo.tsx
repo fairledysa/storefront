@@ -496,13 +496,56 @@ export default function ProductFloatingVideo({
           .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
         if (!visible) return;
         const index = Number((visible.target as HTMLElement).dataset.shortIndex ?? 0);
-        if (Number.isFinite(index)) setActiveIndex(index);
+        if (Number.isFinite(index) && index !== activeIndex) {
+          // Mobile browsers block autoplay when the next slide keeps sound enabled.
+          // Reset the newly active video to muted, then let it start automatically.
+          setShortsMuted(true);
+          setActiveIndex(index);
+        }
       },
       { threshold: [0.6, 0.85] },
     );
     nodes.forEach((node) => observerRef.current?.observe(node));
     return () => observerRef.current?.disconnect();
-  }, [shortsOpen, feed.length]);
+  }, [shortsOpen, feed.length, activeIndex]);
+
+  useEffect(() => {
+    if (!shortsOpen) return;
+
+    let cancelled = false;
+    let retryTimer: number | null = null;
+    let attempts = 0;
+
+    const playActiveSlide = () => {
+      if (cancelled) return;
+      const activeSlide = shortsFeedRef.current?.querySelector<HTMLElement>(
+        `[data-short-index="${activeIndex}"]`,
+      );
+      const activeVideo = activeSlide?.querySelector<HTMLVideoElement>("video");
+      if (!activeVideo) return;
+
+      activeVideo.defaultMuted = true;
+      activeVideo.muted = true;
+      activeVideo.playsInline = true;
+
+      const playback = activeVideo.play();
+      if (playback && typeof playback.catch === "function") {
+        void playback.catch(() => {
+          if (cancelled || attempts >= 12) return;
+          attempts += 1;
+          retryTimer = window.setTimeout(playActiveSlide, 180);
+        });
+      }
+    };
+
+    const frame = window.requestAnimationFrame(playActiveSlide);
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+    };
+  }, [shortsOpen, activeIndex]);
 
   useEffect(() => {
     if (!commentsOpen) return;
