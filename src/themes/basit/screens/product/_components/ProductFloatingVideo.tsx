@@ -497,9 +497,8 @@ export default function ProductFloatingVideo({
         if (!visible) return;
         const index = Number((visible.target as HTMLElement).dataset.shortIndex ?? 0);
         if (Number.isFinite(index) && index !== activeIndex) {
-          // Mobile browsers block autoplay when the next slide keeps sound enabled.
-          // Reset the newly active video to muted, then let it start automatically.
-          setShortsMuted(true);
+          // Preserve the sound choice across slides. If the customer unmuted the
+          // first video, the next video should open with sound as well.
           setActiveIndex(index);
         }
       },
@@ -524,8 +523,8 @@ export default function ProductFloatingVideo({
       const activeVideo = activeSlide?.querySelector<HTMLVideoElement>("video");
       if (!activeVideo) return;
 
-      activeVideo.defaultMuted = true;
-      activeVideo.muted = true;
+      activeVideo.defaultMuted = shortsMuted;
+      activeVideo.muted = shortsMuted;
       activeVideo.playsInline = true;
 
       const playback = activeVideo.play();
@@ -545,7 +544,7 @@ export default function ProductFloatingVideo({
       window.cancelAnimationFrame(frame);
       if (retryTimer !== null) window.clearTimeout(retryTimer);
     };
-  }, [shortsOpen, activeIndex]);
+  }, [shortsOpen, activeIndex, shortsMuted]);
 
   useEffect(() => {
     if (!commentsOpen) return;
