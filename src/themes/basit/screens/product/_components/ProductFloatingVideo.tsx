@@ -120,6 +120,20 @@ function readMuxPlaybackId(src: string) {
   return match?.[1] ? decodeURIComponent(match[1]) : "";
 }
 
+function postPlayerMethod(
+  iframe: HTMLIFrameElement | null,
+  method: "play" | "pause" | "mute" | "unmute",
+) {
+  iframe?.contentWindow?.postMessage(
+    JSON.stringify({
+      context: "player.js",
+      version: "0.0.11",
+      method,
+    }),
+    "https://player.mux.com",
+  );
+}
+
 function VideoMedia({
   item,
   active,
@@ -132,55 +146,108 @@ function VideoMedia({
   muted?: boolean;
 }) {
   const ref = useRef<HTMLVideoElement | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const muxPlaybackId = useMemo(() => readMuxPlaybackId(item.videoSrc), [item.videoSrc]);
 
+  // Sound changes must never recreate the media or seek it back to the start.
   useEffect(() => {
     const video = ref.current;
-    if (!video) return;
-
-    video.defaultMuted = muted;
-    video.muted = muted;
-
-    if (!active) {
-      video.pause();
+    if (video) {
+      video.defaultMuted = muted;
+      video.muted = muted;
       return;
     }
 
-    let cancelled = false;
-    let retryTimer: number | null = null;
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    postPlayerMethod(iframe, muted ? "mute" : "unmute");
+  }, [muted]);
 
-    const startPlayback = () => {
-      if (cancelled || !ref.current) return;
-      const currentVideo = ref.current;
-      currentVideo.defaultMuted = muted;
-      currentVideo.muted = muted;
-      const attempt = currentVideo.play();
-      if (attempt && typeof attempt.catch === "function") {
-        void attempt.catch(() => {
-          if (cancelled) return;
-          retryTimer = window.setTimeout(startPlayback, 180);
-        });
+  // Start only the active slide and pause the others. Keep this independent
+  // from the sound state so toggling sound does not restart playback.
+  useEffect(() => {
+    const video = ref.current;
+    if (video) {
+      if (!active) {
+        video.pause();
+        return;
       }
-    };
 
-    startPlayback();
+      let cancelled = false;
+      let retryTimer: number | null = null;
+      let attempts = 0;
 
-    return () => {
-      cancelled = true;
-      if (retryTimer !== null) window.clearTimeout(retryTimer);
-    };
-  }, [active, muted, item.videoSrc]);
+      const startPlayback = () => {
+        if (cancelled || !ref.current) return;
+        const currentVideo = ref.current;
+        currentVideo.playsInline = true;
+        currentVideo.defaultMuted = muted;
+        currentVideo.muted = muted;
+        const attempt = currentVideo.play();
+        if (attempt && typeof attempt.catch === "function") {
+          void attempt.catch(() => {
+            if (cancelled || attempts >= 12) return;
+            attempts += 1;
+            retryTimer = window.setTimeout(startPlayback, 180);
+          });
+        }
+      };
+
+      startPlayback();
+      return () => {
+        cancelled = true;
+        if (retryTimer !== null) window.clearTimeout(retryTimer);
+      };
+    }
+
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+
+    if (!active) {
+      postPlayerMethod(iframe, "pause");
+      return;
+    }
+
+    // Start muted first so mobile autoplay succeeds, then restore the user's
+    // selected sound state without rebuilding the iframe or restarting time.
+    postPlayerMethod(iframe, "mute");
+    postPlayerMethod(iframe, "play");
+    if (!muted) {
+      window.setTimeout(() => postPlayerMethod(iframeRef.current, "unmute"), 80);
+    }
+  }, [active, item.videoSrc]);
 
   if (muxPlaybackId) {
     return (
       <iframe
-        src={`https://player.mux.com/${encodeURIComponent(muxPlaybackId)}?autoplay=${active ? "true" : "false"}&muted=${muted ? "true" : "false"}&loop=true&playsinline=true`}
+        ref={iframeRef}
+        src={`https://player.mux.com/${encodeURIComponent(muxPlaybackId)}?autoplay=false&muted=true&loop=true&playsinline=true`}
         title={item.title || "فيديو المنتج"}
         allow="autoplay; fullscreen; picture-in-picture"
         allowFullScreen
+        onLoad={() => {
+          const iframe = iframeRef.current;
+          if (!iframe) return;
+          if (!active) {
+            postPlayerMethod(iframe, "pause");
+            return;
+          }
+          postPlayerMethod(iframe, "mute");
+          postPlayerMethod(iframe, "play");
+          if (!muted) {
+            window.setTimeout(() => postPlayerMethod(iframeRef.current, "unmute"), 80);
+          }
+        }}
       />
     );
   }
+
+  const ensurePlaying = () => {
+    if (!active || !ref.current) return;
+    ref.current.defaultMuted = muted;
+    ref.current.muted = muted;
+    void ref.current.play().catch(() => undefined);
+  };
 
   return (
     <video
@@ -189,32 +256,16 @@ function VideoMedia({
       poster={item.poster || undefined}
       controls={controls}
       playsInline
-      muted={muted}
+      muted
       autoPlay={active}
       loop
       preload={active ? "auto" : "metadata"}
-      onCanPlay={() => {
-        if (!active || !ref.current) return;
-        ref.current.defaultMuted = muted;
-        ref.current.muted = muted;
-        void ref.current.play().catch(() => undefined);
-      }}
-      onLoadedData={() => {
-        if (!active || !ref.current) return;
-        ref.current.defaultMuted = muted;
-        ref.current.muted = muted;
-        void ref.current.play().catch(() => undefined);
-      }}
-      onLoadedMetadata={() => {
-        if (!active || !ref.current) return;
-        ref.current.defaultMuted = muted;
-        ref.current.muted = muted;
-        void ref.current.play().catch(() => undefined);
-      }}
+      onCanPlay={ensurePlaying}
+      onLoadedData={ensurePlaying}
+      onLoadedMetadata={ensurePlaying}
     />
   );
 }
-
 
 function ReviewCommentIcon() {
   return (
@@ -497,8 +548,6 @@ export default function ProductFloatingVideo({
         if (!visible) return;
         const index = Number((visible.target as HTMLElement).dataset.shortIndex ?? 0);
         if (Number.isFinite(index) && index !== activeIndex) {
-          // Preserve the sound choice across slides. If the customer unmuted the
-          // first video, the next video should open with sound as well.
           setActiveIndex(index);
         }
       },
@@ -521,19 +570,30 @@ export default function ProductFloatingVideo({
         `[data-short-index="${activeIndex}"]`,
       );
       const activeVideo = activeSlide?.querySelector<HTMLVideoElement>("video");
-      if (!activeVideo) return;
+      const activeIframe = activeSlide?.querySelector<HTMLIFrameElement>("iframe");
 
-      activeVideo.defaultMuted = shortsMuted;
-      activeVideo.muted = shortsMuted;
-      activeVideo.playsInline = true;
+      if (activeVideo) {
+        activeVideo.defaultMuted = shortsMuted;
+        activeVideo.muted = shortsMuted;
+        activeVideo.playsInline = true;
 
-      const playback = activeVideo.play();
-      if (playback && typeof playback.catch === "function") {
-        void playback.catch(() => {
-          if (cancelled || attempts >= 12) return;
-          attempts += 1;
-          retryTimer = window.setTimeout(playActiveSlide, 180);
-        });
+        const playback = activeVideo.play();
+        if (playback && typeof playback.catch === "function") {
+          void playback.catch(() => {
+            if (cancelled || attempts >= 12) return;
+            attempts += 1;
+            retryTimer = window.setTimeout(playActiveSlide, 180);
+          });
+        }
+        return;
+      }
+
+      if (activeIframe) {
+        postPlayerMethod(activeIframe, "mute");
+        postPlayerMethod(activeIframe, "play");
+        if (!shortsMuted) {
+          window.setTimeout(() => postPlayerMethod(activeIframe, "unmute"), 80);
+        }
       }
     };
 
@@ -544,7 +604,7 @@ export default function ProductFloatingVideo({
       window.cancelAnimationFrame(frame);
       if (retryTimer !== null) window.clearTimeout(retryTimer);
     };
-  }, [shortsOpen, activeIndex, shortsMuted]);
+  }, [shortsOpen, activeIndex]);
 
   useEffect(() => {
     if (!commentsOpen) return;
@@ -680,19 +740,25 @@ export default function ProductFloatingVideo({
 
   const toggleShortsSound = () => {
     const nextMuted = !shortsMuted;
-    setShortsMuted(nextMuted);
 
-    // Keep playback running when sound state changes. Calling play from the
-    // actual user click avoids mobile browsers pausing the video on unmute.
     const activeSlide = shortsFeedRef.current?.querySelector<HTMLElement>(
       `[data-short-index="${activeIndex}"]`,
     );
     const activeVideo = activeSlide?.querySelector<HTMLVideoElement>("video");
+    const activeIframe = activeSlide?.querySelector<HTMLIFrameElement>("iframe");
+
+    // Apply the sound change directly to the existing player before updating
+    // React state. This preserves the current playback position.
     if (activeVideo) {
       activeVideo.defaultMuted = nextMuted;
       activeVideo.muted = nextMuted;
-      void activeVideo.play().catch(() => undefined);
+      if (activeVideo.paused) void activeVideo.play().catch(() => undefined);
+    } else if (activeIframe) {
+      postPlayerMethod(activeIframe, nextMuted ? "mute" : "unmute");
+      postPlayerMethod(activeIframe, "play");
     }
+
+    setShortsMuted(nextMuted);
   };
 
   const addToCart = (item: ProductShortItem) => {
