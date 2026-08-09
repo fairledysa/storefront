@@ -8,6 +8,7 @@ import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store"
 import { getSeoUrlMode } from "@/data/store/settings";
 
 import MalakTheme from "@/themes/malak";
+import BasitTheme from "@/themes/basit";
 import { getMalakBootstrap } from "@/themes/malak/bootstrap/get-malak-bootstrap";
 import { getInitialCartCount } from "@/themes/malak/runtime/get-cart-count.server";
 
@@ -15,14 +16,14 @@ function s(value: unknown) {
   return String(value ?? "").trim();
 }
 
-function isMalakTheme(ctx: any) {
+function resolveAppShellTheme(ctx: any) {
   const themeKey =
     s(ctx?.theme?.theme_key) ||
     s(ctx?.theme?.key) ||
     s(ctx?.theme?.code) ||
     s(ctx?.theme?.theme_code);
 
-  return themeKey === "malak";
+  return themeKey === "malak" || themeKey === "basit" ? themeKey : null;
 }
 
 function detectDeviceFromUA(ua: string, mobileHint?: string | null) {
@@ -447,7 +448,9 @@ export default async function StoreNotFound() {
     ctx = null;
   }
 
-  if (!ctx?.store || !isMalakTheme(ctx)) {
+  const themeKey = resolveAppShellTheme(ctx);
+
+  if (!ctx?.store || !themeKey) {
     return <NotFoundContent />;
   }
 
@@ -495,19 +498,20 @@ export default async function StoreNotFound() {
     initialCartCount,
     theme: {
       ...(ctx?.theme ?? {}),
-      key: "malak",
-      theme_key: "malak",
+      key: themeKey,
+      theme_key: themeKey,
       version_id: ctx?.theme?.version_id ?? "published",
       options: ctx?.theme?.options ?? {},
     },
   };
+  const ActiveTheme = themeKey === "basit" ? BasitTheme : MalakTheme;
 
   return (
-    <MalakTheme ctx={appCtx as any}>
+    <ActiveTheme ctx={appCtx as any}>
       <NotFoundContent
         storeName={ctx.store.name}
         logoUrl={ctx.store.logo_url ?? null}
       />
-    </MalakTheme>
+    </ActiveTheme>
   );
 }

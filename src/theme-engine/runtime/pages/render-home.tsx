@@ -52,7 +52,10 @@ export async function renderHomePage(args: {
         store: args.store,
         theme,
         sections: layout.sections,
-        data: args.data || {},
+        data: {
+          ...(args.data || {}),
+          route: "home",
+        },
       })}
     </>
   );

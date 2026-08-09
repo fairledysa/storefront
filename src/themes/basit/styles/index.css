@@ -1,0 +1,63 @@
+/* FILE: apps/storefront/src/themes/basit/styles/index.css */
+
+@import "./foundation/tokens.css";
+@import "./foundation/reset.css";
+@import "./foundation/typography.css";
+@import "./foundation/layout.css";
+@import "./foundation/animations.css";
+@import "./foundation/z-index.css";
+
+@import "./components/buttons.css";
+@import "./components/badges.css";
+@import "./components/cards.css";
+@import "./components/empty.css";
+@import "./components/overlay.css";
+@import "./components/auth-modal.css";
+@import "./components/smart-search.css";
+
+@import "./shell/app-shell.css";
+@import "./shell/bottom-nav.css";
+@import "./shell/search-overlay.css";
+@import "./shell/desktop-header.css";
+@import "./shell/footer.css";
+
+@import "./screens-desktop/home.css";
+@import "./screens-desktop/product.css";
+@import "./screens-desktop/category.css";
+@import "./screens-desktop/category-filters.css";
+@import "./screens-desktop/categories.css";
+@import "./screens-desktop/cart.css";
+@import "./screens-desktop/thankyou.css";
+@import "./screens-desktop/maintenance.css";
+@import "./screens-desktop/account.css";
+@import "./screens-desktop/page.css";
+@import "./screens-desktop/search.css";
+@import "./screens-desktop/product-cart-runtime.css";
+@import "./screens-desktop/checkout-payment.css";
+@import "./components/marketing-popups.css";
+
+/* Basit has one responsive visual system for every viewport. */
+@import "./basit-unified.css";
+
+/* Basit homepage — full visual/layout redesign, logic untouched. */
+@import "./home-redesign.css";
+
+/* Radical Basit storefront identity */
+@import "./basit-editorial-home.css";
+
+/* Basit radical structural redesign */
+@import "./basit-brand-system.css";
+
+/* Basit header, drawer and fullscreen search v2 */
+@import "./basit-header-v2.css";
+
+/* Theme settings are the final source of truth on every route. */
+@import "./basit-theme-settings.css";
+
+/* Product-card settings must override all legacy route-specific card CSS. */
+@import "./product-card-settings.css";
+/* Videos route styles load before the final regression shield. */
+@import "./screens-desktop/videos.css";
+
+/* Final regression shield for Basit components — keep this import last. */
+@import "./basit-stability.css";

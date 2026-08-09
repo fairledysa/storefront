@@ -1,0 +1,124 @@
+/* themes/malak/styles/layout.css */
+.mk-root[data-theme-code="basit"] .mk-container{
+  padding: 16px;
+}
+.mk-root[data-theme-code="basit"] .mk-row{
+  display: flex;
+  align-items: center;
+  gap: var(--mk-gap);
+}
+
+.mk-root[data-theme-code="basit"] .mk-card{
+  background: var(--mk-surface);
+  border: 1px solid var(--mk-border);
+  border-radius: var(--mk-radius);
+  box-shadow: none;
+}
+
+.mk-root[data-theme-code="basit"] .mk-card--padded{
+  padding: 12px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-btn{
+  border: none;
+  border-radius: calc(var(--mk-radius) - 2px);
+  height: 44px;
+  padding: 0 14px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.mk-root[data-theme-code="basit"] .mk-btn--full{
+  width: 100%;
+}
+
+.mk-root[data-theme-code="basit"] .mk-btn--sm{
+  height: 36px;
+}
+.mk-root[data-theme-code="basit"] .mk-btn--md{
+  height: 44px;
+}
+.mk-root[data-theme-code="basit"] .mk-btn--lg{
+  height: 48px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-btn--primary{
+  background: var(--mk-primary);
+  color: #fff;
+}
+.mk-root[data-theme-code="basit"] .mk-btn--secondary{
+  background: #fff;
+  color: var(--mk-text);
+  border: 1px solid var(--mk-border);
+}
+.mk-root[data-theme-code="basit"] .mk-btn--ghost{
+  background: transparent;
+  color: var(--mk-text);
+}
+
+.mk-root[data-theme-code="basit"] .mk-badge{
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 800;
+  border: 1px solid var(--mk-border);
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.mk-root[data-theme-code="basit"] [data-mk-theme="dark"] .mk-badge{
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.mk-root[data-theme-code="basit"] .mk-badge--success{
+  border-color: rgba(0, 180, 90, 0.25);
+}
+.mk-root[data-theme-code="basit"] .mk-badge--danger{
+  border-color: rgba(230, 40, 40, 0.25);
+}
+
+.mk-root[data-theme-code="basit"] .mk-price{
+  font-size: 13px;
+  font-weight: 800;
+}
+.mk-root[data-theme-code="basit"] .mk-price--strong{
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.mk-root[data-theme-code="basit"] .mk-empty{
+  padding: 18px;
+  text-align: center;
+}
+
+.mk-root[data-theme-code="basit"] .mk-empty__title{
+  font-weight: 900;
+  font-size: 16px;
+}
+.mk-root[data-theme-code="basit"] .mk-empty__desc{
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--mk-muted);
+}
+.mk-root[data-theme-code="basit"] .mk-empty__actions{
+  margin-top: 12px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-overlay{
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.25);
+  display: grid;
+  place-items: center;
+  z-index: 999;
+}
+
+.mk-root[data-theme-code="basit"] .mk-spinner{
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 3px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  animation: mk-spin 1s linear infinite;
+}

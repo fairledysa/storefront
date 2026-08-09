@@ -566,7 +566,7 @@ function cachedActiveThemeVersion(store_id: string) {
           () => fetchActiveThemeVersion(store_id),
         ),
       ["active-theme-version", store_id],
-      { revalidate: 30 },
+      { revalidate: 30, tags: [`store-theme:${store_id}`] },
     );
 
     _activeThemeVersionCache.set(store_id, fn);
@@ -587,7 +587,7 @@ function cachedActiveStoreTheme(store_id: string) {
           () => fetchActiveStoreTheme(store_id),
         ),
       ["active-store-theme", store_id],
-      { revalidate: 30 },
+      { revalidate: 30, tags: [`store-theme:${store_id}`] },
     );
 
     _activeStoreThemeCache.set(store_id, fn);
@@ -609,7 +609,7 @@ function cachedThemeMainInfo(store_id: string, version_id: string) {
           () => fetchThemeMainInfo(store_id, version_id),
         ),
       ["theme-main-info", store_id, version_id],
-      { revalidate: 30 },
+      { revalidate: 30, tags: [`store-theme:${store_id}`] },
     );
 
     _themeMainInfoCache.set(key, fn);
@@ -631,13 +631,32 @@ function cachedThemeOptions(store_id: string, version_id: string) {
           () => fetchThemeOptions(store_id, version_id),
         ),
       ["theme-options", store_id, version_id],
-      { revalidate: 30 },
+      { revalidate: 30, tags: [`store-theme:${store_id}`] },
     );
 
     _themeOptionsCache.set(key, fn);
   }
 
   return fn();
+}
+
+export function clearStoreThemeMemoryCache(storeId: string) {
+  const cleanStoreId = String(storeId || "").trim();
+  if (!cleanStoreId) return;
+
+  _activeThemeVersionCache.delete(cleanStoreId);
+  _activeStoreThemeCache.delete(cleanStoreId);
+
+  for (const key of _themeMainInfoCache.keys()) {
+    if (key.startsWith(`${cleanStoreId}:`)) _themeMainInfoCache.delete(key);
+  }
+
+  for (const key of _themeOptionsCache.keys()) {
+    if (key.startsWith(`${cleanStoreId}:`)) _themeOptionsCache.delete(key);
+  }
+
+  // سياق المتجر يحتوي نسخة الثيم، لذلك يُعاد بناؤه بعد الإبطال.
+  _storeContextCache.clear();
 }
 
 /* ---------------------------- Main resolver ---------------------------- */
@@ -755,7 +774,7 @@ function cachedStoreContextByHost(host: string) {
           () => resolveStoreContextByHost(host),
         ),
       ["store-context", host],
-      { revalidate: 60 },
+      { revalidate: 60, tags: ["store-context"] },
     );
 
     _storeContextCache.set(host, fn);

@@ -10,8 +10,10 @@ import { MARKETING_HUBS, type MarketingHubType } from "@/data/marketing/marketin
 import { toProductCardVM } from "@/data/viewmodels/product.vm";
 import { buildProductHref } from "@/lib/seo/build-store-href";
 import MalakTheme from "@/themes/malak";
+import BasitTheme from "@/themes/basit";
 import MarketingHubScreen from "@/themes/malak/screens/marketing-hub/MarketingHubScreen";
 import MarketingHubMobileScreen from "@/themes/malak/screens-mobile/marketing/MarketingHubMobileScreen";
+import BasitMarketingHubScreen from "@/themes/basit/screens/marketing-hub/MarketingHubScreen";
 
 function text(value: unknown) {
   return String(value ?? "").trim();
@@ -68,6 +70,7 @@ export default async function MarketingHubPage({
     h.get("sec-ch-ua-mobile"),
   );
   const seoMode = await getSeoUrlMode(storeId);
+  const useBasit = text(ctx?.theme?.theme_key || ctx?.theme?.key) === "basit";
 
   const [bootstrap, initialCartCount, rawCollections] = await Promise.all([
     getMalakBootstrap({
@@ -114,20 +117,22 @@ export default async function MarketingHubPage({
     data: { route: `marketing_hub_${type}`, collections, bootstrap },
     theme: {
       ...(ctx?.theme ?? {}),
-      key: "malak",
-      theme_key: "malak",
+      key: useBasit ? "basit" : "malak",
+      theme_key: useBasit ? "basit" : "malak",
       version_id: ctx?.theme?.version_id ?? "published",
       options: ctx?.theme?.options ?? {},
     },
   };
+  const ActiveTheme = useBasit ? BasitTheme : MalakTheme;
+  const Screen = useBasit
+    ? BasitMarketingHubScreen
+    : device === "mobile"
+      ? MarketingHubMobileScreen
+      : MarketingHubScreen;
 
   return (
-    <MalakTheme ctx={appCtx}>
-      {device === "mobile" ? (
-        <MarketingHubMobileScreen config={config} collections={collections} />
-      ) : (
-        <MarketingHubScreen config={config} collections={collections} />
-      )}
-    </MalakTheme>
+    <ActiveTheme ctx={appCtx}>
+      <Screen config={config} collections={collections} />
+    </ActiveTheme>
   );
 }

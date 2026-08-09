@@ -1,0 +1,487 @@
+/* FILE: apps/storefront/src/themes/basit/styles/header.css */
+
+/* ========= Vars ========= */
+.mk-root[data-theme-code="basit"]{
+  --no-container: 1280px;
+  --no-border: #eeeeee;
+  --no-muted: #7a7a7a;
+  --no-bg-soft: #f7f7f7;
+  --no-text: #111;
+
+  --no-shadow: 0 12px 28px rgba(0, 0, 0, 0.08);
+  --no-shadow-pop: 0 20px 50px rgba(0, 0, 0, 0.2);
+
+  /* ✅ ترتيب الطبقات (مثل نايس ون: الهيدر فوق التغميق) */
+  --z-overlay: 70;
+  --z-footer: 75;
+  --z-header: 80;
+  --z-popover: 90;
+
+  --mk-accent: #6d28d9;
+}
+
+/* ========= Header ========= */
+.mk-root[data-theme-code="basit"] .mk-header{
+  position: sticky;
+  top: 0;
+  z-index: var(--z-header);
+  background: #fff;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+/* ✅ مهم: لا تقص أي Popover داخل الهيدر */
+.mk-root[data-theme-code="basit"] .mk-header,
+.mk-root[data-theme-code="basit"] .mk-header__container,
+.mk-root[data-theme-code="basit"] .mk-header__row,
+.mk-root[data-theme-code="basit"] .mk-header__top,
+.mk-root[data-theme-code="basit"] .mk-header__bottom{
+  overflow: visible;
+}
+
+.mk-root[data-theme-code="basit"] .mk-header__row{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+/* Top */
+.mk-root[data-theme-code="basit"] .mk-header__top{
+  padding: 14px 0;
+}
+
+/* Compact */
+.mk-root[data-theme-code="basit"] .mk-header--compact .mk-header__top{
+  display: none;
+}
+
+.mk-root[data-theme-code="basit"] .mk-header--compact .mk-header__bottom{
+  height: 54px;
+  border-top: 0;
+}
+
+/* ========= Nav bits ========= */
+.mk-root[data-theme-code="basit"] .mk-vdiv{
+  width: 1px;
+  height: 18px;
+  background: #e5e5e5;
+  display: inline-block;
+}
+
+/* ========= Overlay (التغميق) ========= */
+/* ✅ تحت الهيدر (z أقل من الهيدر) عشان الهيدر ما يتغمق ولا ينحجب */
+.mk-root[data-theme-code="basit"] .mk-overlay{
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay);
+  background: rgba(0, 0, 0, 0.35);
+}
+
+/* ========= Popover (Account / Search dropdown) ========= */
+/* ✅ مربوط بزر "حسابي" (يمين) */
+.mk-root[data-theme-code="basit"] .mk-popover{
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  left: auto;
+  z-index: var(--z-popover);
+
+  width: 380px;
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+
+  box-shadow: var(--no-shadow-pop);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+/* سهم صغير فوق البوب */
+.mk-root[data-theme-code="basit"] .mk-popover__arrow{
+  position: absolute;
+  top: -8px;
+  right: 22px;
+  width: 16px;
+  height: 16px;
+  transform: rotate(45deg);
+  background: #fff;
+  border-left: 1px solid rgba(0, 0, 0, 0.08);
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+/* ========= Account underline ========= */
+/* خط بنفسجي تحت "حسابي" لما تكون مفتوحة */
+.mk-root[data-theme-code="basit"] .mk-account-underline{
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -10px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--mk-accent);
+}
+
+/* ========= Footer فوق التغميق (مثل نايس ون) ========= */
+.mk-root[data-theme-code="basit"] footer,
+.mk-root[data-theme-code="basit"] .mk-footer{
+  position: relative;
+  z-index: var(--z-footer);
+}
+
+/* ========= MegaMenu ========= */
+.mk-root[data-theme-code="basit"] .mk-mega{
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  width: min(980px, calc(100vw - 32px));
+
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: var(--no-shadow);
+  border-radius: 1px;
+  overflow: hidden;
+
+  z-index: var(--z-popover);
+}
+/* ========= MegaMenu ========= */
+/* ========= MegaMenu ========= */
+/* ========= MegaMenu ========= */
+/* ========= MegaMenu ========= */
+.mk-root[data-theme-code="basit"] .mk-mega__inner{
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  min-height: 320px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-mega__side{
+  background: var(--no-bg-soft);
+  border-left: 1px solid rgba(0, 0, 0, 0.06);
+  padding: 14px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-mega__side a{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  padding: 10px 10px;
+  border-radius: 0px;
+  color: rgba(0, 0, 0, 0.78);
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.mk-root[data-theme-code="basit"] .mk-mega__side a:hover{
+  background: rgba(0, 0, 0, 0.04);
+  color: #000;
+}
+
+.mk-root[data-theme-code="basit"] .mk-mega__content{
+  padding: 16px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-mega__grid{
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-mega__title{
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(0, 0, 0, 0.85);
+  margin-bottom: 8px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-mega__link{
+  display: block;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.65);
+  padding: 6px 0;
+  text-decoration: none;
+}
+
+.mk-root[data-theme-code="basit"] .mk-mega__link:hover{
+  color: #000;
+}
+
+.mk-root[data-theme-code="basit"] .mk-mega__inner{
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  min-height: 420px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-mega__side{
+  background: #fafafa;
+  border-left: 1px solid #eee;
+  padding: 20px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mk-root[data-theme-code="basit"] .mk-mega__side a{
+  padding: 14px 24px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  color: #333;
+  transition: all 0.2s ease;
+}
+
+.mk-root[data-theme-code="basit"] .mk-mega__side a:hover{
+  background: #fff;
+  font-weight: 600;
+}
+
+.mk-root[data-theme-code="basit"] .mk-mega__content{
+  padding: 30px 40px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-mega__grid{
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 30px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-mega__title{
+  font-weight: 700;
+  margin-bottom: 14px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-mega__link{
+  display: block;
+  margin-bottom: 10px;
+  font-size: 14px;
+  color: #555;
+}
+
+.mk-root[data-theme-code="basit"] .mk-mega__link:hover{
+  color: #000;
+}
+
+
+/* =========================================================
+   Malak Desktop Announcement Bar
+   ========================================================= */
+
+.mk-root[data-theme-code="basit"] .mk-announcement__anchor{
+  display: block;
+  width: 100%;
+  text-decoration: none;
+  color: inherit;
+}
+
+.mk-root[data-theme-code="basit"] .mk-announcement{
+  width: 100%;
+  min-height: 38px;
+  background: var(--mk-announcement-bg, #bdf5ea);
+  color: var(--mk-announcement-text, #111827);
+  border-bottom: 1px solid rgba(17, 24, 39, 0.08);
+  direction: rtl;
+}
+
+.mk-root[data-theme-code="basit"] .mk-announcement__container{
+  width: min(100%, 1440px);
+  margin-inline: auto;
+  padding-inline: 28px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-announcement__content{
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.6;
+  font-weight: 500;
+}
+
+.mk-root[data-theme-code="basit"] .mk-announcement__icon{
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+}
+
+.mk-root[data-theme-code="basit"] .mk-announcement__text{
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-announcement__title{
+  font-weight: 700;
+  color: inherit;
+}
+
+.mk-root[data-theme-code="basit"] .mk-announcement__body{
+  color: inherit;
+  opacity: 0.92;
+}
+
+.mk-root[data-theme-code="basit"] .mk-announcement__linkText{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  border-radius: 999px;
+  padding: 2px 10px;
+  background: rgba(255, 255, 255, 0.35);
+  color: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+@media (max-width: 767px) {
+  .mk-root[data-theme-code="basit"] .mk-announcement{
+    display: none;
+  }
+}
+
+
+/* =========================
+   Announcement bar
+   ========================= */
+
+.mk-root[data-theme-code="basit"] .mk-announcement{
+  background: var(--mk-announcement-bg, #bdf5ea);
+  color: var(--mk-announcement-text, #111827);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.mk-root[data-theme-code="basit"] .mk-announcement__container{
+  position: relative;
+  width: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 24px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-announcement__contentWrap{
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 64px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.mk-root[data-theme-code="basit"] .mk-announcement__inner{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  max-width: 100%;
+  flex-wrap: wrap;
+  text-align: center;
+}
+
+.mk-root[data-theme-code="basit"] .mk-announcement__icon{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.95;
+  flex-shrink: 0;
+}
+
+.mk-root[data-theme-code="basit"] .mk-announcement__text{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  text-align: center;
+  line-height: 1.7;
+}
+
+.mk-root[data-theme-code="basit"] .mk-announcement__title{
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.mk-root[data-theme-code="basit"] .mk-announcement__body{
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.mk-root[data-theme-code="basit"] .mk-announcement__linkText{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.mk-root[data-theme-code="basit"] .mk-announcement__close{
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.35);
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.mk-root[data-theme-code="basit"] .mk-announcement__close:hover{
+  background: rgba(255, 255, 255, 0.6);
+  border-color: rgba(15, 23, 42, 0.18);
+}
+
+@media (max-width: 1024px) {
+  .mk-root[data-theme-code="basit"] .mk-announcement__container{
+    min-height: 46px;
+    padding: 0 16px;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-announcement__contentWrap{
+    min-height: 46px;
+    padding: 10px 52px;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-announcement__inner{
+    gap: 8px;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-announcement__title,
+.mk-root[data-theme-code="basit"] .mk-announcement__body{
+    font-size: 13px;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-announcement__close{
+    left: 12px;
+    width: 30px;
+    height: 30px;
+    font-size: 14px;
+  }
+}

@@ -1,0 +1,17 @@
+/* themes/malak/styles/tokens.css */
+.mk-root[data-theme-code="basit"]{
+  --mk-radius: 14px;
+  --mk-gap: 12px;
+
+  --mk-font: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+
+  --mk-primary: #000;
+  --mk-bg: #fff;
+  --mk-surface: #fff;
+  --mk-text: #111;
+
+  --mk-border: rgba(0, 0, 0, 0.08);
+  --mk-muted: rgba(0, 0, 0, 0.65);
+
+  --mk-shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
+}

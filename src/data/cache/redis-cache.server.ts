@@ -232,6 +232,40 @@ export async function redisDelete(key: string) {
   return Boolean(response && !response.error);
 }
 
+
+export async function redisDeletePattern(pattern: string) {
+  if (!isRedisEnabled()) return { deleted: 0, enabled: false };
+
+  const cleanPattern = String(pattern || "").trim();
+  if (!cleanPattern) return { deleted: 0, enabled: true };
+
+  let cursor = "0";
+  let deleted = 0;
+
+  do {
+    const scan = await redisCommand<[string, string[]]>([
+      "SCAN",
+      cursor,
+      "MATCH",
+      cleanPattern,
+      "COUNT",
+      100,
+    ]);
+
+    if (!scan || scan.error || !Array.isArray(scan.result)) break;
+
+    cursor = String(scan.result[0] ?? "0");
+    const keys = Array.isArray(scan.result[1]) ? scan.result[1] : [];
+
+    if (keys.length > 0) {
+      const removal = await redisCommand<number>(["DEL", ...keys]);
+      if (removal && !removal.error) deleted += Number(removal.result || 0);
+    }
+  } while (cursor !== "0");
+
+  return { deleted, enabled: true };
+}
+
 export function redisCacheStatus() {
   return {
     enabled: isRedisEnabled(),

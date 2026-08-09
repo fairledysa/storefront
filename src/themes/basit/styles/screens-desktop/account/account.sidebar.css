@@ -1,0 +1,140 @@
+/* FILE: apps/storefront/src/themes/basit/styles/screens-desktop/account/account.sidebar.css */
+
+/* =========================================================
+   Sidebar
+   ========================================================= */
+
+.mk-root[data-theme-code="basit"] .mk-account__profile{
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-width: 0;
+  padding: 2px 2px 14px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account__avatar{
+  width: 58px;
+  height: 58px;
+  flex: 0 0 58px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: var(--mk-acc-primary-soft);
+  color: var(--mk-acc-primary);
+  font-size: 22px;
+  font-weight: 950;
+  border: 1px solid var(--mk-acc-primary-border);
+}
+
+.mk-root[data-theme-code="basit"] .mk-account__profileText{
+  min-width: 0;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account__hello{
+  margin: 0;
+  color: var(--mk-acc-text);
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1.45;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account__member{
+  margin-top: 5px;
+  color: var(--mk-acc-muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account__divider{
+  height: 1px;
+  margin: 16px 0;
+  background: var(--mk-acc-line);
+}
+
+.mk-root[data-theme-code="basit"] .mk-account__nav{
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account__navBtn{
+  position: relative;
+  width: 100%;
+  min-height: 44px;
+  border-radius: 13px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: color-mix(in srgb, var(--mk-acc-text) 78%, var(--mk-acc-muted) 22%);
+  font-size: 14px;
+  font-weight: 750;
+  cursor: pointer;
+  text-align: right;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 11px;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account__navBtn svg{
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--mk-acc-text) 88%, var(--mk-acc-primary) 12%);
+}
+
+.mk-root[data-theme-code="basit"] .mk-account__navBtn:hover{
+  background: var(--mk-acc-surface-soft);
+  border-color: var(--mk-acc-line);
+  color: var(--mk-acc-text);
+}
+
+.mk-root[data-theme-code="basit"] .mk-account__navBtn.is-active{
+  background: var(--mk-acc-primary-soft);
+  border-color: var(--mk-acc-primary-border);
+  color: var(--mk-acc-text);
+  font-weight: 900;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account__navBtn.is-active svg{
+  color: var(--mk-acc-primary);
+}
+
+.mk-root[data-theme-code="basit"] .mk-account__navBtn.is-active::before{
+  content: "";
+  position: absolute;
+  inset-block: 10px;
+  inset-inline-start: -1px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--mk-acc-primary);
+}
+
+.mk-root[data-theme-code="basit"] .mk-account__logout{
+  width: 100%;
+  min-height: 44px;
+  border-radius: 13px;
+  border: 1px solid var(--mk-acc-line-strong);
+  background: var(--mk-acc-surface);
+  color: var(--mk-acc-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 850;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account__logout:hover{
+  background: var(--mk-acc-surface-soft);
+  border-color: var(--mk-acc-line-strong);
+}

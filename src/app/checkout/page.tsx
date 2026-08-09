@@ -15,6 +15,7 @@ import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store"
 import { verifySession } from "@/lib/auth/session";
 import { getStoreMaintenanceSettings } from "@/data/store/maintenance";
 import { renderMalakMaintenancePage } from "@/themes/malak/screens/maintenance/render-maintenance-page";
+import { renderMalakMaintenancePage as renderBasitMaintenancePage } from "@/themes/basit/screens/maintenance/render-maintenance-page";
 import {
   buildCartSummary,
   type CartSummaryOut,
@@ -193,7 +194,15 @@ export default async function CheckoutPage() {
   const maintenance = await getStoreMaintenanceSettings(ctx.store.id);
 
   if (maintenance.enabled) {
-    return await renderMalakMaintenancePage({
+    const themeKey = String(
+      ctx?.theme?.theme_key || (ctx?.theme as any)?.key || "",
+    ).trim();
+    const renderMaintenance =
+      themeKey === "basit"
+        ? renderBasitMaintenancePage
+        : renderMalakMaintenancePage;
+
+    return await renderMaintenance({
       ctx,
       settings: maintenance,
     });

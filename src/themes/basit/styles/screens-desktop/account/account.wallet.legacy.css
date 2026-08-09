@@ -1,0 +1,62 @@
+/* FILE: apps/storefront/src/themes/basit/styles/screens-desktop/account/account.wallet.legacy.css */
+
+/* =========================================================
+   Wallet
+   ========================================================= */
+
+.mk-root[data-theme-code="basit"] .mk-wallet{
+  display: grid;
+  grid-template-columns: 420px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.mk-root[data-theme-code="basit"] .mk-wallet__hero{
+  min-height: 220px;
+  border-radius: var(--mk-acc-radius-xl);
+  background: var(--mk-acc-primary);
+  color: var(--mk-acc-primary-contrast);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.mk-root[data-theme-code="basit"] .mk-wallet__label{
+  opacity: 0.86;
+  font-weight: 800;
+  font-size: 18px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-wallet__amount{
+  font-size: 58px;
+  font-weight: 950;
+  line-height: 1.1;
+  margin-top: 20px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-wallet__btn{
+  height: 44px;
+  padding: 0 20px;
+  border-radius: var(--mk-acc-radius-md);
+  border: 0;
+  background: var(--mk-acc-primary-contrast);
+  color: var(--mk-acc-primary);
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.mk-root[data-theme-code="basit"] .mk-wallet__empty{
+  min-height: 220px;
+  border-radius: var(--mk-acc-radius-xl);
+  border: 1px solid var(--mk-acc-line);
+  background: var(--mk-acc-surface);
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--mk-acc-soft);
+  font-size: 24px;
+  font-weight: 850;
+  box-shadow: var(--mk-acc-shadow);
+}

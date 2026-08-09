@@ -1,0 +1,1558 @@
+/* FILE: apps/storefront/src/themes/basit/styles/components/smart-search.css */
+
+.mk-root[data-theme-code="basit"] .mk-smart-search{
+  --mk-ss-primary: var(--mk-smart-search-action, var(--mk-color-primary, var(--mk-primary, #111111)));
+  --mk-ss-primary-hover: var(--mk-primary-hover, color-mix(in srgb, var(--mk-ss-primary) 88%, #000000 12%));
+  --mk-ss-primary-soft: var(--mk-primary-soft, color-mix(in srgb, var(--mk-ss-primary) 10%, transparent));
+  --mk-ss-primary-border: var(--mk-primary-border, color-mix(in srgb, var(--mk-ss-primary) 24%, transparent));
+  --mk-ss-primary-contrast: var(--mk-primary-contrast, var(--mk-text-inverse, #ffffff));
+  --mk-ss-page: var(--mk-bg-page, #ffffff);
+  --mk-ss-surface: var(--mk-bg-card, var(--mk-surface, #ffffff));
+  --mk-ss-surface-soft: var(--mk-bg-soft, #f7f7f7);
+  --mk-ss-text: var(--mk-text-main, var(--mk-text, #111111));
+  --mk-ss-muted: var(--mk-text-muted, var(--mk-muted, rgba(0, 0, 0, .65)));
+  --mk-ss-inverse: var(--mk-text-inverse, #ffffff);
+  --mk-ss-border: var(--mk-border-soft, var(--mk-border, rgba(0, 0, 0, .08)));
+  --mk-ss-border-strong: var(--mk-border-strong, var(--mk-border, rgba(0, 0, 0, .12)));
+  --mk-ss-radius: var(--mk-radius-lg, 18px);
+  --mk-ss-radius-field: var(--mk-radius-sm, 10px);
+  --mk-ss-shadow: var(--mk-shadow-floating, 0 18px 42px rgba(15, 23, 42, .15));
+  direction: rtl;
+  color: var(--mk-ss-text);
+  font-family: var(--mk-font-family, var(--mk-font, inherit));
+  overflow: visible;
+}
+
+/* HERO: نفس فكرة المرجع: خلفية من إعدادات الإدارة + شريط أفقي فوقها */
+.mk-root[data-theme-code="basit"] .mk-smart-search--hero{
+  position: relative;
+  isolation: isolate;
+  /* Full-bleed مثل الصورة المرجعية: يخرج من container الصفحة ويأخذ عرض الشاشة */
+  width: 100vw;
+  max-width: 100vw;
+  margin-block: 0 30px;
+  margin-inline: calc(50% - 50vw);
+  min-height: clamp(278px, 29vw, 390px);
+  padding: clamp(42px, 4.6vw, 66px) max(18px, calc((100vw - 1280px) / 2 + 18px)) clamp(38px, 4.4vw, 58px);
+  display: grid;
+  align-content: center;
+  gap: 22px;
+  border-radius: 0;
+  background-color: var(--mk-smart-search-bg-color, var(--mk-ss-primary));
+  background-position: center;
+  background-size: cover;
+  border: 0;
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search--hero::before{
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background: var(--mk-smart-search-overlay-color, #000000);
+  opacity: var(--mk-smart-search-overlay-opacity, 0);
+  pointer-events: none;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search--hero::after{
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 20%, color-mix(in srgb, var(--mk-ss-inverse) 14%, transparent), transparent 32%),
+    linear-gradient(90deg, color-mix(in srgb, var(--mk-ss-primary) 22%, transparent), transparent 45%, color-mix(in srgb, var(--mk-ss-primary) 18%, transparent)),
+    linear-gradient(180deg, rgba(0, 0, 0, .12), rgba(0, 0, 0, .20));
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search--color::after{
+  background:
+    radial-gradient(circle at 50% 20%, color-mix(in srgb, var(--mk-ss-inverse) 18%, transparent), transparent 34%),
+    linear-gradient(90deg, color-mix(in srgb, var(--mk-ss-primary) 18%, transparent), transparent 48%, color-mix(in srgb, var(--mk-ss-primary) 14%, transparent));
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search--light.mk-smart-search--color::after{
+  background:
+    radial-gradient(circle at 50% 6%, color-mix(in srgb, var(--mk-ss-primary) 8%, transparent), transparent 36%),
+    linear-gradient(90deg, color-mix(in srgb, var(--mk-ss-primary) 7%, transparent), transparent 48%, color-mix(in srgb, var(--mk-ss-primary) 5%, transparent));
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__intro{
+  width: min(100%, 800px);
+  margin-inline: auto;
+  text-align: center;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__intro h2{
+  margin: 0;
+  color: var(--mk-smart-search-heading-color, var(--mk-ss-inverse));
+  font-size: clamp(26px, 2.4vw, 38px);
+  font-weight: 900;
+  line-height: 1.18;
+  letter-spacing: -.02em;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, .24);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__intro p{
+  max-width: 720px;
+  margin: 9px auto 0;
+  color: var(--mk-smart-search-description-color, color-mix(in srgb, var(--mk-ss-inverse) 88%, transparent));
+  font-size: clamp(13px, 1.05vw, 16px);
+  font-weight: 650;
+  line-height: 1.75;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, .22);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search--light.mk-smart-search--color .mk-smart-search__intro h2{
+  color: var(--mk-smart-search-heading-color, var(--mk-ss-text));
+  text-shadow: none;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search--light.mk-smart-search--color .mk-smart-search__intro p{
+  color: var(--mk-smart-search-description-color, var(--mk-ss-muted));
+  text-shadow: none;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__promo{
+  margin-top: 4px !important;
+  margin-bottom: 0 !important;
+  color: var(--mk-smart-search-promo-color, #facc15) !important;
+  font-size: clamp(13px, 1.05vw, 16px);
+  font-weight: 900;
+  line-height: 1.65;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, .24);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker__promo{
+  margin: -8px 0 18px;
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.7;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__form{
+  width: min(100%, 1080px);
+  margin-inline: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px;
+  align-items: stretch;
+  gap: 8px;
+  padding: 12px;
+  border-radius: var(--mk-ss-radius);
+  border: 1px solid color-mix(in srgb, var(--mk-ss-inverse) 18%, transparent);
+  background:
+    linear-gradient(90deg,
+      color-mix(in srgb, var(--mk-ss-primary) 56%, rgba(12, 18, 28, .86)) 0%,
+      color-mix(in srgb, var(--mk-ss-primary) 36%, rgba(30, 12, 26, .84)) 100%
+    );
+  box-shadow:
+    0 20px 46px rgba(0, 0, 0, .22),
+    inset 0 1px 0 color-mix(in srgb, var(--mk-ss-inverse) 14%, transparent);
+  backdrop-filter: blur(14px);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search--light.mk-smart-search--color .mk-smart-search__form{
+  border-color: var(--mk-ss-border-strong);
+  background:
+    linear-gradient(90deg,
+      color-mix(in srgb, var(--mk-ss-surface) 96%, var(--mk-ss-primary) 4%),
+      color-mix(in srgb, var(--mk-ss-surface) 92%, var(--mk-ss-primary) 8%)
+    );
+  box-shadow:
+    0 22px 48px rgba(15, 23, 42, .12),
+    inset 0 1px 0 rgba(255, 255, 255, .72);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__fields{
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(164px, 1fr));
+  gap: 8px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__field{
+  position: relative;
+  min-width: 0;
+  min-height: 54px;
+  display: grid;
+  align-content: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, .20);
+  border-radius: var(--mk-ss-radius-field);
+  background: color-mix(in srgb, var(--mk-ss-surface) 96%, transparent);
+  text-align: right;
+  overflow: visible;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .42);
+  transition: border-color .18s ease, box-shadow .18s ease, background .18s ease, transform .18s ease;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search--light.mk-smart-search--color .mk-smart-search__field{
+  border-color: var(--mk-ss-border);
+  background: var(--mk-ss-surface);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__field:focus-within{
+  border-color: color-mix(in srgb, var(--mk-ss-primary) 40%, rgba(255, 255, 255, .28));
+  background: var(--mk-ss-surface);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--mk-ss-primary) 13%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, .55);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__field > div{
+  min-width: 0;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__label{
+  position: absolute;
+  inset-block-start: 7px;
+  inset-inline-end: 10px;
+  z-index: 2;
+  min-width: 0;
+  max-width: calc(100% - 20px);
+  display: flex;
+  align-items: center;
+  flex-direction: row-reverse;
+  gap: 6px;
+  color: color-mix(in srgb, var(--mk-ss-primary) 82%, var(--mk-ss-text) 18%);
+  font-size: 10.5px;
+  font-weight: 850;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__label span:last-child{
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__step{
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  border-radius: var(--mk-radius-pill, 999px);
+  background: var(--mk-ss-primary);
+  color: var(--mk-ss-primary-contrast);
+  border: 1px solid color-mix(in srgb, var(--mk-ss-primary-contrast) 24%, transparent);
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: 0 5px 13px color-mix(in srgb, var(--mk-ss-primary) 22%, transparent);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__hint{
+  position: absolute;
+  inset-inline-start: 12px;
+  inset-block-end: 5px;
+  display: block;
+  max-width: calc(100% - 24px);
+  color: var(--mk-ss-muted);
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__submit{
+  min-height: 54px;
+  width: 150px;
+  padding: 0 18px;
+  border: 1px solid color-mix(in srgb, var(--mk-ss-primary-contrast) 18%, transparent);
+  border-radius: var(--mk-ss-radius-field);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--mk-ss-primary-contrast);
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--mk-ss-primary) 88%, var(--mk-ss-primary-contrast) 12%),
+      var(--mk-ss-primary)
+    );
+  box-shadow:
+    0 15px 28px color-mix(in srgb, var(--mk-ss-primary) 26%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--mk-ss-primary-contrast) 20%, transparent);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 900;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform .18s ease, box-shadow .18s ease, background .18s ease, opacity .18s ease;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__submit:hover:not(:disabled){
+  transform: translateY(-1px);
+  background: var(--mk-ss-primary-hover);
+  box-shadow:
+    0 18px 32px color-mix(in srgb, var(--mk-ss-primary) 30%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--mk-ss-primary-contrast) 22%, transparent);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__submit:active:not(:disabled){
+  transform: translateY(0);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__submit:focus-visible,
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker__close:focus-visible,
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-launcher:focus-visible{
+  outline: 3px solid color-mix(in srgb, var(--mk-ss-primary) 18%, transparent);
+  outline-offset: 3px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__submit:disabled{
+  cursor: not-allowed;
+  opacity: .64;
+  color: var(--mk-ss-muted);
+  background: color-mix(in srgb, var(--mk-ss-surface-soft) 88%, var(--mk-ss-surface) 12%);
+  border-color: var(--mk-ss-border);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--mk-ss-surface) 80%, transparent);
+}
+
+/* react-select: إزالة الإحساس الافتراضي وإدخاله داخل الحقل */
+.mk-root[data-theme-code="basit"] .mk-smart-search .mk-smart-search__field .css-b62m3t-container{
+  min-width: 0;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__field [class*="-control"]{
+  padding-top: 10px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords [class*="-control"]{
+  padding-bottom: 13px;
+}
+
+/* شريط كل الصفحات لاحقًا، بدون كسر */
+.mk-root[data-theme-code="basit"] .mk-smart-search-desktop-bar{
+  padding: 8px 18px 0;
+  background: var(--mk-ss-page);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search--bar{
+  width: min(100% - 36px, var(--mk-container, 1280px));
+  margin: 0 auto;
+  border: 1px solid var(--mk-ss-border);
+  border-top: 0;
+  border-radius: 0 0 var(--mk-radius-lg, 18px) var(--mk-radius-lg, 18px);
+  background: var(--mk-ss-surface);
+  box-shadow: var(--mk-shadow-card, 0 10px 26px rgba(15, 23, 42, .055));
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search--bar .mk-smart-search__form{
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) 124px;
+  gap: 7px;
+  padding: 8px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search--bar .mk-smart-search__fields{
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search--bar .mk-smart-search__field{
+  min-height: 48px;
+  border-color: var(--mk-ss-border);
+  background: var(--mk-ss-surface);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search--bar .mk-smart-search__submit{
+  width: 124px;
+  min-height: 48px;
+  font-size: 13px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-launcher{
+  width: calc(100% - 24px);
+  min-height: 46px;
+  margin: 8px 12px 3px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--mk-ss-border);
+  border-radius: var(--mk-radius-md, 14px);
+  background: var(--mk-ss-surface);
+  color: var(--mk-ss-text);
+  box-shadow: var(--mk-shadow-card, 0 10px 26px rgba(15, 23, 42, .055));
+  font: inherit;
+  font-size: 13px;
+  font-weight: 850;
+  text-align: right;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-launcher svg{
+  flex: 0 0 auto;
+  color: var(--mk-ss-primary);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-launcher span{
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-sheet{
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  overflow-y: auto;
+  background: var(--mk-ss-page);
+  direction: rtl;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker{
+  min-height: 100dvh;
+  padding: calc(env(safe-area-inset-top) + 18px) 16px calc(env(safe-area-inset-bottom) + 24px);
+  background: var(--mk-ss-page);
+  color: var(--mk-ss-text);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker__header{
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 4px 0 16px;
+  border-bottom: 1px solid var(--mk-ss-border);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker__eyebrow{
+  display: block;
+  color: var(--mk-ss-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker__header h2{
+  margin: 5px 0 0;
+  color: var(--mk-ss-text);
+  font-size: clamp(20px, 6vw, 25px);
+  font-weight: 900;
+  line-height: 1.28;
+  letter-spacing: 0;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker__close{
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--mk-ss-border);
+  border-radius: var(--mk-radius-md, 14px);
+  color: var(--mk-ss-text);
+  background: var(--mk-ss-surface);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker__description{
+  margin: 15px 0 18px;
+  color: var(--mk-ss-muted);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.8;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker__fields{
+  display: grid;
+  gap: 12px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker .mk-smart-search__field{
+  min-height: 60px;
+  padding: 0;
+  background: var(--mk-ss-surface);
+  border-color: var(--mk-ss-border);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__submit--mobile{
+  position: sticky;
+  bottom: 12px;
+  width: 100%;
+  min-height: 54px;
+  margin-top: 22px;
+}
+
+@media (max-width: 760px) {
+  .mk-root[data-theme-code="basit"] .mk-smart-search--hero{
+    display: none;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-smart-search-desktop-bar{
+    display: none;
+  }
+}
+
+@media (min-width: 761px) {
+  .mk-root[data-theme-code="basit"] .mk-smart-search-mobile-launcher{
+    display: none;
+  }
+}
+
+@media (max-width: 1180px) and (min-width: 761px) {
+  .mk-root[data-theme-code="basit"] .mk-smart-search--hero{
+    padding-inline: 16px;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-smart-search__form,
+.mk-root[data-theme-code="basit"] .mk-smart-search--bar .mk-smart-search__form{
+    grid-template-columns: 1fr;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-smart-search__submit,
+.mk-root[data-theme-code="basit"] .mk-smart-search--bar .mk-smart-search__submit{
+    width: 100%;
+    min-height: 50px;
+  }
+}
+
+@media (min-width: 1181px) {
+  .mk-root[data-theme-code="basit"] .mk-smart-search--hero .mk-smart-search__fields:has(> :nth-child(5)){
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-smart-search--hero .mk-smart-search__fields:has(> :nth-child(4)):not(:has(> :nth-child(5))){
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 420px) {
+  .mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker{
+    padding-inline: 12px;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker__header{
+    gap: 12px;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker__close{
+    width: 40px;
+    height: 40px;
+  }
+}
+
+/* PLACEHOLDER TRUE CENTER FIX:
+   إصلاح نهائي لتوزيع الحقل:
+   الرقم يمين، السهم يسار، والنص في منتصف الحقل عموديًا بدون رفع. */
+.mk-root[data-theme-code="basit"] .mk-smart-search__field{
+  position: relative;
+  cursor: pointer;
+}
+
+/* الرقم يمين وفي المنتصف عموديًا */
+.mk-root[data-theme-code="basit"] .mk-smart-search__label{
+  position: absolute !important;
+  top: 50% !important;
+  right: 12px !important;
+  left: auto !important;
+  inset-inline-start: auto !important;
+  inset-inline-end: auto !important;
+  transform: translateY(-50%) !important;
+  z-index: 7 !important;
+  width: 18px !important;
+  height: 18px !important;
+  pointer-events: none;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__step{
+  width: 18px !important;
+  height: 18px !important;
+}
+
+/* السهم يسار وفي المنتصف عموديًا */
+.mk-root[data-theme-code="basit"] .mk-smart-search__field-chevron{
+  position: absolute !important;
+  left: 14px !important;
+  right: auto !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  z-index: 7 !important;
+  color: var(--mk-ss-muted);
+  pointer-events: none;
+}
+
+/* إلغاء سهم react-select الداخلي بالكامل */
+.mk-root[data-theme-code="basit"] .mk-smart-search__field .mk-smart-search-select__indicators,
+.mk-root[data-theme-code="basit"] .mk-smart-search__field [class$="-indicators"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field [class*="__indicators"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field .mk-smart-search-select__dropdown-indicator,
+.mk-root[data-theme-code="basit"] .mk-smart-search__field [class$="-dropdownIndicator"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field [class*="__dropdown-indicator"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field [class$="-indicatorSeparator"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field [class*="__indicator-separator"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field [class*="indicatorSeparator"]{
+  display: none !important;
+}
+
+/* الحقل نفسه */
+.mk-root[data-theme-code="basit"] .mk-smart-search__field .mk-smart-search-select__control,
+.mk-root[data-theme-code="basit"] .mk-smart-search__field [class$="-control"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field [class*="__control"]{
+  position: relative !important;
+  min-height: 56px !important;
+  height: 56px !important;
+  padding: 0 !important;
+  cursor: pointer !important;
+}
+
+/* نخلي value-container مجرد مساحة، والنص نفسه نثبته absolute */
+.mk-root[data-theme-code="basit"] .mk-smart-search__field .mk-smart-search-select__value-container,
+.mk-root[data-theme-code="basit"] .mk-smart-search__field [class$="-value-container"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field [class*="__value-container"]{
+  position: static !important;
+  height: 56px !important;
+  min-height: 56px !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  display: block !important;
+  text-align: right !important;
+  transform: none !important;
+}
+
+/* هذا هو الإصلاح المهم: النص نفسه في منتصف الحقل */
+.mk-root[data-theme-code="basit"] .mk-smart-search__field .mk-smart-search-select__placeholder,
+.mk-root[data-theme-code="basit"] .mk-smart-search__field .mk-smart-search-select__single-value,
+.mk-root[data-theme-code="basit"] .mk-smart-search__field [class$="-placeholder"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field [class*="__placeholder"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field [class$="-singleValue"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field [class*="__single-value"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field [class*="__singleValue"]{
+  position: absolute !important;
+  top: 50% !important;
+  right: 38px !important;
+  left: 42px !important;
+  width: auto !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: translateY(-50%) !important;
+  text-align: right !important;
+  font-weight: 760 !important;
+  line-height: 1.25 !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  cursor: pointer !important;
+}
+
+/* input الداخلي لا يزاحم النص */
+.mk-root[data-theme-code="basit"] .mk-smart-search__field [class$="-input-container"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field [class*="__input-container"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field input{
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  opacity: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  cursor: pointer !important;
+}
+
+/* حالة القوائم */
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--disabled{
+  opacity: .58;
+  background: color-mix(in srgb, var(--mk-ss-surface-soft) 74%, var(--mk-ss-surface) 26%) !important;
+  cursor: not-allowed !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--disabled *,
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--disabled .mk-smart-search-select__control{
+  cursor: not-allowed !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--disabled .mk-smart-search__field-chevron{
+  opacity: .45;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--active{
+  border-color: color-mix(in srgb, var(--mk-ss-primary) 30%, var(--mk-ss-border) 70%) !important;
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--mk-ss-primary) 8%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, .64);
+}
+
+/* حقل الكلمات: النص الرئيسي أعلى قليلًا لأن تحته hint */
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords .mk-smart-search-select__placeholder,
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords .mk-smart-search-select__single-value,
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords [class$="-placeholder"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords [class*="__placeholder"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords [class$="-singleValue"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords [class*="__single-value"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords [class*="__singleValue"]{
+  top: 42% !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__hint{
+  right: 38px !important;
+  left: 42px !important;
+  bottom: 7px !important;
+  max-width: none !important;
+  text-align: right !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__submit,
+.mk-root[data-theme-code="basit"] .mk-smart-search__submit *{
+  cursor: pointer;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__submit:disabled,
+.mk-root[data-theme-code="basit"] .mk-smart-search__submit:disabled *{
+  cursor: not-allowed;
+}
+
+/* HORIZONTAL SCROLL FIX:
+   سبب الشريط الأفقي أن 100vw يحسب عرض شريط التمرير العمودي.
+   نخفي overflow الأفقي فقط ونبقي Hero بعرض الشاشة مثل المرجع. */
+.mk-root[data-theme-code="basit"],
+.mk-root[data-theme-code="basit"]{
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+@supports not (overflow: clip) {
+  .mk-root[data-theme-code="basit"],
+.mk-root[data-theme-code="basit"]{
+    overflow-x: hidden;
+  }
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search--hero{
+  box-sizing: border-box;
+  max-width: 100vw;
+}
+
+/* Loading state for smart search submit button */
+.mk-root[data-theme-code="basit"] .mk-smart-search__submit{
+  position: relative;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__submit-spinner{
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  border: 2px solid color-mix(in srgb, var(--mk-ss-primary-contrast) 36%, transparent);
+  border-top-color: var(--mk-ss-primary-contrast);
+  animation: mk-smart-search-spin .72s linear infinite;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__submit:disabled .mk-smart-search__submit-spinner{
+  border-color: color-mix(in srgb, var(--mk-ss-muted) 30%, transparent);
+  border-top-color: var(--mk-ss-muted);
+}
+
+@keyframes mk-smart-search-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* KEYWORD MULTI SELECT POLISH:
+   ترتيب الكلمات المختارة داخل حقل الكلمات + منع القائمة من إظهار المختار بلون أسود. */
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords .mk-smart-search-select__control,
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords [class$="-control"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords [class*="__control"]{
+  min-height: 56px !important;
+  height: 56px !important;
+  padding-right: 38px !important;
+  padding-left: 42px !important;
+  padding-bottom: 13px !important;
+}
+
+/* في حقل الكلمات نخلي المساحة مرنة للكلمات المختارة بدل absolute القديم */
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords .mk-smart-search-select__value-container,
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords [class$="-value-container"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords [class*="__value-container"]{
+  position: relative !important;
+  height: 40px !important;
+  min-height: 40px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  flex-wrap: nowrap !important;
+  gap: 4px !important;
+  overflow: hidden !important;
+  transform: none !important;
+}
+
+/* النص الافتراضي داخل حقل الكلمات يبقى موزون */
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords .mk-smart-search-select__placeholder,
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords [class$="-placeholder"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords [class*="__placeholder"]{
+  position: static !important;
+  transform: none !important;
+  width: 100% !important;
+  text-align: right !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* الكلمات المختارة Chips */
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords .mk-smart-search-select__multi-value,
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords [class$="-multiValue"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords [class*="__multi-value"]{
+  max-width: calc(50% - 4px) !important;
+  min-width: 0 !important;
+  height: 23px !important;
+  margin: 0 2px !important;
+  border-radius: 999px !important;
+  background: color-mix(in srgb, var(--mk-ss-primary) 9%, var(--mk-ss-surface) 91%) !important;
+  border: 1px solid color-mix(in srgb, var(--mk-ss-primary) 18%, transparent) !important;
+  overflow: hidden !important;
+  display: inline-flex !important;
+  align-items: center !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords .mk-smart-search-select__multi-value__label,
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords [class$="-multiValueLabel"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords [class*="__multi-value__label"]{
+  min-width: 0 !important;
+  padding: 0 7px !important;
+  color: var(--mk-ss-text) !important;
+  font-size: 10.5px !important;
+  font-weight: 800 !important;
+  line-height: 22px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords .mk-smart-search-select__multi-value__remove,
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords [class$="-multiValueRemove"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords [class*="__multi-value__remove"]{
+  width: 20px !important;
+  min-width: 20px !important;
+  padding: 0 !important;
+  display: inline-grid !important;
+  place-items: center !important;
+  color: var(--mk-ss-muted) !important;
+  cursor: pointer !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords .mk-smart-search-select__multi-value__remove:hover,
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords [class$="-multiValueRemove"]:hover,
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords [class*="__multi-value__remove"]:hover{
+  background: color-mix(in srgb, var(--mk-ss-primary) 14%, transparent) !important;
+  color: var(--mk-ss-text) !important;
+}
+
+/* input داخل multi لا يوسع الحقل ولا يخرب ترتيب الـ chips */
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords .mk-smart-search-select__input-container,
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords [class$="-input-container"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords [class*="__input-container"]{
+  flex: 0 0 1px !important;
+  width: 1px !important;
+  min-width: 1px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  opacity: 0 !important;
+}
+
+/* القائمة المنسدلة: المختار لا يظهر أسود */
+.mk-root[data-theme-code="basit"] .mk-smart-search .mk-smart-search-select__menu{
+  overflow: hidden !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search .mk-smart-search-select__option--is-selected,
+.mk-root[data-theme-code="basit"] .mk-smart-search [class*="__option--is-selected"]{
+  background: color-mix(in srgb, var(--mk-ss-primary) 10%, var(--mk-ss-surface) 90%) !important;
+  color: var(--mk-ss-text) !important;
+  font-weight: 850 !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search .mk-smart-search-select__option--is-focused,
+.mk-root[data-theme-code="basit"] .mk-smart-search [class*="__option--is-focused"]{
+  background: color-mix(in srgb, var(--mk-ss-primary) 7%, var(--mk-ss-surface) 93%) !important;
+  color: var(--mk-ss-text) !important;
+}
+
+/* النص المساعد يبقى أسفل الكلمات بدون تداخل */
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords .mk-smart-search__hint{
+  right: 38px !important;
+  left: 42px !important;
+  bottom: 6px !important;
+  text-align: right !important;
+  opacity: .74;
+}
+
+/* KEYWORD SUMMARY CLEAN FIX:
+   لا نعرض كل الكلمات كـ chips داخل الحقل لأنها تضغط وتتكسر.
+   نعرض ملخص واضح: أول كلمة + عدد الباقي، مع بقاء الاختيار المتعدد في القائمة. */
+.mk-root[data-theme-code="basit"] .mk-smart-search__keyword-summary{
+  position: absolute;
+  top: 42%;
+  right: 38px;
+  left: 42px;
+  transform: translateY(-50%);
+  z-index: 8;
+  display: block;
+  color: var(--mk-ss-text);
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.2;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+/* عند وجود كلمات مختارة نخفي chips الداخلية فقط ونترك الحقل قابل للنقر والبحث */
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--has-keywords .mk-smart-search-select__multi-value,
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--has-keywords [class$="-multiValue"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--has-keywords [class*="__multi-value"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--has-keywords .mk-smart-search-select__placeholder,
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--has-keywords [class$="-placeholder"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--has-keywords [class*="__placeholder"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--has-keywords .mk-smart-search-select__single-value,
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--has-keywords [class$="-singleValue"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--has-keywords [class*="__single-value"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--has-keywords [class*="__singleValue"]{
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
+
+/* لا نخلي input الداخلي يظهر فوق الملخص */
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--has-keywords .mk-smart-search-select__input-container,
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--has-keywords [class$="-input-container"],
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--has-keywords [class*="__input-container"]{
+  opacity: 0 !important;
+  width: 1px !important;
+  min-width: 1px !important;
+}
+
+/* القائمة المنسدلة نفسها تكون أنظف عند اختيار أكثر من كلمة */
+.mk-root[data-theme-code="basit"] .mk-smart-search .mk-smart-search-select__option,
+.mk-root[data-theme-code="basit"] .mk-smart-search [class*="__option"]{
+  min-height: 38px;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  border-radius: 10px !important;
+  margin-bottom: 3px;
+  text-align: right !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search .mk-smart-search-select__option--is-selected,
+.mk-root[data-theme-code="basit"] .mk-smart-search [class*="__option--is-selected"]{
+  background: color-mix(in srgb, var(--mk-ss-primary) 10%, var(--mk-ss-surface) 90%) !important;
+  color: var(--mk-ss-text) !important;
+  font-weight: 850 !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search .mk-smart-search-select__option--is-focused,
+.mk-root[data-theme-code="basit"] .mk-smart-search [class*="__option--is-focused"]{
+  background: color-mix(in srgb, var(--mk-ss-primary) 7%, var(--mk-ss-surface) 93%) !important;
+  color: var(--mk-ss-text) !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__field--keywords .mk-smart-search__hint{
+  right: 38px !important;
+  left: 42px !important;
+  bottom: 6px !important;
+  max-width: none !important;
+  text-align: right !important;
+}
+
+/* MOBILE SMART SEARCH DESKTOP-LIKE:
+   نسخة الجوال نفس روح الكمبيوتر: خلفية/صورة الثيم + طبقة داكنة + حقول واضحة عمودية. */
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-launcher{
+  width: calc(100% - 24px);
+  min-height: 48px;
+  margin: 8px 12px 6px;
+  padding: 0 14px;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--mk-ss-primary) 18%, var(--mk-ss-border) 82%);
+  background:
+    linear-gradient(135deg,
+      color-mix(in srgb, var(--mk-ss-surface) 94%, var(--mk-ss-primary) 6%),
+      var(--mk-ss-surface)
+    );
+  box-shadow: 0 12px 24px rgba(15, 23, 42, .08);
+  cursor: pointer;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-sheet{
+  background: #0f0c0d;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker{
+  position: relative;
+  isolation: isolate;
+  min-height: 100dvh;
+  padding: calc(env(safe-area-inset-top) + 14px) 14px calc(env(safe-area-inset-bottom) + 18px);
+  background-color: var(--mk-smart-search-bg-color, var(--mk-ss-primary));
+  background-position: center;
+  background-size: cover;
+  color: var(--mk-ss-inverse);
+  overflow: hidden auto;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker::before{
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background: var(--mk-smart-search-overlay-color, #000000);
+  opacity: max(var(--mk-smart-search-overlay-opacity, .48), .42);
+  pointer-events: none;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker::after{
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 8%, rgba(255, 255, 255, .12), transparent 34%),
+    linear-gradient(180deg, rgba(18, 9, 14, .58), rgba(18, 9, 14, .74) 48%, rgba(18, 9, 14, .86));
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker__header{
+  position: relative;
+  margin: 0 0 16px;
+  padding: 14px 14px 16px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, .09);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, .22), inset 0 1px 0 rgba(255, 255, 255, .12);
+  backdrop-filter: blur(14px);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker__eyebrow{
+  display: block;
+  margin-bottom: 6px;
+  color: color-mix(in srgb, var(--mk-smart-search-promo-color, #facc15) 88%, #ffffff 12%);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker__header h2{
+  margin: 0;
+  color: var(--mk-smart-search-heading-color, var(--mk-ss-inverse)) !important;
+  font-size: clamp(23px, 7vw, 32px);
+  font-weight: 950;
+  line-height: 1.22;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, .3);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker__close{
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: 16px;
+  color: var(--mk-ss-inverse);
+  background: rgba(255, 255, 255, .12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12);
+  cursor: pointer;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker__description,
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker__promo{
+  width: min(100%, 520px);
+  margin-inline: auto;
+  text-align: center;
+  text-shadow: 0 2px 16px rgba(0, 0, 0, .28);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker__description{
+  margin-top: 0;
+  margin-bottom: 8px;
+  color: var(--mk-smart-search-description-color, color-mix(in srgb, var(--mk-ss-inverse) 90%, transparent)) !important;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.8;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker__promo{
+  margin-top: 0;
+  margin-bottom: 16px;
+  color: var(--mk-smart-search-promo-color, #facc15) !important;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.7;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker__fields{
+  display: grid;
+  gap: 10px;
+  margin: 0 auto;
+  padding: 12px;
+  width: min(100%, 520px);
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, .15);
+  background:
+    linear-gradient(135deg,
+      color-mix(in srgb, var(--mk-ss-primary) 42%, rgba(12, 18, 28, .84)),
+      color-mix(in srgb, var(--mk-ss-primary) 22%, rgba(40, 18, 28, .84))
+    );
+  box-shadow:
+    0 22px 48px rgba(0, 0, 0, .26),
+    inset 0 1px 0 rgba(255, 255, 255, .13);
+  backdrop-filter: blur(14px);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker .mk-smart-search__field{
+  min-height: 58px;
+  border-radius: 15px;
+  border-color: rgba(255, 255, 255, .2);
+  background: rgba(255, 255, 255, .94);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker .mk-smart-search__field--disabled{
+  opacity: .62;
+  background: rgba(255, 255, 255, .72) !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker .mk-smart-search__field--active{
+  border-color: color-mix(in srgb, var(--mk-ss-primary) 34%, #ffffff 66%) !important;
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--mk-ss-primary) 14%, transparent),
+    0 12px 26px rgba(0, 0, 0, .14);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__submit--mobile{
+  position: sticky;
+  bottom: calc(env(safe-area-inset-bottom) + 12px);
+  z-index: 10;
+  width: min(100%, 520px);
+  min-height: 54px;
+  margin: 14px auto 0;
+  border-radius: 18px;
+  box-shadow:
+    0 18px 34px color-mix(in srgb, var(--mk-ss-primary) 28%, transparent),
+    0 8px 22px rgba(0, 0, 0, .18),
+    inset 0 1px 0 color-mix(in srgb, var(--mk-ss-primary-contrast) 22%, transparent);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search__submit--mobile span{
+  font-weight: 950;
+}
+
+@media (max-width: 420px) {
+  .mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker{
+    padding-inline: 10px;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker__fields{
+    padding: 10px;
+    border-radius: 21px;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker__header{
+    border-radius: 20px;
+  }
+}
+
+/* MOBILE HOME HERO SHOW TOOLS:
+   في الرئيسية على الجوال لا نخفي الباحث.
+   نعرض أدوات الباحث نفسها مثل الكمبيوتر، لكن مرتبة عموديًا ومناسبة للجوال. */
+@media (max-width: 760px) {
+  .mk-root[data-theme-code="basit"] .mk-smart-search--hero{
+    display: grid !important;
+    width: 100vw;
+    max-width: 100vw;
+    min-height: auto;
+    margin-inline: calc(50% - 50vw);
+    margin-bottom: 16px;
+    padding: 28px 12px 24px;
+    gap: 14px;
+    border-radius: 0;
+    background-position: center;
+    background-size: cover;
+    overflow: hidden;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-smart-search--hero::before{
+    opacity: max(var(--mk-smart-search-overlay-opacity, .52), .42);
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-smart-search--hero::after{
+    background:
+      radial-gradient(circle at 50% 8%, rgba(255, 255, 255, .14), transparent 34%),
+      linear-gradient(180deg, rgba(18, 9, 14, .52), rgba(18, 9, 14, .70) 46%, rgba(18, 9, 14, .82));
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-smart-search--hero .mk-smart-search__intro{
+    width: min(100%, 520px);
+    margin-inline: auto;
+    text-align: center;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-smart-search--hero .mk-smart-search__intro h2{
+    color: var(--mk-smart-search-heading-color, var(--mk-ss-inverse)) !important;
+    font-size: clamp(22px, 7vw, 31px);
+    line-height: 1.22;
+    font-weight: 950;
+    text-shadow: 0 2px 18px rgba(0, 0, 0, .32);
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-smart-search--hero .mk-smart-search__description{
+    margin-top: 8px;
+    color: var(--mk-smart-search-description-color, color-mix(in srgb, var(--mk-ss-inverse) 90%, transparent)) !important;
+    font-size: 12.5px;
+    line-height: 1.75;
+    font-weight: 750;
+    text-shadow: 0 2px 14px rgba(0, 0, 0, .28);
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-smart-search--hero .mk-smart-search__promo{
+    margin-top: 5px;
+    color: var(--mk-smart-search-promo-color, #facc15) !important;
+    font-size: 12.5px;
+    line-height: 1.65;
+    font-weight: 900;
+    text-shadow: 0 2px 14px rgba(0, 0, 0, .28);
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-smart-search--hero .mk-smart-search__form{
+    width: min(100%, 520px);
+    margin-inline: auto;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 12px;
+    border-radius: 24px;
+    border: 1px solid rgba(255, 255, 255, .16);
+    background:
+      linear-gradient(135deg,
+        color-mix(in srgb, var(--mk-ss-primary) 42%, rgba(12, 18, 28, .84)),
+        color-mix(in srgb, var(--mk-ss-primary) 22%, rgba(40, 18, 28, .84))
+      );
+    box-shadow:
+      0 22px 48px rgba(0, 0, 0, .26),
+      inset 0 1px 0 rgba(255, 255, 255, .13);
+    backdrop-filter: blur(14px);
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-smart-search--hero .mk-smart-search__fields{
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 9px;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-smart-search--hero .mk-smart-search__field{
+    min-height: 58px;
+    border-radius: 15px;
+    border-color: rgba(255, 255, 255, .2);
+    background: rgba(255, 255, 255, .95);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7);
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-smart-search--hero .mk-smart-search__field--disabled{
+    opacity: .62;
+    background: rgba(255, 255, 255, .72) !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-smart-search--hero .mk-smart-search__field--active{
+    border-color: color-mix(in srgb, var(--mk-ss-primary) 34%, #ffffff 66%) !important;
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, var(--mk-ss-primary) 14%, transparent),
+      0 12px 26px rgba(0, 0, 0, .14);
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-smart-search--hero .mk-smart-search__submit{
+    width: 100%;
+    min-height: 54px;
+    border-radius: 17px;
+    font-size: 14px;
+  }
+
+  /* في الرئيسية نريد أدوات الباحث نفسها، وليس زر launcher فقط */
+  .mk-root[data-theme-code="basit"] .mk-smart-search--hero + .mk-smart-search-mobile-launcher{
+    display: none !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .mk-root[data-theme-code="basit"] .mk-smart-search--hero{
+    padding-inline: 10px;
+    padding-top: 24px;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-smart-search--hero .mk-smart-search__form{
+    padding: 10px;
+    border-radius: 21px;
+  }
+}
+
+/* MOBILE SMART SEARCH FILTER LAUNCHER:
+   في صفحات الأقسام لا يظهر الباحث الذكي كبحث ثاني.
+   يظهر كفلتر ذكي مختصر بجانب البحث العادي. */
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-launcher--filter{
+  width: calc(100% - 24px);
+  min-height: 48px;
+  margin: 8px 12px 6px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 9px;
+  border: 1px solid color-mix(in srgb, var(--mk-ss-primary, var(--mk-color-primary, #111)) 14%, var(--mk-ss-border, #e5e7eb) 86%);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg,
+      color-mix(in srgb, var(--mk-ss-surface, #fff) 94%, var(--mk-ss-primary, var(--mk-color-primary, #111)) 6%),
+      var(--mk-ss-surface, #fff)
+    );
+  color: var(--mk-ss-text, var(--mk-text-main, #111827));
+  box-shadow:
+    0 12px 24px rgba(15, 23, 42, .06),
+    inset 0 1px 0 rgba(255, 255, 255, .84);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-launcher--filter svg{
+  color: var(--mk-ss-primary, var(--mk-color-primary, #111827));
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-launcher--filter span{
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 900;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-launcher--filter small{
+  min-width: 46px;
+  height: 28px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mk-ss-primary, var(--mk-color-primary, #111)) 10%, var(--mk-ss-surface, #fff) 90%);
+  color: var(--mk-ss-primary, var(--mk-color-primary, #111827));
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-launcher--filter.is-active{
+  border-color: color-mix(in srgb, var(--mk-ss-primary, var(--mk-color-primary, #111)) 28%, var(--mk-ss-border, #e5e7eb) 72%);
+  background:
+    linear-gradient(135deg,
+      color-mix(in srgb, var(--mk-ss-primary, var(--mk-color-primary, #111)) 12%, var(--mk-ss-surface, #fff) 88%),
+      var(--mk-ss-surface, #fff)
+    );
+}
+
+/* MOBILE TEXT VISIBILITY FIX:
+   في شاشة الباحث للجوال الخلفية داكنة، لذلك النصوص يجب أن تبقى واضحة
+   حتى لو كانت ألوان الإدارة مناسبة للكمبيوتر فقط. */
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker .mk-smart-search-mobile-picker__eyebrow{
+  color: var(--mk-smart-search-promo-color, #facc15) !important;
+  opacity: 1 !important;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, .45);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker .mk-smart-search-mobile-picker__header h2{
+  color: #ffffff !important;
+  opacity: 1 !important;
+  text-shadow:
+    0 2px 18px rgba(0, 0, 0, .55),
+    0 1px 2px rgba(0, 0, 0, .38);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker .mk-smart-search-mobile-picker__description{
+  color: rgba(255, 255, 255, .92) !important;
+  opacity: 1 !important;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, .48);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker .mk-smart-search-mobile-picker__promo{
+  color: var(--mk-smart-search-promo-color, #facc15) !important;
+  opacity: 1 !important;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, .48);
+}
+
+/* صندوق العنوان لا يغمق النص */
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker__header{
+  color: #ffffff !important;
+}
+
+/* زيادة وضوح طبقة الخلفية خلف العنوان بدون إخفاء النص */
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker__header{
+  background: rgba(28, 22, 25, .56) !important;
+  border-color: rgba(255, 255, 255, .16) !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker__close{
+  color: #ffffff !important;
+}
+
+/* MOBILE SUBMIT VISIBILITY FIX:
+   زر البحث في شاشة الجوال يجب يكون واضح حتى قبل اكتمال الاختيارات.
+   إذا لم يكتمل المسار يبقى ظاهر لكن disabled بلون واضح وليس مخفي. */
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker .mk-smart-search__submit--mobile{
+  position: sticky !important;
+  bottom: calc(env(safe-area-inset-bottom) + 12px) !important;
+  z-index: 30 !important;
+  width: min(100%, 520px) !important;
+  min-height: 56px !important;
+  margin: 16px auto 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 9px !important;
+  border-radius: 18px !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  color: var(--mk-ss-primary-contrast, #ffffff) !important;
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--mk-ss-primary, #111827) 84%, #ffffff 16%),
+      color-mix(in srgb, var(--mk-ss-primary, #111827) 96%, #000000 4%)
+    ) !important;
+  border: 1px solid color-mix(in srgb, var(--mk-ss-primary-contrast, #ffffff) 20%, transparent) !important;
+  box-shadow:
+    0 18px 34px color-mix(in srgb, var(--mk-ss-primary, #111827) 26%, transparent),
+    0 8px 22px rgba(0, 0, 0, .22),
+    inset 0 1px 0 color-mix(in srgb, var(--mk-ss-primary-contrast, #ffffff) 22%, transparent) !important;
+  font-size: 14px !important;
+  font-weight: 950 !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker .mk-smart-search__submit--mobile svg{
+  opacity: 1 !important;
+  color: currentColor !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker .mk-smart-search__submit--mobile span{
+  display: inline-flex !important;
+  align-items: center !important;
+  font-weight: 950 !important;
+}
+
+/* حالة غير مكتملة: الزر واضح لكن يبين أنه ينتظر اختيار القسم */
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker .mk-smart-search__submit--mobile:disabled{
+  opacity: 1 !important;
+  cursor: not-allowed !important;
+  color: color-mix(in srgb, var(--mk-ss-text, #111827) 82%, transparent) !important;
+  background:
+    linear-gradient(180deg,
+      rgba(255, 255, 255, .96),
+      rgba(255, 255, 255, .84)
+    ) !important;
+  border-color: rgba(255, 255, 255, .34) !important;
+  box-shadow:
+    0 14px 28px rgba(0, 0, 0, .18),
+    inset 0 1px 0 rgba(255, 255, 255, .76) !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker .mk-smart-search__submit--mobile:disabled svg{
+  color: color-mix(in srgb, var(--mk-ss-text, #111827) 70%, transparent) !important;
+}
+
+/* عند اكتمال الاختيارات يكون CTA قوي */
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker .mk-smart-search__submit--mobile:not(:disabled){
+  cursor: pointer !important;
+  transform: translateZ(0);
+}
+
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker .mk-smart-search__submit--mobile:not(:disabled):active{
+  transform: scale(.99);
+}
+
+/* MOBILE FIRST SMART SEARCH TOP SAFE SPACE:
+   فقط إذا كان الباحث الذكي أول عنصر في الرئيسية:
+   نعطي مساحة علوية من نفس خلفية الباحث حتى لا يدخل الشعار/الهيدر فوق العنوان. */
+@media (max-width: 760px) {
+  .mk-root[data-theme-code="basit"] .mk-mobile-home > .mk-smart-search--hero:first-child{
+    padding-top: calc(env(safe-area-inset-top) + 78px) !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-mobile-home > .mk-smart-search--hero:first-child .mk-smart-search__intro{
+    margin-top: 0 !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .mk-root[data-theme-code="basit"] .mk-mobile-home > .mk-smart-search--hero:first-child{
+    padding-top: calc(env(safe-area-inset-top) + 86px) !important;
+  }
+}
+
+/* MOBILE RESPECT ADMIN BACKGROUND FIX:
+   لا نضيف رمادي/تعتيم إجباري من CSS.
+   الخلفية والتعتيم في الجوال تأخذ نفس إعدادات الإدارة:
+   - background.color أو background.image_url
+   - background.overlay كما حدده التاجر
+*/
+@media (max-width: 760px) {
+  .mk-root[data-theme-code="basit"] .mk-smart-search--hero,
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker{
+    background-color: var(--mk-smart-search-bg-color, var(--mk-ss-surface, #ffffff)) !important;
+    background-image: var(--mk-smart-search-bg-image, inherit);
+  }
+
+  /* طبقة التعتيم من إعدادات الإدارة فقط، بدون max وبدون إجبار رمادي */
+  .mk-root[data-theme-code="basit"] .mk-smart-search--hero::before,
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker::before{
+    background: var(--mk-smart-search-overlay-color, #000000) !important;
+    opacity: var(--mk-smart-search-overlay-opacity, 0) !important;
+  }
+
+  /* إلغاء طبقة التدرج الرمادي/الداكن التي كانت مفروضة على الجوال */
+  .mk-root[data-theme-code="basit"] .mk-smart-search--hero::after,
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker::after{
+    display: none !important;
+  }
+
+  /* إذا الخلفية لون فقط، لا نضيف رمادي فوقها */
+  .mk-root[data-theme-code="basit"] .mk-smart-search--color::before{
+    opacity: 0 !important;
+  }
+
+  /* كرت الحقول يبقى أبيض/شفاف فاخر بدل رمادي مفروض */
+  .mk-root[data-theme-code="basit"] .mk-smart-search--hero .mk-smart-search__form,
+.mk-root[data-theme-code="basit"] .mk-smart-search-mobile-picker__fields{
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--mk-ss-surface, #ffffff) 96%, transparent),
+        color-mix(in srgb, var(--mk-ss-surface, #ffffff) 90%, var(--mk-smart-search-bg-color, #ffffff) 10%)
+      ) !important;
+    border-color: color-mix(in srgb, var(--mk-ss-border, #e5e7eb) 82%, transparent) !important;
+    box-shadow:
+      0 18px 42px rgba(15, 23, 42, .10),
+      inset 0 1px 0 rgba(255, 255, 255, .76) !important;
+    backdrop-filter: blur(12px);
+  }
+}
+
+/* إذا كانت الخلفية صورة، نسمح بطبقة التعتيم المختارة من الإدارة فقط */
+@media (max-width: 760px) {
+  .mk-root[data-theme-code="basit"] .mk-smart-search--image::before{
+    opacity: var(--mk-smart-search-overlay-opacity, .45) !important;
+  }
+}

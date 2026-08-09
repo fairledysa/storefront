@@ -1,0 +1,1123 @@
+/* Basit header v2 — presentation only. Existing APIs and data flows stay untouched. */
+
+.mk-root[data-theme-code="basit"] .bs-brand-header{
+  position: relative;
+  z-index: 120;
+  padding: 18px 20px 12px;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header--sticky{
+  position: sticky;
+  top: 0;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header__shell{
+  width: min(calc(100% - 8px), 1440px);
+  min-height: 66px;
+  margin: 0 auto;
+  padding: 8px 16px;
+  display: grid;
+  grid-template-columns: minmax(230px, 1fr) minmax(320px, 1.25fr) minmax(230px, 1fr);
+  grid-template-areas: "tools brand actions";
+  align-items: center;
+  gap: 18px;
+  border: 1px solid rgba(28, 25, 22, .10);
+  border-radius: 17px;
+  background: var(--mk-bg-header, #ffffff);
+  color: var(--mk-text-header, #171513);
+  box-shadow: 0 10px 34px rgba(24, 20, 16, .08);
+  backdrop-filter: blur(18px);
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header__actions,
+.mk-root[data-theme-code="basit"] .bs-brand-header__tools,
+.mk-root[data-theme-code="basit"] .bs-brand-header__brand{
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header__actions{
+  grid-area: actions;
+  justify-content: flex-start;
+  gap: 10px;
+  padding-left: 8px;
+  direction: ltr;
+  overflow: visible;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header__tools{
+  grid-area: tools;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 18px;
+  padding-right: 6px;
+  direction: ltr;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header__brand{
+  grid-area: brand;
+  justify-content: center;
+  gap: 16px;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header__line{
+  flex: 1 1 110px;
+  height: 1px;
+  max-width: 210px;
+  background: linear-gradient(90deg, transparent, currentColor, transparent);
+  opacity: .32;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header__logo{
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header__logo-img{
+  display: block;
+  width: auto;
+  max-width: 185px;
+  max-height: 44px;
+  object-fit: contain;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header__menuButton,
+.mk-root[data-theme-code="basit"] .mk-desktop-search__iconTrigger,
+.mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions .mk-desktop-nav__iconLink,
+.mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions .mk-desktop-nav__iconButton,
+.mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions .mk-account-menu__trigger,
+.mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions .mk-account-menu__button{
+  width: 42px !important;
+  height: 42px !important;
+  min-width: 42px;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  border: 0 !important;
+  border-radius: 11px !important;
+  background: transparent !important;
+  color: var(--mk-text-header, #171513) !important;
+  box-shadow: none !important;
+  cursor: pointer;
+  transition: background .18s ease, transform .18s ease;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header__menuButton:hover,
+.mk-root[data-theme-code="basit"] .mk-desktop-search__iconTrigger:hover,
+.mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions .mk-desktop-nav__iconLink:hover,
+.mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions .mk-account-menu__trigger:hover{
+  background: color-mix(in srgb, currentColor 10%, transparent) !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions{
+  width: auto !important;
+  min-height: 0 !important;
+  display: block !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions .mk-desktop-nav__left{
+  display: flex !important;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  direction: ltr;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav__cartBadge{
+  top: -2px !important;
+  inset-inline-end: -2px !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header__currencyText{
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--mk-text-header, #171513);
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header .mk-currency-switcher{
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  min-width: auto !important;
+  min-height: 38px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header .mk-currency-switcher__icon{
+  width: 18px !important;
+  height: 18px !important;
+  flex: 0 0 18px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  opacity: .82;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header .mk-currency-switcher__icon svg{
+  width: 18px !important;
+  height: 18px !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header .mk-currency-switcher__select{
+  width: auto !important;
+  min-width: 132px !important;
+  max-width: 160px !important;
+  min-height: 38px !important;
+  padding: 0 18px 0 0 !important;
+  border: 0 !important;
+  outline: 0 !important;
+  background-color: transparent !important;
+  color: var(--mk-text-header, #171513) !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+  cursor: pointer;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header__menuButton{
+  margin-inline-start: 0 !important;
+}
+
+/* Fullscreen search mode. Logic stays inside SearchOverlay.tsx. */
+.mk-root[data-theme-code="basit"] .mk-desktop-search:has(.mk-desktop-search__box--iconTrigger){
+  display: inline-flex;
+  align-items: center;
+}
+
+.mk-root[data-theme-code="basit"] .mk-desktop-search__box--iconTrigger{
+  display: none;
+}
+
+.mk-root[data-theme-code="basit"] .mk-desktop-search[data-open="true"] .mk-desktop-search__box--iconTrigger{
+  position: fixed;
+  inset: 0;
+  z-index: 1002;
+  display: block;
+  width: 100vw;
+  height: 100dvh;
+  overflow-y: auto;
+  padding: 22px max(24px, calc((100vw - 980px) / 2));
+  border-radius: 0 !important;
+  background: #fff;
+  box-shadow: none !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-desktop-search[data-open="true"] .mk-desktop-search__overlay{
+  position: fixed;
+  inset: 0;
+  z-index: 1001;
+  background: #fff !important;
+  opacity: 1 !important;
+  backdrop-filter: none !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-desktop-search[data-open="true"] .mk-desktop-search__bar{
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  padding: 0 56px 20px;
+  background: #fff;
+}
+
+.mk-root[data-theme-code="basit"] .mk-desktop-search[data-open="true"] .mk-desktop-search__inputWrap{
+  max-width: 880px;
+  margin: 0 auto;
+}
+
+.mk-root[data-theme-code="basit"] .mk-desktop-search[data-open="true"] .mk-desktop-search__input{
+  height: 52px !important;
+  padding-inline: 50px 56px !important;
+  border: 1px solid #1c1a18 !important;
+  border-radius: 999px !important;
+  background: #fff !important;
+  box-shadow: none !important;
+  font-size: 15px !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-desktop-search[data-open="true"] .mk-desktop-search__close{
+  position: fixed !important;
+  top: 28px !important;
+  inset-inline-end: max(24px, calc((100vw - 1100px) / 2)) !important;
+  width: 42px !important;
+  height: 42px !important;
+  border-radius: 10px !important;
+  background: transparent !important;
+  font-size: 24px !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-desktop-search[data-open="true"] .mk-desktop-search__icon{
+  inset-inline-start: 16px !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-desktop-search[data-open="true"] .mk-desktop-search__dropdown{
+  position: static !important;
+  width: 100% !important;
+  max-width: 980px;
+  max-height: none !important;
+  margin: 6px auto 0;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-desktop-search[data-open="true"] .mk-desktop-search__content{
+  max-height: none !important;
+  overflow: visible !important;
+  padding: 20px 0 80px !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-desktop-search[data-open="true"] .mk-desktop-search__group,
+.mk-root[data-theme-code="basit"] .mk-desktop-search[data-open="true"] .mk-desktop-search__plainSection{
+  padding: 24px 0 !important;
+  border-bottom: 1px solid rgba(0,0,0,.09);
+}
+
+.mk-root[data-theme-code="basit"] .mk-desktop-search[data-open="true"] .mk-desktop-search__title,
+.mk-root[data-theme-code="basit"] .mk-desktop-search[data-open="true"] .mk-desktop-search__plainTitle{
+  margin-bottom: 14px;
+  font-size: 16px !important;
+  font-weight: 800 !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-desktop-search[data-open="true"] .mk-desktop-search__chips{
+  gap: 10px !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-desktop-search[data-open="true"] .mk-desktop-search__chip,
+.mk-root[data-theme-code="basit"] .mk-desktop-search[data-open="true"] .mk-desktop-search__item--chip{
+  min-height: 38px;
+  padding-inline: 16px !important;
+  border-radius: 999px !important;
+  background: #fff !important;
+}
+
+/* Drawer */
+.mk-root[data-theme-code="basit"] .bs-menu-drawer{
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer[data-open="true"]{
+  pointer-events: auto;
+  visibility: visible;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__backdrop{
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(25, 21, 18, .38);
+  opacity: 0;
+  transition: opacity .25s ease;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer[data-open="true"] .bs-menu-drawer__backdrop{
+  opacity: 1;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__panel{
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: min(360px, 92vw);
+  height: 100dvh;
+  padding: 18px 24px 28px;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  box-shadow: -20px 0 60px rgba(18, 14, 11, .12);
+  transform: translateX(102%);
+  transition: transform .28s cubic-bezier(.22,.8,.25,1);
+  overflow: hidden;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer[data-open="true"] .bs-menu-drawer__panel{
+  transform: translateX(0);
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 18px;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__close{
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 10px;
+  background: #f7f4f1;
+  color: #171513;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__currency{
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__currencyControl{
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__currencyControl .mk-currency-switcher{
+  min-height: 42px;
+  display: inline-flex !important;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: #171513;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__currencyControl .mk-currency-switcher__icon{
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 18px;
+  color: #4f4842;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__currencyControl .mk-currency-switcher__select{
+  min-width: 0;
+  max-width: 190px;
+  height: 42px;
+  padding: 0 24px 0 0;
+  border: 0 !important;
+  outline: 0 !important;
+  background-color: transparent !important;
+  color: #171513;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: none !important;
+}
+
+@media (max-width: 900px) {
+  .mk-root[data-theme-code="basit"] .bs-menu-drawer__currencyControl .mk-currency-switcher{
+    display: inline-flex !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-menu-drawer__currencyControl .mk-currency-switcher__select{
+    max-width: 160px;
+    font-size: 12px;
+  }
+}
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__viewport{
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__track{
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__screen{
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 12px;
+  background: #fff;
+  opacity: 1;
+  transition:
+    transform .34s cubic-bezier(.22,.8,.25,1),
+    opacity .22s ease;
+  will-change: transform;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__screen--root{
+  transform: translate3d(0, 0, 0);
+  z-index: 2;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__screen--child{
+  transform: translate3d(-100%, 0, 0);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__viewport[data-level="1"] .bs-menu-drawer__screen--root{
+  transform: translate3d(100%, 0, 0);
+  opacity: .72;
+  pointer-events: none;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__viewport[data-level="1"] .bs-menu-drawer__screen--child{
+  transform: translate3d(0, 0, 0);
+  z-index: 3;
+  pointer-events: auto;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__viewport[data-level="0"] .bs-menu-drawer__screen--root{
+  pointer-events: auto;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__nav{
+  border-top: 1px solid rgba(0,0,0,.08);
+  flex: 0 0 auto;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__link,
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__row,
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__navButton{
+  width: 100%;
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid rgba(0,0,0,.08);
+  color: #171513;
+  text-decoration: none;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__linkText{
+  flex: 1;
+  color: inherit;
+  text-decoration: none;
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__link > span{
+  font-size: 20px;
+  font-weight: 500;
+}
+
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__navButton{
+  padding: 0;
+  border-inline: 0;
+  border-top: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__navButton > span{
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__backLink{
+  min-height: 62px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border: 0;
+  border-top: 1px solid rgba(0,0,0,.08);
+  border-bottom: 1px solid rgba(0,0,0,.08);
+  background: transparent;
+  color: #6a6057;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: right;
+  cursor: pointer;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__backIcon{
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #f4efeb;
+  color: #4b433c;
+  flex-shrink: 0;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__sectionTitle{
+  padding: 18px 0 14px;
+  font-size: 26px;
+  line-height: 1.3;
+  font-weight: 700;
+  color: #171513;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__expand{
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__children{
+  display: grid;
+  gap: 2px;
+  padding: 8px 12px 14px;
+  border-bottom: 1px solid rgba(0,0,0,.08);
+  background: #faf8f6;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__child{
+  padding: 10px 8px;
+  color: #5d554e;
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__services{
+  margin-top: auto;
+  padding-top: 18px;
+  display: grid;
+  gap: 10px;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__services a{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #4f4842;
+  text-decoration: none;
+  font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  .mk-root[data-theme-code="basit"] .bs-brand-header{
+    padding: 8px;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-brand-header__shell{
+    width: 100%;
+    min-height: 58px;
+    padding: 6px 8px;
+    grid-template-columns: minmax(82px, auto) 1fr minmax(82px, auto);
+    grid-template-areas: "tools brand actions";
+    gap: 6px;
+    border-radius: 13px;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-brand-header__line{
+    display: none;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-brand-header__brand{
+    gap: 0;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-brand-header__logo{
+    padding: 0 4px;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-brand-header__logo-img{
+    max-width: 122px;
+    max-height: 34px;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-brand-header__actions,
+  .mk-root[data-theme-code="basit"] .bs-brand-header__tools{
+    gap: 0;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-brand-header__menuButton,
+  .mk-root[data-theme-code="basit"] .mk-desktop-search__iconTrigger,
+  .mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions .mk-desktop-nav__iconLink,
+  .mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions .mk-desktop-nav__iconButton{
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions .mk-desktop-nav__iconLink:nth-of-type(2){
+    display: none !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions .mk-account-menu__trigger,
+  .mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions .mk-account-menu__button{
+    display: none !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-brand-header__currencyText,
+  .mk-root[data-theme-code="basit"] .bs-brand-header .mk-currency-switcher{
+    display: none !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-desktop-search[data-open="true"] .mk-desktop-search__box--iconTrigger{
+    padding: 14px;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-desktop-search[data-open="true"] .mk-desktop-search__bar{
+    padding: 0 44px 14px 0;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-desktop-search[data-open="true"] .mk-desktop-search__close{
+    top: 16px !important;
+    inset-inline-end: 12px !important;
+  }
+}
+
+/* Header actions alignment fix — keep search icon inside the left action cluster. */
+.mk-root[data-theme-code="basit"] .bs-brand-header__actions > .mk-desktop-search{
+  flex: 0 0 42px !important;
+  width: 42px !important;
+  min-width: 42px !important;
+  max-width: 42px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  align-self: center;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header__actions > .mk-desktop-search:has(.mk-desktop-search__box--iconTrigger){
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header__actions .mk-desktop-search__iconTrigger{
+  margin: 0 !important;
+  position: static !important;
+  inset: auto !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header__actions{
+  column-gap: 4px !important;
+}
+
+/* v7: keep search attached to account actions — no full-width gap */
+.mk-root[data-theme-code="basit"] .bs-brand-header__actions{
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 4px !important;
+  direction: ltr !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header__actions > .mk-desktop-search,
+.mk-root[data-theme-code="basit"] .bs-brand-header__actions > .mk-desktop-search:has(.mk-desktop-search__box--iconTrigger){
+  width: 42px !important;
+  min-width: 42px !important;
+  max-width: 42px !important;
+  flex: 0 0 42px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header__actions > .bs-brand-header__nav{
+  width: auto !important;
+  flex: 0 0 auto !important;
+  margin: 0 !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions,
+.mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions .mk-desktop-nav__left{
+  width: auto !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* v8: final visual balance for the left action cluster. */
+.mk-root[data-theme-code="basit"] .bs-brand-header__actions{
+  gap: 10px !important;
+  padding-inline-start: 4px !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions .mk-desktop-nav__left{
+  gap: 10px !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions .mk-account-menu__trigger,
+.mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions .mk-account-menu__button{
+  width: auto !important;
+  min-width: 76px !important;
+  padding-inline: 8px !important;
+  gap: 6px !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions .mk-desktop-nav__iconLink,
+.mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions .mk-desktop-nav__iconButton,
+.mk-root[data-theme-code="basit"] .mk-desktop-search__iconTrigger{
+  flex: 0 0 40px !important;
+  width: 40px !important;
+  min-width: 40px !important;
+  height: 40px !important;
+}
+
+
+/* v10: mobile header should show only the cart in the left action area. */
+@media (max-width: 900px) {
+  .mk-root[data-theme-code="basit"] .bs-brand-header__actions{
+    justify-content: flex-start !important;
+    gap: 0 !important;
+    padding-inline-start: 0 !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions .mk-desktop-nav__left{
+    gap: 0 !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions .mk-desktop-nav__iconLink:not(:first-of-type),
+  .mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions .mk-desktop-nav__iconButton:not(:first-of-type),
+  .mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions .mk-account-menu__trigger,
+  .mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions .mk-account-menu__button,
+  .mk-root[data-theme-code="basit"] .bs-brand-header__actions > .mk-desktop-search:not([data-open="true"]),
+  .mk-root[data-theme-code="basit"] .bs-brand-header__actions > .mk-desktop-search:not([data-open="true"]):has(.mk-desktop-search__box--iconTrigger){
+    display: none !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-brand-header__actions > .mk-desktop-search[data-open="true"]{
+    display: block !important;
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    max-width: none !important;
+    height: 100dvh !important;
+    z-index: var(--mk-z-search-overlay, 600) !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions,
+  .mk-root[data-theme-code="basit"] .bs-brand-header__actions > .bs-brand-header__nav{
+    width: auto !important;
+    flex: 0 0 auto !important;
+  }
+}
+
+/* v11: polished mobile header — cart left, centered logo, menu right. */
+@media (max-width: 900px) {
+  .mk-root[data-theme-code="basit"] .bs-brand-header{
+    padding: 8px 10px 6px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-brand-header__shell{
+    width: 100% !important;
+    min-height: 58px !important;
+    padding: 6px 8px !important;
+    grid-template-columns: 52px minmax(0, 1fr) 52px !important;
+    grid-template-areas: "actions brand tools" !important;
+    gap: 0 !important;
+    border-radius: 14px !important;
+    box-shadow: 0 8px 24px rgba(24, 20, 16, .07) !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-brand-header__actions{
+    grid-area: actions !important;
+    justify-content: center !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-brand-header__brand{
+    grid-area: brand !important;
+    width: 100% !important;
+    justify-content: center !important;
+    min-width: 0 !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-brand-header__tools{
+    grid-area: tools !important;
+    justify-content: center !important;
+    padding: 0 !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-brand-header__logo{
+    width: 100% !important;
+    padding: 0 6px !important;
+    justify-content: center !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-brand-header__logo-img{
+    max-width: 118px !important;
+    max-height: 36px !important;
+    margin: 0 auto !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-brand-header__menuButton,
+  .mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions .mk-desktop-nav__iconLink:first-of-type,
+  .mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions .mk-desktop-nav__iconButton:first-of-type{
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    border-radius: 10px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions,
+  .mk-root[data-theme-code="basit"] .bs-brand-header .mk-desktop-nav--compact-actions .mk-desktop-nav__left{
+    width: 40px !important;
+    min-width: 40px !important;
+    justify-content: center !important;
+  }
+}
+
+/* v12: correct mobile RTL positions — menu right, cart left. */
+@media (max-width: 900px) {
+  .mk-root[data-theme-code="basit"] .bs-brand-header__shell{
+    grid-template-areas: "tools brand actions" !important;
+  }
+}
+
+
+/* v19: category label opens the parent category; arrow opens subcategories. */
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__row{
+  padding: 0;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__linkText{
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__expand{
+  flex: 0 0 42px;
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background .18s ease, transform .18s ease;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__expand:hover{
+  background: #f5f1ed;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__link--all{
+  font-weight: 700;
+  background: #faf8f6;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__link--all > span{
+  font-size: 17px;
+  font-weight: 700;
+}
+
+
+/* v23: reliable mobile menu trigger and drawer interaction. */
+.mk-root[data-theme-code="basit"] .bs-brand-header__menuButton{
+  position: relative !important;
+  z-index: 5 !important;
+  pointer-events: auto !important;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__backdrop{
+  touch-action: manipulation;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__panel{
+  pointer-events: auto;
+}
+
+
+/* v25: header appearance is controlled by theme options.
+   header_style = floating | full_width
+   header_corners = rounded | square
+   header_bg and header_text_color come from the existing color settings. */
+.mk-root[data-theme-code="basit"] .bs-brand-header--floating .bs-brand-header__shell{
+  background: var(--mk-bg-header, #ffffff) !important;
+  color: var(--mk-text-header, #171513) !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header--full-width{
+  width: 100vw !important;
+  max-width: none !important;
+  margin-inline: calc(50% - 50vw) !important;
+  padding: 0 !important;
+  background: var(--mk-bg-header, #ffffff) !important;
+  border-bottom: 1px solid color-mix(in srgb, var(--mk-text-header, #171513) 16%, transparent) !important;
+  box-shadow: none !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header--full-width .bs-brand-header__shell{
+  width: 100% !important;
+  max-width: none !important;
+  min-height: 74px;
+  margin: 0 !important;
+  padding: 8px clamp(24px, 5vw, 88px) !important;
+  border: 0 !important;
+  background: var(--mk-bg-header, #ffffff) !important;
+  color: var(--mk-text-header, #171513) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header--corners-rounded{
+  border-radius: 17px !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header--corners-rounded .bs-brand-header__shell{
+  border-radius: 17px !important;
+  overflow: hidden;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header--corners-square,
+.mk-root[data-theme-code="basit"] .bs-brand-header--corners-square .bs-brand-header__shell{
+  border-radius: 0 !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header--full-width .bs-brand-header__line{
+  background: linear-gradient(90deg, transparent, currentColor, transparent) !important;
+  opacity: .28;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header--full-width .mk-desktop-nav__cartBadge{
+  background: var(--mk-text-header, #171513) !important;
+  color: var(--mk-bg-header, #ffffff) !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header :is(
+  .bs-brand-header__menuButton,
+  .mk-desktop-search__iconTrigger,
+  .mk-desktop-nav--compact-actions .mk-desktop-nav__iconLink,
+  .mk-desktop-nav--compact-actions .mk-desktop-nav__iconButton,
+  .mk-desktop-nav--compact-actions .mk-account-menu__trigger,
+  .mk-desktop-nav--compact-actions .mk-account-menu__button,
+  .bs-brand-header__currencyText,
+  .mk-currency-switcher__select
+){
+  color: var(--mk-text-header, #171513) !important;
+}
+
+@media (max-width: 900px) {
+  .mk-root[data-theme-code="basit"] .bs-brand-header--full-width{
+    padding: 0 !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-brand-header--full-width .bs-brand-header__shell{
+    min-height: 62px !important;
+    padding: 6px 10px !important;
+    box-shadow: none !important;
+  }
+}
+
+/* v26: sidebar colors are controlled by theme options. */
+.mk-root[data-theme-code="basit"] .bs-menu-drawer{
+  color: var(--bs-sidebar-text, #111111);
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__panel,
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__screen{
+  background: var(--bs-sidebar-bg, #ffffff) !important;
+  color: var(--bs-sidebar-text, #111111) !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__close,
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__backIcon{
+  background: color-mix(in srgb, var(--bs-sidebar-text, #111111) 8%, var(--bs-sidebar-bg, #ffffff)) !important;
+  color: var(--bs-sidebar-text, #111111) !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__currency,
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__currencyControl,
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__currencyControl .mk-currency-switcher,
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__currencyControl .mk-currency-switcher__icon,
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__currencyControl .mk-currency-switcher__select,
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__link,
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__row,
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__linkText,
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__navButton,
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__expand,
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__backLink,
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__sectionTitle,
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__child,
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__services a{
+  color: var(--bs-sidebar-text, #111111) !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__nav,
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__link,
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__row,
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__navButton,
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__backLink,
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__children{
+  border-color: color-mix(in srgb, var(--bs-sidebar-text, #111111) 12%, transparent) !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__children,
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__link--all{
+  background: color-mix(in srgb, var(--bs-sidebar-text, #111111) 5%, var(--bs-sidebar-bg, #ffffff)) !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__expand:hover{
+  background: color-mix(in srgb, var(--bs-sidebar-text, #111111) 8%, var(--bs-sidebar-bg, #ffffff)) !important;
+}
+
+
+/* BASIT — product videos entry in header and menu drawer */
+.mk-root[data-theme-code="basit"] .bs-brand-header__videosLink{
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--mk-text-header, #171513);
+  text-decoration: none;
+  box-shadow: none;
+  transition: background .18s ease, transform .18s ease;
+}
+
+.mk-root[data-theme-code="basit"] .bs-brand-header__videosLink:hover{
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  transform: translateY(-1px);
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__link--videos{
+  color: inherit;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__videoLabel{
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+
+.mk-root[data-theme-code="basit"] .bs-menu-drawer__videoLabel > span{
+  font-size: 20px;
+  font-weight: 600;
+}
+
+@media (max-width: 767px){
+  .mk-root[data-theme-code="basit"] .bs-brand-header__videosLink{
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+  }
+}

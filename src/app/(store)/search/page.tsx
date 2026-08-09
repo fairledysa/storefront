@@ -3,6 +3,7 @@
 import { notFound } from "next/navigation";
 
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
+import { resolveTheme } from "@/theme-engine/runtime/resolve-theme";
 import { renderTemplate } from "@/theme-engine/runtime/render-template";
 import type { ThemeCode } from "@/theme-engine/types";
 import { loadSearchPage } from "@/data/pages/search.loader";
@@ -23,6 +24,7 @@ function normalizeThemeCode(value: any): ThemeCode {
   const code = s(value);
 
   if (code === "malak") return "malak";
+  if (code === "basit") return "basit";
   if (code === "classic") return "classic";
 
   return "malak";
@@ -34,18 +36,6 @@ export default async function SearchPage(props: {
   const ctx = await resolveStoreContext();
   if (!ctx.store) return notFound();
 
-  const themeAny = ((ctx as any)?.theme || {}) as Record<string, any>;
-
-  const themeCode = normalizeThemeCode(
-    themeAny.theme_key ||
-      themeAny.key ||
-      themeAny.code ||
-      themeAny.theme_code ||
-      "malak",
-  );
-
-  if (themeCode !== "malak") return notFound();
-
   const spRaw = props.searchParams
     ? await Promise.resolve(props.searchParams)
     : {};
@@ -53,6 +43,35 @@ export default async function SearchPage(props: {
   const q = firstParam(spRaw.q);
   const sort = firstParam(spRaw.sort);
   const preview = firstParam(spRaw.preview) === "1";
+
+  const themeAny = ((ctx as any)?.theme || {}) as Record<string, any>;
+
+  let themeCode = normalizeThemeCode(
+    themeAny.theme_key ||
+      themeAny.key ||
+      themeAny.code ||
+      themeAny.theme_code ||
+      "malak",
+  );
+
+  let themeSettings =
+    themeAny.options && typeof themeAny.options === "object"
+      ? themeAny.options
+      : {};
+
+  if (preview) {
+    const previewTheme = await resolveTheme({
+      store_id: ctx.store.id,
+      preview: true,
+    });
+
+    if (previewTheme.code === "basit") {
+      themeCode = "basit";
+      themeSettings = previewTheme.settings;
+    }
+  }
+
+  if (themeCode === "classic") return notFound();
 
   const data = await loadSearchPage({
     store_id: ctx.store.id,
@@ -62,7 +81,7 @@ export default async function SearchPage(props: {
   });
 
   return await renderTemplate({
-    template: "cart",
+    template: "category",
     themeCode,
     store: {
       id: ctx.store.id,
@@ -73,10 +92,7 @@ export default async function SearchPage(props: {
     },
     theme: {
       code: themeCode,
-      settings:
-        themeAny.options && typeof themeAny.options === "object"
-          ? themeAny.options
-          : {},
+      settings: themeSettings,
     },
     sections: [],
     data: {

@@ -1,0 +1,410 @@
+/* FILE: apps/storefront/src/themes/basit/styles/screens-desktop/account/account.orders-final.css */
+
+/* =========================================================
+   FINAL Orders row layout
+   Physical layout:
+   LEFT  = total + actions
+   CENTER = products + payment
+   RIGHT = order number + date + status
+   Keep this as the last section in this file.
+   ========================================================= */
+
+.mk-root[data-theme-code="basit"] .mk-orders-card{
+  border-radius: var(--mk-acc-radius-xl);
+  border: 1px solid var(--mk-acc-line);
+  background: var(--mk-acc-surface);
+  padding: 16px;
+  box-shadow: var(--mk-acc-shadow);
+  overflow: visible;
+}
+
+.mk-root[data-theme-code="basit"] .mk-orders-list{
+  display: grid;
+  gap: 12px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row.mk-order-row--swap{
+  direction: ltr;
+  display: flex !important;
+  align-items: stretch;
+  width: 100%;
+  min-height: 132px;
+  padding: 0 !important;
+  gap: 0 !important;
+  border-radius: 20px;
+  border: 1px solid var(--mk-acc-line);
+  background: var(--mk-acc-surface);
+  overflow: hidden;
+  box-shadow: none;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    background 140ms ease;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row.mk-order-row--swap:hover{
+  background: var(--mk-acc-surface);
+  border-color: var(--mk-acc-line-strong);
+  box-shadow: 0 14px 34px rgba(15, 15, 15, 0.05);
+  transform: none;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-row__left,
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-row__center,
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-row__right{
+  direction: rtl;
+  min-width: 0;
+  padding: 16px 18px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-row__left{
+  order: 1;
+  flex: 0 0 190px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+  border-right: 1px solid var(--mk-acc-line);
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-row__center{
+  order: 2;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 170px;
+  align-items: center;
+  gap: 18px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-row__right{
+  order: 3;
+  flex: 0 0 220px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+  border-left: 1px solid var(--mk-acc-line);
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-row__head,
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-row__statusBlock,
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-row__totalBlock,
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-row__paymentBlock,
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-row__productsBlock{
+  min-width: 0;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-row__label{
+  margin: 0 0 6px;
+  color: var(--mk-acc-muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-row__number{
+  display: inline-block;
+  width: fit-content;
+  color: var(--mk-acc-text);
+  text-decoration: none;
+  font-size: 17px;
+  font-weight: 950;
+  line-height: 1.25;
+  direction: ltr;
+  unicode-bidi: plaintext;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-row__number:hover{
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-row__date{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 7px;
+  color: var(--mk-acc-muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-row__amount{
+  color: var(--mk-acc-text);
+  font-size: 18px;
+  font-weight: 950;
+  line-height: 1.25;
+  direction: ltr;
+  unicode-bidi: plaintext;
+  text-align: right;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-row__actions{
+  display: grid;
+  gap: 8px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-action{
+  width: 100%;
+  min-height: 40px;
+  border-radius: 13px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-action--primary{
+  border-color: var(--mk-acc-primary);
+  background: var(--mk-acc-primary);
+  color: var(--mk-acc-primary-contrast);
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-action--primary svg,
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-action--primary span{
+  color: var(--mk-acc-primary-contrast);
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-action--primary:hover{
+  background: var(--mk-acc-primary-hover);
+  color: var(--mk-acc-primary-contrast);
+  transform: none;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-action--soft{
+  border-color: var(--mk-acc-primary-border);
+  background: var(--mk-acc-primary-soft);
+  color: var(--mk-acc-primary);
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-action--soft svg,
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-action--soft span{
+  color: var(--mk-acc-primary);
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-action--soft:hover{
+  background: color-mix(
+    in srgb,
+    var(--mk-acc-primary) 12%,
+    var(--mk-acc-surface) 88%
+  );
+  transform: none;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-products{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-products__imgs{
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-products__imgBox{
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--mk-acc-line);
+  background: var(--mk-acc-surface-soft);
+  margin-inline-start: -8px;
+  box-shadow: none;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-products__imgBox:first-child{
+  margin-inline-start: 0;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-products__imgBox img{
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-products__placeholder{
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: var(--mk-acc-muted);
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-products__names{
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-products__name{
+  max-width: 100%;
+  color: color-mix(in srgb, var(--mk-acc-text) 88%, var(--mk-acc-muted) 12%);
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.55;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-products__qty{
+  margin-inline-start: 5px;
+  color: var(--mk-acc-primary);
+  font-weight: 950;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-products__more{
+  color: var(--mk-acc-soft);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-payment-method{
+  margin: 0 0 8px;
+  color: color-mix(in srgb, var(--mk-acc-text) 78%, var(--mk-acc-muted) 22%);
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.65;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-badge,
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-payBadge{
+  width: fit-content;
+  min-height: 28px;
+  border-radius: 999px;
+  padding: 5px 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+@media (max-width: 1280px) {
+  .mk-root[data-theme-code="basit"] .mk-order-row.mk-order-row--swap{
+    min-height: 126px;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-row__left{
+    flex-basis: 178px;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-row__right{
+    flex-basis: 205px;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-row__center{
+    grid-template-columns: minmax(0, 1fr) 154px;
+    gap: 14px;
+  }
+}
+
+@media (max-width: 1023px) {
+  .mk-root[data-theme-code="basit"] .mk-order-row.mk-order-row--swap{
+    direction: rtl;
+    display: grid !important;
+    grid-template-columns: 1fr;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-row__left,
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-row__center,
+.mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-row__right{
+    direction: rtl;
+    order: initial;
+    flex: initial;
+    border: 0;
+    padding: 16px;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-row__right{
+    border-bottom: 1px solid var(--mk-acc-line);
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-order-row--swap .mk-order-row__center{
+    grid-template-columns: 1fr;
+    border-bottom: 1px solid var(--mk-acc-line);
+  }
+}
+
+
+
+
+
+ .mk-root[data-theme-code="basit"] .mk-order-action--reviewed{
+  border-color: #d6e8dd !important;
+  background: #f7fbf8 !important;
+  color: #166534 !important;
+  box-shadow: none !important;
+  cursor: default !important;
+  opacity: 1 !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-action--reviewed svg{
+  color: #16a34a;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-action--reviewed:hover{
+  background: #f7fbf8 !important;
+  color: #166534 !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-action--reviewed.is-pending{
+  border-color: #eadfca !important;
+  background: #fbfaf7 !important;
+  color: #7c5a1f !important;
+  box-shadow: none !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-action--reviewed.is-pending svg{
+  color: #b08945;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-action--reviewed.is-pending:hover{
+  background: #fbfaf7 !important;
+  color: #7c5a1f !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* FILE: apps/storefront/src/themes/basit/styles/screens-desktop/account/account.orders.css */
+/* أو ضعه في account.orders-final.css إذا هذا هو الملف اللي فيه آخر تعديلات الطلبات */
+
+.mk-root[data-theme-code="basit"] .mk-order-action--reviewed{
+  cursor: pointer;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-action--reviewed *{
+  cursor: pointer;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-action--reviewed:disabled{
+  cursor: not-allowed;
+}
+
+.mk-root[data-theme-code="basit"] .mk-order-action--reviewed:not(:disabled):hover{
+  transform: translateY(-1px);
+}

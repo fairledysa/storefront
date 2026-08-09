@@ -1,6 +1,6 @@
 // FILE: apps/storefront/src/theme-engine/runtime/render-template.tsx
 
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { headers } from "next/headers";
 
 import { themeRegistry } from "@/theme-engine/registry";
@@ -12,6 +12,7 @@ import { loadTheme } from "@/theme-engine/load-theme";
 import { getSeoUrlMode } from "@/data/store/settings";
 import { getMalakBootstrap } from "@/themes/malak/bootstrap/get-malak-bootstrap";
 import { getInitialCartCount } from "@/themes/malak/runtime/get-cart-count.server";
+import { getMalakBootstrap as getBasitBootstrap } from "@/themes/basit/bootstrap/get-malak-bootstrap";
 
 type StoreRow = {
   id: string;
@@ -25,6 +26,29 @@ type ThemeRuntime = {
   code: ThemeCode;
   settings: Record<string, any>;
 };
+
+type AppShellThemeComponent = ComponentType<{
+  ctx: {
+    store: {
+      id: string;
+      name: string;
+      logo_url?: string | null;
+    };
+    theme: {
+      key: string;
+      version_id: string;
+      options: Record<string, any>;
+    };
+    device: "mobile" | "desktop";
+    seoMode?: Awaited<ReturnType<typeof getSeoUrlMode>>;
+    data?: any;
+    bootstrap?:
+      | Awaited<ReturnType<typeof getMalakBootstrap>>
+      | Awaited<ReturnType<typeof getBasitBootstrap>>;
+    initialCartCount?: number;
+  };
+  children?: ReactNode;
+}>;
 
 export type StorefrontTemplate =
   | "home"
@@ -163,7 +187,11 @@ export async function renderTemplate({
 
     const loadThemeStartedAt = nowMs();
     const loaded = loadTheme(safeCode as ThemeCode);
-    const C = loaded.Component;
+    // loadTheme returns a union of the Malak and Basit components. At runtime,
+    // safeCode also selects the matching bootstrap loader below, so expose the
+    // shared app-shell contract here instead of forcing one theme bootstrap
+    // type to satisfy the other theme's private options.
+    const C = loaded.Component as AppShellThemeComponent | null;
     mark("load_theme", loadThemeStartedAt);
 
     if (!C) {
@@ -185,8 +213,10 @@ export async function renderTemplate({
     mark("seo_mode", seoStartedAt);
 
     const bootstrapStartedAt = nowMs();
+    const getBootstrap =
+      safeCode === "basit" ? getBasitBootstrap : getMalakBootstrap;
     const [bootstrap, initialCartCount] = await Promise.all([
-      getMalakBootstrap({
+      getBootstrap({
         store: {
           id: store.id,
           slug: store.slug,

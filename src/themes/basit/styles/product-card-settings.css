@@ -1,0 +1,357 @@
+/* FILE: apps/storefront/src/themes/basit/styles/product-card-settings.css */
+
+/*
+ * Final runtime layer for the single Basit product card.
+ * Every route that renders ProductCard consumes the same root variables/flags.
+ */
+
+.mk-root[data-theme-code="basit"] .mkpc-card-inner{
+  background: var(--mk-product-card-bg, #ffffff) !important;
+  border: 1px solid var(--mk-product-card-border-color, transparent) !important;
+  border-radius: var(--mk-product-card-radius, 24px) !important;
+}
+
+.mk-root[data-theme-code="basit"][data-mk-rounded-cards="false"] .mkpc-card-inner{
+  border-radius: 0 !important;
+}
+
+.mk-root[data-theme-code="basit"][data-mk-products-border="false"] .mkpc-card-inner{
+  border-color: transparent !important;
+}
+
+.mk-root[data-theme-code="basit"] .mkpc-media{
+  height: var(--mk-product-image-height, 272px) !important;
+  min-height: var(--mk-product-image-height, 272px) !important;
+  flex: 0 0 var(--mk-product-image-height, 272px) !important;
+}
+
+.mk-root[data-theme-code="basit"] .mkpc-media-img,
+.mk-root[data-theme-code="basit"] .mk-products-slider .mkpc-media-img,
+.mk-root[data-theme-code="basit"] .mk-products-slider .mkpc-media img{
+  object-fit: var(--mk-product-image-fit, contain) !important;
+  object-position: center top !important;
+}
+
+/* The configured add-to-cart colors are the source of truth everywhere. */
+.mk-root[data-theme-code="basit"] .mkpc-cart-inline,
+.mk-root[data-theme-code="basit"] .mkpc-action--cart{
+  background: var(--mk-product-add-button-bg, #d5c4a8) !important;
+  color: var(--mk-product-add-button-color, #000000) !important;
+}
+
+.mk-root[data-theme-code="basit"] .mkpc-card:hover .mkpc-cart-inline,
+.mk-root[data-theme-code="basit"] .mkpc-action--cart:hover{
+  background: var(--mk-product-add-button-hover-bg, var(--mk-product-add-button-bg, #d5c4a8)) !important;
+  color: var(--mk-product-add-button-hover-color, var(--mk-product-add-button-color, #000000)) !important;
+}
+
+.mk-root[data-theme-code="basit"] .mkpc-cart-inline:disabled,
+.mk-root[data-theme-code="basit"] .mkpc-action--cart:disabled{
+  background: #cbd5e1 !important;
+  color: #ffffff !important;
+}
+
+/* One desktop column setting for every standard product grid. */
+@media (min-width: 1024px){
+  .mk-root[data-theme-code="basit"] :is(
+    .mk-dcat__grid,
+    .mk-search-grid,
+    .mk-dcategories__grid,
+    .mk-favorites__grid,
+    .mk-drecommended__grid,
+    .mk-marketing-collection__grid
+  ){
+    grid-template-columns: repeat(var(--mk-products-per-row, 4), minmax(0, 1fr)) !important;
+  }
+}
+
+/* General equal-height option for non-slider cards. */
+.mk-root[data-theme-code="basit"][data-mk-equal-product-height="true"]
+  :is(.mk-dcat__grid, .mk-search-grid, .mk-dcategories__grid, .mk-favorites__grid, .mk-drecommended__grid)
+  > *{
+  height: 100%;
+}
+
+.mk-root[data-theme-code="basit"][data-mk-equal-product-height="true"]
+  :is(.mk-dcat__grid, .mk-search-grid, .mk-dcategories__grid, .mk-favorites__grid, .mk-drecommended__grid)
+  .mkpc-card,
+.mk-root[data-theme-code="basit"][data-mk-equal-product-height="true"]
+  :is(.mk-dcat__grid, .mk-search-grid, .mk-dcategories__grid, .mk-favorites__grid, .mk-drecommended__grid)
+  .mkpc-card-inner{
+  height: 100% !important;
+}
+
+.mk-root[data-theme-code="basit"][data-mk-equal-product-height="false"]
+  :is(.mk-dcat__grid, .mk-search-grid, .mk-dcategories__grid, .mk-favorites__grid, .mk-drecommended__grid)
+  .mkpc-card,
+.mk-root[data-theme-code="basit"][data-mk-equal-product-height="false"]
+  :is(.mk-dcat__grid, .mk-search-grid, .mk-dcategories__grid, .mk-favorites__grid, .mk-drecommended__grid)
+  .mkpc-card-inner{
+  height: auto !important;
+  min-height: 0 !important;
+}
+
+/* Slider equal-height setting is independent and applies to every products slider. */
+.mk-root[data-theme-code="basit"][data-mk-fit-slider-products="true"]
+  .mk-products-slider .swiper-wrapper{
+  align-items: stretch !important;
+}
+
+.mk-root[data-theme-code="basit"][data-mk-fit-slider-products="true"]
+  .mk-products-slider :is(.swiper-slide, .mk-ps-slide, .mk-ps-card-runtime),
+.mk-root[data-theme-code="basit"][data-mk-fit-slider-products="true"]
+  .mk-products-slider :is(.mkpc-card, .mkpc-card-inner){
+  height: 100% !important;
+}
+
+.mk-root[data-theme-code="basit"][data-mk-fit-slider-products="false"]
+  .mk-products-slider .swiper-wrapper{
+  align-items: flex-start !important;
+}
+
+.mk-root[data-theme-code="basit"][data-mk-fit-slider-products="false"]
+  .mk-products-slider :is(.swiper-slide, .mk-ps-slide, .mk-ps-card-runtime, .mkpc-card, .mkpc-card-inner){
+  height: auto !important;
+  min-height: 0 !important;
+}
+
+.mk-root[data-theme-code="basit"][data-mk-fit-slider-products="false"]
+  .mk-products-slider :is(.mkpc-body, .mkpc-info, .mkpc-title, .mkpc-footer, .mkpc-bottom-row){
+  min-height: 0 !important;
+}
+
+/* The display-mode setting owns the three image actions on every route. */
+.mk-root[data-theme-code="basit"][data-mk-product-hover-style="hidden"] .mkpc-actions{
+  display: none !important;
+}
+
+.mk-root[data-theme-code="basit"][data-mk-product-hover-style="always"] .mkpc-actions{
+  display: flex !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  transform: none !important;
+  pointer-events: auto !important;
+}
+
+.mk-root[data-theme-code="basit"][data-mk-product-hover-style="on_image_hover"] .mkpc-actions{
+  display: flex !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  transform: translateY(6px) !important;
+  pointer-events: none !important;
+}
+
+.mk-root[data-theme-code="basit"][data-mk-product-hover-style="on_image_hover"]
+  .mkpc-card:hover .mkpc-actions{
+  opacity: 1 !important;
+  visibility: visible !important;
+  transform: none !important;
+  pointer-events: auto !important;
+}
+
+@media (hover: none), (max-width: 767px){
+  .mk-root[data-theme-code="basit"][data-mk-product-hover-style="on_image_hover"] .mkpc-actions{
+    opacity: 1 !important;
+    visibility: visible !important;
+    transform: none !important;
+    pointer-events: auto !important;
+  }
+
+  .mk-root[data-theme-code="basit"][data-mk-hide-quickview-mobile="true"]
+    :is(.mkpc-action--quick, .mkpc-action--fav){
+    display: none !important;
+  }
+
+  .mk-root[data-theme-code="basit"][data-mk-enhanced-add-btn-mobile="true"] .mkpc-cart-inline{
+    width: 48px !important;
+    height: 48px !important;
+    border-radius: 16px !important;
+    box-shadow: 0 14px 30px color-mix(in srgb, var(--mk-product-add-button-bg, #d5c4a8) 30%, transparent) !important;
+  }
+}
+
+/* Product title area must inherit the configured product-card background.
+ * Legacy unified CSS used to create a nested white plate around the title.
+ */
+.mk-root[data-theme-code="basit"] .mkpc-body{
+  background: var(--mk-product-card-bg, #ffffff) !important;
+}
+
+.mk-root[data-theme-code="basit"] .mkpc-info{
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.mk-root[data-theme-code="basit"] .mkpc-title,
+.mk-root[data-theme-code="basit"] .mkpc-subtitle{
+  background: transparent !important;
+}
+
+/* =========================================================
+ * BASIT PRODUCTS TABS — preserve portrait product images
+ * Full-width mode expands the section, not the image proportions.
+ * ========================================================= */
+@media (min-width: 1024px){
+  .mk-root[data-theme-code="basit"]
+    .bs-products-tabs--full-width
+    .mk-products-slider--fill-width
+    .mkpc-media{
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    flex: 0 0 auto !important;
+    aspect-ratio: 4 / 5 !important;
+    overflow: hidden !important;
+  }
+
+  .mk-root[data-theme-code="basit"]
+    .bs-products-tabs--full-width
+    .mk-products-slider--fill-width
+    .mkpc-media-img,
+  .mk-root[data-theme-code="basit"]
+    .bs-products-tabs--full-width
+    .mk-products-slider--fill-width
+    .mkpc-media img{
+    display: block !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    object-fit: var(--mk-product-image-fit, cover) !important;
+    object-position: center top !important;
+  }
+}
+
+/* =========================================================
+ * BASIT — stable responsive product rails
+ *
+ * The number of cards follows the REAL slider container width,
+ * not the browser viewport. This prevents narrow/stretched cards
+ * inside advanced collections and prevents clipped edge cards.
+ * Full-width products_tabs_basit keeps its dedicated sizing rules.
+ * ========================================================= */
+.mk-root[data-theme-code="basit"]
+  .mk-products-slider:not([data-fill-width="true"])
+  .mk-ps-wrap {
+  width: 100% !important;
+  min-width: 0 !important;
+  padding-inline: 1px !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+
+.mk-root[data-theme-code="basit"]
+  .mk-products-slider:not([data-fill-width="true"])
+  :is(.mk-ps-swiper, .swiper) {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+}
+
+.mk-root[data-theme-code="basit"]
+  .mk-products-slider:not([data-fill-width="true"])
+  .swiper-wrapper {
+  width: 100% !important;
+  min-width: 0 !important;
+  align-items: stretch !important;
+  box-sizing: border-box !important;
+}
+
+/* Slide width is owned by Swiper. Legacy fixed-width CSS was removed. */
+.mk-root[data-theme-code="basit"]
+  .mk-products-slider:not([data-fill-width="true"])
+  .mk-ps-slide {
+  min-width: 0 !important;
+  height: auto !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+}
+
+/* Stable card structure: equal outer height and aligned price/action row. */
+.mk-root[data-theme-code="basit"]
+  .mk-products-slider
+  :is(.mk-ps-card-runtime, .mkpc-card, .mkpc-card-inner) {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.mk-root[data-theme-code="basit"]
+  .mk-products-slider
+  .mkpc-card-inner {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.mk-root[data-theme-code="basit"]
+  .mk-products-slider
+  .mkpc-body {
+  display: flex !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  flex-direction: column !important;
+}
+
+.mk-root[data-theme-code="basit"]
+  .mk-products-slider
+  .mkpc-info {
+  min-width: 0 !important;
+}
+
+.mk-root[data-theme-code="basit"]
+  .mk-products-slider
+  .mkpc-title {
+  display: -webkit-box !important;
+  min-height: calc(1.45em * 2) !important;
+  max-height: calc(1.45em * 2) !important;
+  overflow: hidden !important;
+  -webkit-box-orient: vertical !important;
+  -webkit-line-clamp: 2 !important;
+  line-clamp: 2 !important;
+}
+
+.mk-root[data-theme-code="basit"]
+  .mk-products-slider
+  .mkpc-footer {
+  margin-top: auto !important;
+}
+
+/* Keep the media block stable and prevent image/layout jumps. */
+.mk-root[data-theme-code="basit"]
+  .mk-products-slider
+  .mkpc-media {
+  width: 100% !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
+.mk-root[data-theme-code="basit"]
+  .mk-products-slider
+  .mkpc-media-img {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+/* Small phones always use two readable cards with no cut first/last card. */
+@media (max-width: 519px) {
+  .mk-root[data-theme-code="basit"]
+    .mk-products-slider:not([data-fill-width="true"]) {
+    padding-inline: 10px !important;
+  }
+
+  .mk-root[data-theme-code="basit"]
+    .mk-products-slider:not([data-fill-width="true"])
+    .mk-ps-wrap {
+    padding-inline: 0 !important;
+  }
+}

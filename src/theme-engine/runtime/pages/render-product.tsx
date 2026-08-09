@@ -63,7 +63,7 @@ export async function renderProductPage(args: {
         theme,
         sections: layout.sections,
         // ✅ نحط mode هنا داخل data
-        data: { ...args.data, mode },
+        data: { ...args.data, mode, route: "product" },
       })}
     </>
   );

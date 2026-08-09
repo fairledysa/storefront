@@ -1,0 +1,142 @@
+/* FILE: apps/storefront/src/themes/basit/styles/screens-desktop/categories.css */
+
+.mk-root[data-theme-code="basit"] .mk-dcategories{
+  width: 100%;
+  direction: rtl;
+}
+
+.mk-root[data-theme-code="basit"] .mk-dcategories__container{
+  width: min(100% - 48px, 1400px);
+  margin: 0 auto;
+  padding: 40px 0 64px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-dcategories__head{
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-dcategories__title{
+  margin: 0;
+  color: #0f172a;
+  font-size: clamp(25px, 2.4vw, 34px);
+  font-weight: 950;
+  line-height: 1.25;
+  text-align: right;
+}
+
+.mk-root[data-theme-code="basit"] .mk-dcategories__text{
+  margin: 8px 0 0;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.6;
+  text-align: right;
+}
+
+.mk-root[data-theme-code="basit"] .mk-dcategories__sort{
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-dcategories__sort button{
+  min-height: 38px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 999px;
+  background: #fff;
+  padding: 0 14px;
+  color: #475569;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.mk-root[data-theme-code="basit"] .mk-dcategories__sort button:hover:not(:disabled){
+  border-color: rgba(13, 59, 69, 0.28);
+  color: #0d3b45;
+  transform: translateY(-1px);
+}
+
+.mk-root[data-theme-code="basit"] .mk-dcategories__sort button.is-active{
+  border-color: #0d3b45;
+  background: #0d3b45;
+  color: #fff;
+}
+
+.mk-root[data-theme-code="basit"] .mk-dcategories__sort button:disabled{
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.mk-root[data-theme-code="basit"] .mk-dcategories__updating{
+  margin: -8px 0 18px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.mk-root[data-theme-code="basit"] .mk-dcategories__grid{
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 22px;
+  align-items: start;
+}
+
+.mk-root[data-theme-code="basit"] .mk-dcategories__empty{
+  min-height: 220px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed rgba(15, 23, 42, 0.16);
+  border-radius: 24px;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.mk-root[data-theme-code="basit"] .mk-dcategories__infiniteTail{
+  min-height: 56px;
+  display: grid;
+  place-items: center;
+  margin-top: 18px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.mk-root[data-theme-code="basit"] .mk-dcategories__loadError{
+  color: #b42318;
+}
+
+@media (max-width: 900px) {
+  .mk-root[data-theme-code="basit"] .mk-dcategories__container{
+    width: min(100% - 32px, 1400px);
+    padding-top: 28px;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-dcategories__head{
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-dcategories__sort{
+    justify-content: flex-start;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-dcategories__grid{
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 16px;
+  }
+}

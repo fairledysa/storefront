@@ -1,0 +1,36 @@
+/* FILE: apps/storefront/src/themes/basit/styles/foundation/reset.css */
+
+.mk-root[data-theme-code="basit"],
+.mk-root[data-theme-code="basit"] *,
+.mk-root[data-theme-code="basit"] *::before,
+.mk-root[data-theme-code="basit"] *::after{
+  box-sizing: border-box;
+}
+
+.mk-root[data-theme-code="basit"]{
+  direction: rtl;
+  min-height: 100dvh;
+  background: var(--mk-bg-page);
+  color: var(--mk-text-main);
+  font-family: var(--mk-font-family);
+}
+
+.mk-root[data-theme-code="basit"] button,
+.mk-root[data-theme-code="basit"] input,
+.mk-root[data-theme-code="basit"] textarea,
+.mk-root[data-theme-code="basit"] select{
+  font: inherit;
+}
+
+.mk-root[data-theme-code="basit"] button{
+  cursor: pointer;
+}
+
+.mk-root[data-theme-code="basit"] img{
+  max-width: 100%;
+}
+
+.mk-root[data-theme-code="basit"][data-malak-theme]{
+  background: var(--mk-bg-page);
+  color: var(--mk-text-main);
+}

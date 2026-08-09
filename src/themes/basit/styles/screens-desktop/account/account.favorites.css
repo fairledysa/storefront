@@ -1,0 +1,119 @@
+/* FILE: apps/storefront/src/themes/basit/styles/screens-desktop/account/account.favorites.css */
+
+/* =========================================================
+   Favorites
+   ========================================================= */
+
+.mk-root[data-theme-code="basit"] .mk-favorites{
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-favorites__head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-radius: var(--mk-acc-radius-lg);
+  border: 1px solid var(--mk-acc-line);
+  background: var(--mk-acc-surface);
+  padding: 12px 14px;
+  box-shadow: var(--mk-acc-shadow);
+}
+
+.mk-root[data-theme-code="basit"] .mk-favorites__count{
+  color: var(--mk-acc-text);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.mk-root[data-theme-code="basit"] .mk-favorites__count strong{
+  font-weight: 1000;
+}
+
+.mk-root[data-theme-code="basit"] .mk-favorites__refresh,
+.mk-root[data-theme-code="basit"] .mk-favorites-retry{
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid var(--mk-acc-line-strong);
+  background: var(--mk-acc-surface);
+  color: var(--mk-acc-text);
+  padding: 0 13px;
+  font-size: 12px;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.mk-root[data-theme-code="basit"] .mk-favorites-retry{
+  margin-top: 12px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-favorites__grid{
+  display: grid;
+  grid-template-columns: repeat(var(--mk-products-per-row, 4), minmax(0, 1fr));
+  gap: 14px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-favorites__item{
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-favorites__item .mkpc-card,
+.mk-root[data-theme-code="basit"] .mk-favorites__item .mkpc-card-inner{
+  height: 100%;
+}
+
+.mk-root[data-theme-code="basit"] .mk-favorites__actions{
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-favorites__add,
+.mk-root[data-theme-code="basit"] .mk-favorites__remove{
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 13px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 950;
+  cursor: pointer;
+  transition:
+    opacity 140ms ease,
+    background 140ms ease;
+}
+
+.mk-root[data-theme-code="basit"] .mk-favorites__add{
+  border: 0;
+  background: var(--mk-product-add-button-bg, var(--mk-acc-primary));
+  color: var(--mk-product-add-button-color, var(--mk-acc-primary-contrast));
+}
+
+.mk-root[data-theme-code="basit"] .mk-favorites__add:disabled{
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.mk-root[data-theme-code="basit"] .mk-favorites__remove{
+  border: 1px solid rgba(180, 35, 24, 0.14);
+  background: #fff5f5;
+  color: var(--mk-acc-danger);
+}
+
+.mk-root[data-theme-code="basit"] .mk-favorites__remove:hover:not(:disabled){
+  background: #fff0f0;
+}
+
+.mk-root[data-theme-code="basit"] .mk-favorites__remove:disabled{
+  cursor: not-allowed;
+  opacity: 0.6;
+}

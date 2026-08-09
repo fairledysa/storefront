@@ -1,0 +1,224 @@
+/* BASIT 2.0 — complete visual rebuild. Shared data/behaviour, entirely new skin. */
+.mk-root[data-theme-code="basit"]{
+  --bs-bg:#fff;
+  --bs-soft:#f7f7f5;
+  --bs-card:#fff;
+  --bs-text:#111;
+  --bs-muted:#777;
+  --bs-line:#e9e9e6;
+  --bs-dark:#111;
+  --bs-radius:10px;
+  --bs-container:1440px;
+  background:var(--bs-bg)!important;
+  color:var(--bs-text)!important;
+}
+.mk-root[data-theme-code="basit"] *,
+.mk-root[data-theme-code="basit"] *::before,
+.mk-root[data-theme-code="basit"] *::after{box-sizing:border-box}
+.mk-root[data-theme-code="basit"] .mk-desktop-shell,
+.mk-root[data-theme-code="basit"] .mk-desktop-main,
+.mk-root[data-theme-code="basit"] .mk-screen-container{background:#fff!important;color:#111!important}
+.mk-root[data-theme-code="basit"] .mk-desktop-container{width:min(100%,var(--bs-container));max-width:none!important;padding-inline:28px}
+
+/* announcement */
+.mk-root[data-theme-code="basit"] .mk-announcement{min-height:34px!important;background:#fafafa!important;color:#111!important;border:0!important;border-bottom:1px solid var(--bs-line)!important}
+.mk-root[data-theme-code="basit"] .mk-announcement__container{max-width:1440px!important;margin:auto!important;min-height:34px!important}
+.mk-root[data-theme-code="basit"] .mk-announcement__contentWrap{min-height:34px!important;padding:4px 18px!important}
+.mk-root[data-theme-code="basit"] .mk-announcement__icon{display:none!important}
+.mk-root[data-theme-code="basit"] .mk-announcement__title,
+.mk-root[data-theme-code="basit"] .mk-announcement__body{font-size:11px!important;font-weight:500!important}
+.mk-root[data-theme-code="basit"] .mk-announcement__linkText{border:0!important;background:transparent!important;text-decoration:underline!important;font-size:11px!important}
+
+/* header rebuilt into a quiet premium two-line system */
+.mk-root[data-theme-code="basit"] .mk-header{background:rgba(255,255,255,.98)!important;border-bottom:1px solid var(--bs-line)!important;box-shadow:none!important;backdrop-filter:blur(16px)}
+.mk-root[data-theme-code="basit"] .mk-header__container{width:min(100%,1440px)!important;max-width:none!important;padding-inline:28px!important}
+.mk-root[data-theme-code="basit"] .mk-header__wrap--top{border:0!important}
+.mk-root[data-theme-code="basit"] .mk-header__top{min-height:78px!important;padding:12px 0!important;display:grid!important;grid-template-columns:1fr minmax(360px,520px) 1fr!important;align-items:center!important;gap:30px!important}
+.mk-root[data-theme-code="basit"] .mk-header__logoBox{justify-self:center!important;grid-column:2!important;grid-row:1!important}
+.mk-root[data-theme-code="basit"] .mk-header__logoLink{display:flex!important;align-items:center!important;justify-content:center!important}
+.mk-root[data-theme-code="basit"] .mk-header__logoImg{max-width:150px!important;max-height:48px!important;width:auto!important;object-fit:contain!important}
+.mk-root[data-theme-code="basit"] .mk-header__searchBox{grid-column:3!important;grid-row:1!important;width:100%!important;max-width:360px!important;justify-self:end!important}
+.mk-root[data-theme-code="basit"] .mk-header__sloganBox{grid-column:1!important;grid-row:1!important;justify-self:start!important;display:flex!important;color:#666!important}
+.mk-root[data-theme-code="basit"] .mk-header__sloganIcon{display:none!important}
+.mk-root[data-theme-code="basit"] .mk-header__sloganText{font-size:11px!important;line-height:1.6!important;max-width:220px!important}
+.mk-root[data-theme-code="basit"] .mk-desktop-search__bar{height:38px!important;min-height:38px!important;border:1px solid var(--bs-line)!important;border-radius:7px!important;background:#fafafa!important;box-shadow:none!important}
+.mk-root[data-theme-code="basit"] .mk-desktop-search__bar:hover{background:#fff!important;border-color:#cfcfca!important}
+.mk-root[data-theme-code="basit"] .mk-desktop-search__input{font-size:12px!important;color:#111!important}
+.mk-root[data-theme-code="basit"] .mk-header__wrap--bottom{border-top:1px solid #f0f0ed!important;background:#fff!important}
+.mk-root[data-theme-code="basit"] .mk-header__bottom,
+.mk-root[data-theme-code="basit"] .mk-header__bottomRow{min-height:48px!important}
+.mk-root[data-theme-code="basit"] .mk-desktop-nav{width:100%!important}
+.mk-root[data-theme-code="basit"] .mk-desktop-nav__right{gap:22px!important}
+.mk-root[data-theme-code="basit"] .mk-desktop-nav__left{gap:10px!important}
+.mk-root[data-theme-code="basit"] .mk-desktop-nav__rootLink,
+.mk-root[data-theme-code="basit"] .mk-desktop-nav__linkButton{font-size:12px!important;font-weight:500!important;color:#222!important;padding:14px 0!important}
+.mk-root[data-theme-code="basit"] .mk-desktop-nav__rootLink:hover,
+.mk-root[data-theme-code="basit"] .mk-desktop-nav__linkButton:hover{color:#000!important}
+.mk-root[data-theme-code="basit"] .mk-desktop-nav__iconLink,
+.mk-root[data-theme-code="basit"] .mk-desktop-nav__iconButton,
+.mk-root[data-theme-code="basit"] .mk-desktop-nav__menuButton{width:34px!important;height:34px!important;border:0!important;border-radius:50%!important;background:transparent!important;box-shadow:none!important;color:#111!important}
+.mk-root[data-theme-code="basit"] .mk-desktop-nav__iconLink:hover,
+.mk-root[data-theme-code="basit"] .mk-desktop-nav__iconButton:hover,
+.mk-root[data-theme-code="basit"] .mk-desktop-nav__menuButton:hover{background:#f5f5f2!important}
+.mk-root[data-theme-code="basit"] .mk-vdiv{height:18px!important;background:var(--bs-line)!important;opacity:1!important}
+
+/* page rhythm */
+.mk-root[data-theme-code="basit"] .bs-home{padding-bottom:0!important;background:#fff!important}
+.mk-root[data-theme-code="basit"] .bs-home>section{margin:0!important}
+.mk-root[data-theme-code="basit"] .bs-home :where(.mx-auto){max-width:1440px}
+
+/* hero */
+.mk-root[data-theme-code="basit"] .mk-responsive-hero-slider-section,
+.mk-root[data-theme-code="basit"] .mk-banners-slider-section{padding:20px 28px 12px!important}
+.mk-root[data-theme-code="basit"] .mk-responsive-hero-slider-section>div,
+.mk-root[data-theme-code="basit"] .mk-banners-slider-section>div{max-width:1440px!important;padding:0!important}
+.mk-root[data-theme-code="basit"] .mk-responsive-hero-slider,
+.mk-root[data-theme-code="basit"] .mk-responsive-hero-slider .swiper,
+.mk-root[data-theme-code="basit"] .mk-banners-slider-wrap{border-radius:9px!important;overflow:hidden!important;background:#f4f1ec!important;box-shadow:none!important}
+.mk-root[data-theme-code="basit"] .mk-responsive-hero-img,
+.mk-root[data-theme-code="basit"] .mk-banners-slider-img{width:100%!important;aspect-ratio:3.75/1!important;min-height:260px!important;max-height:420px!important;object-fit:cover!important;display:block!important}
+.mk-root[data-theme-code="basit"] .swiper-button-next,
+.mk-root[data-theme-code="basit"] .swiper-button-prev{width:34px!important;height:34px!important;border-radius:50%!important;background:#fff!important;color:#111!important;box-shadow:0 2px 12px rgba(0,0,0,.08)!important}
+.mk-root[data-theme-code="basit"] .swiper-button-next:after,
+.mk-root[data-theme-code="basit"] .swiper-button-prev:after{font-size:13px!important;font-weight:700!important}
+.mk-root[data-theme-code="basit"] .swiper-pagination-bullet{width:7px!important;height:7px!important;background:#c7c7c2!important;opacity:1!important}
+.mk-root[data-theme-code="basit"] .swiper-pagination-bullet-active{width:16px!important;border-radius:20px!important;background:#111!important}
+
+/* features become a single clean strip */
+.mk-root[data-theme-code="basit"] :where(.mk-features-section,.mk-stats-section,.mk-showcase-features,.mk-fps-features){max-width:1440px!important;margin:0 auto!important;padding:22px 28px!important;border:0!important;background:#fff!important}
+.mk-root[data-theme-code="basit"] :where(.mk-feature-card,.mk-stat-card,.mk-showcase-feature,.mk-fps-feature){border:0!important;background:transparent!important;box-shadow:none!important;border-radius:0!important}
+
+/* category links */
+.mk-root[data-theme-code="basit"] .mk-circle-links-section,
+.mk-root[data-theme-code="basit"] .mk-square-links-section{padding:34px 28px 10px!important;background:#fff!important}
+.mk-root[data-theme-code="basit"] .mk-circle-links-section>div,
+.mk-root[data-theme-code="basit"] .mk-square-links-section>div{padding:0!important;max-width:1440px!important}
+.mk-root[data-theme-code="basit"] .mk-circle-links-grid,
+.mk-root[data-theme-code="basit"] .mk-square-links-grid{gap:16px!important}
+.mk-root[data-theme-code="basit"] .mk-circle-link-card,
+.mk-root[data-theme-code="basit"] .mk-square-link-card{border:0!important;background:transparent!important;box-shadow:none!important;transform:none!important}
+.mk-root[data-theme-code="basit"] .mk-circle-link-img-wrap{border:1px solid var(--bs-line)!important;background:#f7f7f5!important;box-shadow:none!important}
+.mk-root[data-theme-code="basit"] .mk-square-link-img-wrap{border-radius:8px!important;background:#f7f7f5!important;box-shadow:none!important;overflow:hidden!important}
+.mk-root[data-theme-code="basit"] .mk-circle-link-title,
+.mk-root[data-theme-code="basit"] .mk-square-link-title{font-size:12px!important;font-weight:600!important;color:#222!important;margin-top:9px!important}
+.mk-root[data-theme-code="basit"] .mk-circle-link-desc{font-size:11px!important;color:#888!important}
+
+/* product sections */
+.mk-root[data-theme-code="basit"] :where(.mk-home-product-section,.mk-products-tabs-section,.mk-advanced-products-section){padding:42px 28px 20px!important;background:#fff!important}
+.mk-root[data-theme-code="basit"] :where(.mk-home-product-section,.mk-products-tabs-section,.mk-advanced-products-section)>div{max-width:1440px!important;padding:0!important}
+.mk-root[data-theme-code="basit"] .mk-products-slider{--mk-ps-card-count:6;--mk-ps-gap:16px;max-width:1440px!important;margin:auto!important}
+.mk-root[data-theme-code="basit"] .mk-ps-head{max-width:1440px!important;margin:0 auto 18px!important;padding:0!important;min-height:auto!important;display:flex!important;align-items:end!important;justify-content:space-between!important}
+.mk-root[data-theme-code="basit"] .mk-ps-title-wrap:before,
+.mk-root[data-theme-code="basit"] .mk-ps-title-line{display:none!important}
+.mk-root[data-theme-code="basit"] .mk-ps-title{font-size:22px!important;font-weight:700!important;letter-spacing:-.02em!important;color:#111!important;margin:0!important}
+.mk-root[data-theme-code="basit"] .mk-ps-viewall{font-size:12px!important;font-weight:500!important;color:#222!important;text-decoration:none!important;border:0!important;background:transparent!important;padding:0!important}
+.mk-root[data-theme-code="basit"] .mk-ps-viewall:after{content:" ←"}
+.mk-root[data-theme-code="basit"] .mk-ps-shell,
+.mk-root[data-theme-code="basit"] .mk-ps-wrap,
+.mk-root[data-theme-code="basit"] .mk-ps-swiper{padding:0!important;margin:0!important;background:transparent!important;border:0!important;box-shadow:none!important}
+.mk-root[data-theme-code="basit"] .mk-ps-slide{height:auto!important}
+.mk-root[data-theme-code="basit"] .mk-products-slider .mk-ps-nav{display:none!important}
+
+/* completely new product card */
+.mk-root[data-theme-code="basit"] .mkpc-card,
+.mk-root[data-theme-code="basit"] .mkpc-card-inner{height:100%!important;background:#fff!important;border:1px solid var(--bs-line)!important;border-radius:8px!important;overflow:hidden!important;box-shadow:none!important;transition:border-color .18s ease!important}
+.mk-root[data-theme-code="basit"] .mkpc-card:hover,
+.mk-root[data-theme-code="basit"] .mkpc-card:hover .mkpc-card-inner{transform:none!important;box-shadow:none!important;border-color:#ccc!important}
+.mk-root[data-theme-code="basit"] :where(.mkpc-media,.mkpc-image-wrap,.mkpc-imageBox){background:#f6f5f2!important;border-radius:0!important;overflow:hidden!important}
+.mk-root[data-theme-code="basit"] :where(.mkpc-image,.mkpc-product-image,img.mkpc-image){width:100%!important;aspect-ratio:1/1!important;object-fit:cover!important;transition:transform .3s ease!important}
+.mk-root[data-theme-code="basit"] .mkpc-card:hover :where(.mkpc-image,.mkpc-product-image,img.mkpc-image){transform:scale(1.02)!important}
+.mk-root[data-theme-code="basit"] :where(.mkpc-body,.mkpc-content,.mkpc-info){padding:12px 13px 13px!important;background:#fff!important}
+.mk-root[data-theme-code="basit"] :where(.mkpc-title,.mkpc-name,.mkpc-product-title){font-size:12px!important;font-weight:500!important;line-height:1.65!important;color:#161616!important;min-height:39px!important;margin:0 0 6px!important}
+.mk-root[data-theme-code="basit"] :where(.mkpc-price,.mkpc-current-price){font-size:13px!important;font-weight:700!important;color:#111!important}
+.mk-root[data-theme-code="basit"] :where(.mkpc-old-price,.mkpc-compare-price){font-size:10px!important;color:#999!important}
+.mk-root[data-theme-code="basit"] :where(.mkpc-favorite,.mkpc-wishlist,.mkpc-action-favorite){width:30px!important;height:30px!important;border:0!important;border-radius:50%!important;background:rgba(255,255,255,.92)!important;box-shadow:none!important}
+.mk-root[data-theme-code="basit"] :where(.mkpc-cart,.mkpc-add-to-cart,.mkpc-action-cart){width:30px!important;height:30px!important;border:1px solid var(--bs-line)!important;border-radius:6px!important;background:#fff!important;color:#111!important;box-shadow:none!important}
+.mk-root[data-theme-code="basit"] :where(.mkpc-badge,.mkpc-discount-badge){border-radius:4px!important;font-size:9px!important;font-weight:600!important;padding:4px 6px!important;box-shadow:none!important}
+
+/* banners */
+.mk-root[data-theme-code="basit"] .mk-wide-banner-section,
+.mk-root[data-theme-code="basit"] .mk-image-links-grid-section{padding:20px 28px!important;background:#fff!important}
+.mk-root[data-theme-code="basit"] .mk-wide-banner-section>div,
+.mk-root[data-theme-code="basit"] .mk-image-links-grid-section>div{max-width:1440px!important;padding:0!important}
+.mk-root[data-theme-code="basit"] .mk-wide-banner-link,
+.mk-root[data-theme-code="basit"] .mk-image-links-grid__card{border-radius:8px!important;overflow:hidden!important;box-shadow:none!important}
+
+/* footer */
+.mk-root[data-theme-code="basit"] .mk-footer{margin-top:50px!important;background:var(--mk-bg-footer)!important;border-top:1px solid color-mix(in srgb,var(--mk-text-footer) 16%,transparent)!important;color:var(--mk-text-footer)!important}
+.mk-root[data-theme-code="basit"] .mk-footer__container{max-width:1440px!important;padding:38px 28px 22px!important}
+.mk-root[data-theme-code="basit"] .mk-footer :where(h2,h3,h4){font-size:14px!important;font-weight:700!important;color:var(--mk-text-footer)!important}
+.mk-root[data-theme-code="basit"] .mk-footer :where(a,p,li,span){font-size:12px!important;line-height:1.9!important;color:color-mix(in srgb,var(--mk-text-footer) 76%,transparent)!important}
+.mk-root[data-theme-code="basit"] .mk-footer input{height:38px!important;border:1px solid color-mix(in srgb,var(--mk-text-footer) 18%,transparent)!important;border-radius:5px!important;background:color-mix(in srgb,var(--mk-bg-footer) 88%,var(--mk-text-footer) 12%)!important;color:var(--mk-text-footer)!important}
+.mk-root[data-theme-code="basit"] .mk-footer button{height:38px!important;border-radius:5px!important;background:var(--mk-text-footer)!important;color:var(--mk-bg-footer)!important;box-shadow:none!important}
+
+/* all secondary screens */
+.mk-root[data-theme-code="basit"] :where(.mk-category-screen,.mk-search-screen,.mk-product-screen,.mk-cart-screen,.mk-account-screen,.mk-page-screen,.mk-categories-screen){max-width:1440px!important;margin:auto!important;padding-inline:28px!important;background:#fff!important}
+.mk-root[data-theme-code="basit"] :where(.mk-card,.mk-ui-card){border:1px solid var(--bs-line)!important;border-radius:8px!important;background:#fff!important;box-shadow:none!important}
+
+@media (max-width:1024px){
+  .mk-root[data-theme-code="basit"] .mk-header__top{grid-template-columns:1fr auto 1fr!important;min-height:68px!important}
+  .mk-root[data-theme-code="basit"] .mk-header__searchBox{max-width:260px!important}
+  .mk-root[data-theme-code="basit"] .mk-header__sloganBox{display:none!important}
+  .mk-root[data-theme-code="basit"] .mk-products-slider{--mk-ps-card-count:4}
+}
+
+@media (max-width:767px){
+  .mk-root[data-theme-code="basit"]{padding-bottom:0!important}
+  .mk-root[data-theme-code="basit"] .mk-app-shell[data-basit-bottom-nav="true"]{padding-bottom:68px!important}
+  .mk-root[data-theme-code="basit"] .mk-desktop-container{padding-inline:12px!important}
+  .mk-root[data-theme-code="basit"] .mk-announcement{min-height:29px!important}
+  .mk-root[data-theme-code="basit"] .mk-announcement__container,
+.mk-root[data-theme-code="basit"] .mk-announcement__contentWrap{min-height:29px!important}
+  .mk-root[data-theme-code="basit"] .mk-announcement__title,
+.mk-root[data-theme-code="basit"] .mk-announcement__body{font-size:10px!important}
+  .mk-root[data-theme-code="basit"] .mk-header__container{padding-inline:12px!important}
+  .mk-root[data-theme-code="basit"] .mk-header__top{min-height:58px!important;padding:7px 0!important;grid-template-columns:1fr auto 1fr!important;gap:8px!important}
+  .mk-root[data-theme-code="basit"] .mk-header__logoBox{grid-column:2!important}
+  .mk-root[data-theme-code="basit"] .mk-header__logoImg{max-width:105px!important;max-height:38px!important}
+  .mk-root[data-theme-code="basit"] .mk-header__searchBox{grid-column:1/4!important;grid-row:2!important;max-width:none!important;width:100%!important;padding-bottom:8px!important}
+  .mk-root[data-theme-code="basit"] .mk-header__sloganBox{display:none!important}
+  .mk-root[data-theme-code="basit"] .mk-header__wrap--bottom{display:none!important}
+  .mk-root[data-theme-code="basit"] .mk-desktop-search__bar{height:40px!important;min-height:40px!important;border-radius:6px!important}
+  .mk-root[data-theme-code="basit"] .mk-responsive-hero-slider-section,
+.mk-root[data-theme-code="basit"] .mk-banners-slider-section{padding:10px 12px 8px!important}
+  .mk-root[data-theme-code="basit"] .mk-responsive-hero-slider,
+.mk-root[data-theme-code="basit"] .mk-responsive-hero-slider .swiper,
+.mk-root[data-theme-code="basit"] .mk-banners-slider-wrap{border-radius:7px!important}
+  .mk-root[data-theme-code="basit"] .mk-responsive-hero-img,
+.mk-root[data-theme-code="basit"] .mk-banners-slider-img{aspect-ratio:1.48/1!important;min-height:0!important;max-height:none!important}
+  .mk-root[data-theme-code="basit"] .swiper-button-next,
+.mk-root[data-theme-code="basit"] .swiper-button-prev{display:none!important}
+  .mk-root[data-theme-code="basit"] .mk-circle-links-section,
+.mk-root[data-theme-code="basit"] .mk-square-links-section{padding:24px 12px 4px!important}
+  .mk-root[data-theme-code="basit"] .mk-circle-links-grid,
+.mk-root[data-theme-code="basit"] .mk-square-links-grid{display:flex!important;overflow-x:auto!important;scroll-snap-type:x mandatory!important;gap:12px!important;padding-bottom:8px!important;scrollbar-width:none!important}
+  .mk-root[data-theme-code="basit"] .mk-circle-link-card,
+.mk-root[data-theme-code="basit"] .mk-square-link-card{flex:0 0 82px!important;scroll-snap-align:start!important}
+  .mk-root[data-theme-code="basit"] :where(.mk-home-product-section,.mk-products-tabs-section,.mk-advanced-products-section){padding:30px 12px 12px!important}
+  .mk-root[data-theme-code="basit"] .mk-products-slider{--mk-ps-card-count:2;--mk-ps-gap:10px;width:100%!important}
+  .mk-root[data-theme-code="basit"] .mk-ps-head{margin-bottom:12px!important}
+  .mk-root[data-theme-code="basit"] .mk-ps-title{font-size:17px!important}
+  .mk-root[data-theme-code="basit"] .mk-ps-viewall{font-size:11px!important}
+  .mk-root[data-theme-code="basit"] :where(.mkpc-body,.mkpc-content,.mkpc-info){padding:9px 9px 10px!important}
+  .mk-root[data-theme-code="basit"] :where(.mkpc-title,.mkpc-name,.mkpc-product-title){font-size:11px!important;min-height:36px!important}
+  .mk-root[data-theme-code="basit"] :where(.mkpc-price,.mkpc-current-price){font-size:12px!important}
+  .mk-root[data-theme-code="basit"] .mk-wide-banner-section,
+.mk-root[data-theme-code="basit"] .mk-image-links-grid-section{padding:14px 12px!important}
+  .mk-root[data-theme-code="basit"] .mk-footer{margin-top:30px!important}
+  .mk-root[data-theme-code="basit"] .mk-footer__container{padding:28px 16px 18px!important}
+  .mk-root[data-theme-code="basit"] :where(.mk-category-screen,.mk-search-screen,.mk-product-screen,.mk-cart-screen,.mk-account-screen,.mk-page-screen,.mk-categories-screen){padding-inline:12px!important}
+  .mk-root[data-theme-code="basit"] .mk-tabbar{border-top:1px solid var(--bs-line)!important;box-shadow:none!important}
+}
+
+/* =========================================================
+   Basit: Features with product — remove white list panels
+   Keep the feature content directly on the store background.
+   ========================================================= */
+.mk-root[data-theme-code="basit"]
+  .mk-features-product-showcase
+  .mk-fps-features {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}

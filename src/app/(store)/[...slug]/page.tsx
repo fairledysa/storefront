@@ -37,13 +37,17 @@ import {
 import { loadTagPageBySlug } from "@/data/pages/tag.loader";
 import { getStoreMaintenanceSettings } from "@/data/store/maintenance";
 import { renderMalakMaintenancePage } from "@/themes/malak/screens/maintenance/render-maintenance-page";
+import { renderMalakMaintenancePage as renderBasitMaintenancePage } from "@/themes/basit/screens/maintenance/render-maintenance-page";
 
 import { renderHomePage } from "@/theme-engine/runtime/pages/render-home";
 import { renderCategoryPage } from "@/theme-engine/runtime/pages/render-category";
 import { renderProductPage } from "@/theme-engine/runtime/pages/render-product";
 import { renderCartPage } from "@/theme-engine/runtime/pages/render-cart";
+import { renderTemplate } from "@/theme-engine/runtime/render-template";
+import { resolveTheme } from "@/theme-engine/runtime/resolve-theme";
 
 import MalakTheme from "@/themes/malak";
+import BasitTheme from "@/themes/basit";
 import { getMalakBootstrap } from "@/themes/malak/bootstrap/get-malak-bootstrap";
 import { getInitialCartCount } from "@/themes/malak/runtime/get-cart-count.server";
 
@@ -53,6 +57,10 @@ import ProductScreen from "@/themes/malak/screens/product/ProductScreen";
 import ProductMobileScreen from "@/themes/malak/screens-mobile/product/ProductMobileScreen";
 import PageScreen from "@/themes/malak/screens/page/PageScreen";
 import TagScreen from "@/themes/malak/screens/tag/TagScreen";
+import BasitCategoryScreen from "@/themes/basit/screens/category/CategoryScreen";
+import BasitProductScreen from "@/themes/basit/screens/product/ProductScreen";
+import BasitPageScreen from "@/themes/basit/screens/page/PageScreen";
+import BasitTagScreen from "@/themes/basit/screens/tag/TagScreen";
 
 import { getSeoUrlMode } from "@/data/store/settings";
 import {
@@ -381,6 +389,16 @@ function isMalakTheme(ctx: any) {
   return themeKey === "malak";
 }
 
+function isBasitTheme(ctx: any) {
+  const themeKey =
+    s(ctx?.theme?.theme_key) ||
+    s(ctx?.theme?.key) ||
+    s(ctx?.theme?.code) ||
+    s(ctx?.theme?.theme_code);
+
+  return themeKey === "basit";
+}
+
 async function buildMalakBootstrap(args: { ctx: any; seoMode: any }) {
   return await getMalakBootstrap({
     store: {
@@ -419,6 +437,8 @@ function buildMalakCtx(args: {
   bootstrap?: any;
   initialCartCount?: number;
 }) {
+  const themeKey = isBasitTheme(args.ctx) ? "basit" : "malak";
+
   return {
     ...args.ctx,
     device: args.device,
@@ -428,8 +448,8 @@ function buildMalakCtx(args: {
     initialCartCount: args.initialCartCount ?? 0,
     theme: {
       ...(args.ctx?.theme ?? {}),
-      key: "malak",
-      theme_key: "malak",
+      key: themeKey,
+      theme_key: themeKey,
       version_id: args.ctx?.theme?.version_id ?? "published",
       options: args.ctx?.theme?.options ?? {},
     },
@@ -442,6 +462,8 @@ async function renderMalakCategoryPage(args: {
   preview: boolean;
   previewDevice?: PreviewDevice | null;
 }) {
+  const useBasit = isBasitTheme(args.ctx);
+  const ActiveTheme = useBasit ? BasitTheme : MalakTheme;
   const h = await headers();
 
   const device =
@@ -495,14 +517,16 @@ async function renderMalakCategoryPage(args: {
     initialCartCount,
   });
 
+  const Screen = useBasit
+    ? BasitCategoryScreen
+    : device === "mobile"
+      ? CategoryMobileScreen
+      : CategoryScreen;
+
   return (
-    <MalakTheme ctx={appCtx as any}>
-      {device === "mobile" ? (
-        <CategoryMobileScreen data={pageData} mode={seoMode} />
-      ) : (
-        <CategoryScreen data={pageData} mode={seoMode} />
-      )}
-    </MalakTheme>
+    <ActiveTheme ctx={appCtx as any}>
+      <Screen data={pageData} mode={seoMode} />
+    </ActiveTheme>
   );
 }
 
@@ -512,6 +536,9 @@ async function renderMalakTagPage(args: {
   preview: boolean;
   previewDevice?: PreviewDevice | null;
 }) {
+  const useBasit = isBasitTheme(args.ctx);
+  const ActiveTheme = useBasit ? BasitTheme : MalakTheme;
+  const Screen = useBasit ? BasitTagScreen : TagScreen;
   const h = await headers();
 
   const device =
@@ -549,9 +576,9 @@ async function renderMalakTagPage(args: {
   });
 
   return (
-    <MalakTheme ctx={appCtx as any}>
-      <TagScreen data={pageData} mode={seoMode} />
-    </MalakTheme>
+    <ActiveTheme ctx={appCtx as any}>
+      <Screen data={pageData} mode={seoMode} />
+    </ActiveTheme>
   );
 }
 
@@ -566,6 +593,8 @@ async function renderMalakProductPage(args: {
     initialCartCount: number;
   };
 }) {
+  const useBasit = isBasitTheme(args.ctx);
+  const ActiveTheme = useBasit ? BasitTheme : MalakTheme;
   const h = await headers();
 
   const device =
@@ -624,14 +653,16 @@ async function renderMalakProductPage(args: {
     initialCartCount,
   });
 
+  const Screen = useBasit
+    ? BasitProductScreen
+    : device === "mobile"
+      ? ProductMobileScreen
+      : ProductScreen;
+
   return (
-    <MalakTheme ctx={appCtx as any}>
-      {device === "mobile" ? (
-        <ProductMobileScreen data={dataWithMode} />
-      ) : (
-        <ProductScreen data={dataWithMode} />
-      )}
-    </MalakTheme>
+    <ActiveTheme ctx={appCtx as any}>
+      <Screen data={dataWithMode} />
+    </ActiveTheme>
   );
 }
 
@@ -641,6 +672,9 @@ async function renderMalakInfoPage(args: {
   preview: boolean;
   previewDevice?: PreviewDevice | null;
 }) {
+  const useBasit = isBasitTheme(args.ctx);
+  const ActiveTheme = useBasit ? BasitTheme : MalakTheme;
+  const Screen = useBasit ? BasitPageScreen : PageScreen;
   const h = await headers();
 
   const device =
@@ -692,9 +726,9 @@ async function renderMalakInfoPage(args: {
   });
 
   return (
-    <MalakTheme ctx={appCtx as any}>
-      <PageScreen data={pageData} />
-    </MalakTheme>
+    <ActiveTheme ctx={appCtx as any}>
+      <Screen data={pageData} />
+    </ActiveTheme>
   );
 }
 
@@ -2278,13 +2312,33 @@ export async function generateMetadata(props: PageProps): Promise<Metadata> {
 }
 
 export default async function Page(props: PageProps) {
-  const ctx = await resolveStoreContext();
+  let ctx: any = await resolveStoreContext();
   if (!ctx.store) return notFound();
 
   const sp = (await props.searchParams) || {};
   const previewVal = Array.isArray(sp.preview) ? sp.preview[0] : sp.preview;
   const preview = previewVal === "1";
   const previewDevice = getThemeEditorPreviewDevice(sp);
+
+  if (preview) {
+    const previewTheme = await resolveTheme({
+      store_id: ctx.store.id,
+      preview: true,
+    });
+
+    if (previewTheme?.code) {
+      ctx = {
+        ...ctx,
+        theme: {
+          ...(ctx.theme ?? {}),
+          key: previewTheme.code,
+          theme_key: previewTheme.code,
+          code: previewTheme.code,
+          options: (previewTheme as any).settings ?? ctx.theme?.options ?? {},
+        },
+      };
+    }
+  }
 
   const params = ((await props.params) ?? {}) as { slug?: string[] };
   const slug = params.slug || [];
@@ -2297,7 +2351,11 @@ export default async function Page(props: PageProps) {
   const maintenance = await getStoreMaintenanceSettings(ctx.store.id);
 
   if (maintenance.enabled && !preview) {
-    return await renderMalakMaintenancePage({
+    const renderMaintenance = isBasitTheme(ctx)
+      ? renderBasitMaintenancePage
+      : renderMalakMaintenancePage;
+
+    return await renderMaintenance({
       ctx,
       settings: maintenance,
     });
@@ -2347,12 +2405,31 @@ export default async function Page(props: PageProps) {
       description: pageDescription,
     });
 
-    if (isMalakTheme(ctx)) {
+    if (isMalakTheme(ctx) || isBasitTheme(ctx)) {
       const content = await renderMalakInfoPage({
         ctx,
         page,
         preview,
         previewDevice,
+      });
+
+      return withJsonLd(content, jsonLdEntries);
+    }
+
+    if (isBasitTheme(ctx)) {
+      const content = await renderTemplate({
+        template: "cart",
+        themeCode: "basit",
+        store: ctx.store,
+        theme: {
+          code: "basit",
+          settings: ctx.theme?.options ?? {},
+        },
+        sections: [],
+        data: {
+          route: "page",
+          page,
+        },
       });
 
       return withJsonLd(content, jsonLdEntries);
@@ -2407,7 +2484,7 @@ export default async function Page(props: PageProps) {
       seoMode,
     });
 
-    if (isMalakTheme(ctx)) {
+    if (isMalakTheme(ctx) || isBasitTheme(ctx)) {
       const content = await renderMalakTagPage({
         ctx,
         data,
@@ -3458,7 +3535,7 @@ export default async function Page(props: PageProps) {
       seoMode,
     });
 
-    if (isMalakTheme(ctx)) {
+    if (isMalakTheme(ctx) || isBasitTheme(ctx)) {
       const content = await renderMalakCategoryPage({
         ctx,
         data,
@@ -3505,7 +3582,7 @@ export default async function Page(props: PageProps) {
       seoMode,
     });
 
-    if (isMalakTheme(ctx)) {
+    if (isMalakTheme(ctx) || isBasitTheme(ctx)) {
       const content = await renderMalakProductPage({
         ctx,
         data,
@@ -3558,7 +3635,7 @@ export default async function Page(props: PageProps) {
       seoMode,
     });
 
-    if (isMalakTheme(ctx)) {
+    if (isMalakTheme(ctx) || isBasitTheme(ctx)) {
       const content = await renderMalakCategoryPage({
         ctx,
         data: category,
@@ -3604,7 +3681,7 @@ export default async function Page(props: PageProps) {
         seoMode,
       });
 
-      if (isMalakTheme(ctx)) {
+      if (isMalakTheme(ctx) || isBasitTheme(ctx)) {
         const content = await renderMalakProductPage({
           ctx,
           data: product,
@@ -3655,7 +3732,7 @@ export default async function Page(props: PageProps) {
         seoMode,
       });
 
-      if (isMalakTheme(ctx)) {
+      if (isMalakTheme(ctx) || isBasitTheme(ctx)) {
         const content = await renderMalakCategoryPage({
           ctx,
           data: category,

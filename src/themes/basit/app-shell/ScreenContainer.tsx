@@ -1,0 +1,216 @@
+// FILE: apps/storefront/src/themes/basit/app-shell/ScreenContainer.tsx
+
+"use client";
+
+import { useEffect, useMemo } from "react";
+import { usePathname } from "next/navigation";
+import {
+  resolveRouteKeyFromPath,
+  useNavStack,
+} from "../app-navigation/stack";
+import { ROUTES, type RoutesMap } from "../app-navigation/routes";
+
+type Props = {
+  data?: any;
+  routesOverride?: RoutesMap;
+};
+
+function text(value: unknown) {
+  return String(value ?? "").trim();
+}
+
+function isPlainObject(value: any) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function routeExists(routes: any, key: string) {
+  if (!routes || !key) return false;
+  return Boolean(routes[key]?.component);
+}
+
+function hasOrderLikeData(data: any) {
+  if (!isPlainObject(data)) return false;
+
+  return Boolean(
+    text(data.orderNo) ||
+      text(data.order_no) ||
+      text(data.orderNumber) ||
+      text(data.order_number) ||
+      text(data.statusLabel) ||
+      text(data.paymentLabel) ||
+      Array.isArray(data.items),
+  );
+}
+
+function inferRouteFromData(data: any) {
+  if (!isPlainObject(data)) return "";
+
+  const route = text(data.route);
+  if (route) return route;
+
+  if (hasOrderLikeData(data)) return "thankyou";
+
+  if (isPlainObject(data.product)) return "product";
+  if (isPlainObject(data.category)) return "category";
+
+  return "";
+}
+
+function inferRouteFromPathname(pathname: string | null) {
+  const path = text(pathname || "/");
+  const lower = path.toLowerCase();
+
+  if (!path || path === "/") return "home";
+
+  if (lower === "/login" || lower.startsWith("/login?")) {
+    return "login";
+  }
+
+  if (
+    lower === "/thankyou" ||
+    lower.startsWith("/thankyou?") ||
+    lower === "/thank-you" ||
+    lower.startsWith("/thank-you?") ||
+    lower.includes("/thankyou/") ||
+    lower.includes("/thank-you/")
+  ) {
+    return "thankyou";
+  }
+
+  if (lower === "/categories" || lower.startsWith("/categories?")) {
+    return "categories";
+  }
+
+  if (lower === "/search" || lower.startsWith("/search?")) {
+    return "search";
+  }
+
+  if (lower === "/cart" || lower.startsWith("/cart?")) {
+    return "cart";
+  }
+
+  if (lower === "/account" || lower.startsWith("/account?")) {
+    return "account";
+  }
+
+  if (lower === "/account/orders" || lower.startsWith("/account/orders?")) {
+    return "orders";
+  }
+
+  if (lower.startsWith("/account/orders/")) {
+    return "order_details";
+  }
+
+  if (lower === "/account/addresses" || lower.startsWith("/account/addresses?")) {
+    return "addresses";
+  }
+
+  if (
+    lower === "/account/gift-balance" ||
+    lower.startsWith("/account/gift-balance?")
+  ) {
+    return "giftbalance";
+  }
+
+  if (lower === "/account/favorites" || lower.startsWith("/account/favorites?")) {
+    return "favorites";
+  }
+
+  if (lower === "/account/refer" || lower.startsWith("/account/refer?")) {
+    return "refer";
+  }
+
+  if (lower === "/account/rewards" || lower.startsWith("/account/rewards?")) {
+    return "rewards";
+  }
+
+  if (lower === "/account/tickets" || lower.startsWith("/account/tickets?")) {
+    return "tickets";
+  }
+
+  if (lower === "/account/wallet" || lower.startsWith("/account/wallet?")) {
+    return "wallet";
+  }
+
+  if (
+    lower.includes("/product/") ||
+    lower.includes("/products/") ||
+    lower.includes("/p/") ||
+    /\/p\d+(?:\/)?$/.test(lower)
+  ) {
+    return "product";
+  }
+
+  if (
+    lower.includes("/category/") ||
+    lower.includes("/categories/") ||
+    lower.includes("/c/") ||
+    /\/c\d+(?:\/)?$/.test(lower)
+  ) {
+    return "category";
+  }
+
+  return "";
+}
+
+export default function ScreenContainer({ data, routesOverride }: Props) {
+  const pathname = usePathname();
+
+  const currentKey = useNavStack((s) => s.current());
+  const routes = useNavStack((s) => s.routes);
+  const setFromPath = useNavStack((s) => s.setFromPath);
+  const seoMode = useNavStack((s) => s.seoMode);
+
+  const effectiveKey = useMemo(() => {
+    const routesAny =
+      routesOverride && Object.keys(routesOverride as any).length > 0
+        ? (routesOverride as any)
+        : routes && Object.keys(routes as any).length > 0
+        ? (routes as any)
+        : (ROUTES as any);
+
+    const dataRoute = inferRouteFromData(data);
+    if (routeExists(routesAny, dataRoute)) return dataRoute;
+
+    const manualPathRoute = inferRouteFromPathname(pathname);
+    if (routeExists(routesAny, manualPathRoute)) return manualPathRoute;
+
+    const stackPathRoute = pathname
+      ? resolveRouteKeyFromPath(pathname, routesAny)
+      : null;
+
+    if (stackPathRoute && routeExists(routesAny, stackPathRoute)) {
+      return stackPathRoute;
+    }
+
+    if (currentKey && routeExists(routesAny, currentKey)) {
+      return currentKey;
+    }
+
+    return "home";
+  }, [data, pathname, routesOverride, routes, currentKey]);
+
+  useEffect(() => {
+    if (!pathname) return;
+    setFromPath(pathname);
+  }, [pathname, setFromPath]);
+
+  const Screen = useMemo(() => {
+    const routesAny =
+      routesOverride && Object.keys(routesOverride as any).length > 0
+        ? (routesOverride as any)
+        : routes && Object.keys(routes as any).length > 0
+        ? (routes as any)
+        : (ROUTES as any);
+
+    return routesAny?.[effectiveKey]?.component ?? null;
+  }, [routesOverride, routes, effectiveKey]);
+
+  if (!Screen) return null;
+
+  return (
+    <main className="mk-screen-container" data-mk-screen={effectiveKey}>
+      <Screen seoMode={seoMode} mode={seoMode} data={data} />
+    </main>
+  );
+}

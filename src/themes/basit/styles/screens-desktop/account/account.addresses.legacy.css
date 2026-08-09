@@ -1,0 +1,203 @@
+/* FILE: apps/storefront/src/themes/basit/styles/screens-desktop/account/account.addresses.legacy.css */
+
+/* =========================================================
+   Addresses
+   ========================================================= */
+
+.mk-root[data-theme-code="basit"] .mk-addr-top{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  gap: 12px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-addr-top__text{
+  color: var(--mk-acc-muted);
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.mk-root[data-theme-code="basit"] .mk-addr-form{
+  background: var(--mk-acc-surface);
+  border: 1px solid var(--mk-acc-line);
+  border-radius: var(--mk-acc-radius-xl);
+  padding: 20px;
+  box-shadow: var(--mk-acc-shadow);
+}
+
+.mk-root[data-theme-code="basit"] .mk-addr-form__head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-addr-form__title{
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--mk-acc-text);
+}
+
+.mk-root[data-theme-code="basit"] .mk-addr-form__grid{
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-addr-form__full{
+  grid-column: 1 / -1;
+}
+
+.mk-root[data-theme-code="basit"] .mk-addr-field__label{
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--mk-acc-text);
+}
+
+.mk-root[data-theme-code="basit"] .mk-addr-alert{
+  margin-top: 14px;
+  border-radius: var(--mk-acc-radius-md);
+  border: 1px solid rgba(180, 35, 24, 0.2);
+  background: #fff5f5;
+  color: var(--mk-acc-danger);
+  padding: 12px;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.mk-root[data-theme-code="basit"] .mk-addr-form__actions{
+  margin-top: 16px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-addr-list{
+  display: grid;
+  gap: 12px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-addr-card{
+  background: var(--mk-acc-surface);
+  border: 1px solid var(--mk-acc-line);
+  border-radius: var(--mk-acc-radius-lg);
+  padding: 18px;
+  box-shadow: var(--mk-acc-shadow);
+}
+
+.mk-root[data-theme-code="basit"] .mk-addr-card__row{
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-addr-card__main{
+  min-width: 0;
+}
+
+.mk-root[data-theme-code="basit"] .mk-addr-card__titleRow{
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-addr-card__title{
+  font-size: 16px;
+  font-weight: 900;
+  color: var(--mk-acc-text);
+}
+
+.mk-root[data-theme-code="basit"] .mk-addr-card__badge{
+  border-radius: 999px;
+  border: 1px solid var(--mk-acc-line);
+  background: var(--mk-acc-primary-soft);
+  color: var(--mk-acc-primary);
+  font-size: 12px;
+  font-weight: 750;
+  padding: 4px 9px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-addr-card__full{
+  margin-top: 8px;
+  color: var(--mk-acc-muted);
+  font-size: 14px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+}
+
+.mk-root[data-theme-code="basit"] .mk-addr-card__contact{
+  margin-top: 8px;
+  color: color-mix(in srgb, var(--mk-acc-text) 78%, var(--mk-acc-muted) 22%);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.mk-root[data-theme-code="basit"] .mk-addr-card__actions{
+  display: flex;
+  gap: 8px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-addr-deleteModal{
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-addr-deleteModal__overlay{
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(15, 15, 15, 0.45);
+  cursor: pointer;
+}
+
+.mk-root[data-theme-code="basit"] .mk-addr-deleteModal__card{
+  position: relative;
+  width: 100%;
+  max-width: 460px;
+  background: var(--mk-acc-surface);
+  border-radius: 28px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--mk-acc-line);
+  padding: 24px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-addr-deleteModal__icon{
+  width: 54px;
+  height: 54px;
+  border-radius: 18px;
+  background: #fff5f5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  color: var(--mk-acc-danger);
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.mk-root[data-theme-code="basit"] .mk-addr-deleteModal__title{
+  font-size: 22px;
+  font-weight: 950;
+  color: var(--mk-acc-text);
+  margin-bottom: 8px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-addr-deleteModal__text{
+  color: var(--mk-acc-muted);
+  font-size: 15px;
+  line-height: 1.9;
+}
+
+.mk-root[data-theme-code="basit"] .mk-addr-deleteModal__actions{
+  margin-top: 22px;
+  display: flex;
+  justify-content: flex-start;
+  gap: 10px;
+}

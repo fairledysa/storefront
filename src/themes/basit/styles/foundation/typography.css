@@ -1,0 +1,33 @@
+/* FILE: apps/storefront/src/themes/basit/styles/foundation/typography.css */
+
+.mk-root[data-theme-code="basit"]{
+  font-family: var(--mk-font-family);
+  background: var(--mk-bg-page);
+  color: var(--mk-text-main);
+}
+
+.mk-root[data-theme-code="basit"] .mk-h1{
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.mk-root[data-theme-code="basit"] .mk-h2{
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.mk-root[data-theme-code="basit"] .mk-p{
+  font-size: 13px;
+  color: var(--mk-text-muted);
+  line-height: 1.7;
+}
+
+.mk-root[data-theme-code="basit"] .mk-price{
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.mk-root[data-theme-code="basit"] .mk-price--strong{
+  font-size: 16px;
+  font-weight: 900;
+}

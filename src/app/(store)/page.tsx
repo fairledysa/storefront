@@ -13,8 +13,11 @@ import { loadCustomCode } from "@/theme-engine/injectors/custom-code";
 import { renderTemplate } from "@/theme-engine/runtime/render-template";
 
 import MalakTheme from "@/themes/malak";
+import BasitTheme from "@/themes/basit";
 import { getMalakBootstrap } from "@/themes/malak/bootstrap/get-malak-bootstrap";
+import { getMalakBootstrap as getBasitBootstrap } from "@/themes/basit/bootstrap/get-malak-bootstrap";
 import { renderMalakMaintenancePage } from "@/themes/malak/screens/maintenance/render-maintenance-page";
+import { renderMalakMaintenancePage as renderBasitMaintenancePage } from "@/themes/basit/screens/maintenance/render-maintenance-page";
 
 import { getSeoMeta, getSeoUrlMode } from "@/data/store/settings";
 import { getStoreMaintenanceSettings } from "@/data/store/maintenance";
@@ -589,33 +592,52 @@ export default async function StoreHomePage({
   if (!ctx?.store) return notFound();
 
   const store = ctx.store;
+  const previewTheme = preview
+    ? await resolveTheme({ store_id: store.id, preview: true })
+    : null;
+  const activeThemeKey = String(
+    (previewTheme as any)?.code ||
+      ctx.theme?.theme_key ||
+      (ctx.theme as any)?.key ||
+      (ctx.theme as any)?.code ||
+      "",
+  ).trim();
+  const isMalakFamily = activeThemeKey === "malak" || activeThemeKey === "basit";
+  const activeThemeOptions = safeObject(
+    (previewTheme as any)?.settings ?? ctx.theme?.options,
+  );
 
   const maintenance = await getStoreMaintenanceSettings(store.id);
 
   if (maintenance.enabled && !preview) {
-    return await renderMalakMaintenancePage({
+    const renderMaintenance =
+      activeThemeKey === "basit"
+        ? renderBasitMaintenancePage
+        : renderMalakMaintenancePage;
+
+    return await renderMaintenance({
       ctx,
       settings: maintenance,
     });
   }
 
-  const activeThemeKey = String(ctx.theme?.theme_key || "").trim();
-  const isMalak = activeThemeKey === "malak";
-
-  if (isMalak) {
+  if (isMalakFamily) {
     const h = await headers();
     const device =
       previewDevice ?? detectDeviceFromUA(h.get("user-agent") || "");
 
-    const themeOptions = safeObject(ctx.theme?.options);
+    const themeOptions = activeThemeOptions;
 
     const seoModePromise = getSeoUrlModeCached(store.id);
     const seoPromise = getSeoMetaCached(store.id);
 
     const homeDataPromise = loadHomePageCached(store.id, themeOptions);
 
-    const bootstrapPromise = seoModePromise.then((seoMode) =>
-      getMalakBootstrap({
+    const bootstrapPromise = seoModePromise.then((seoMode) => {
+      const getBootstrap =
+        activeThemeKey === "basit" ? getBasitBootstrap : getMalakBootstrap;
+
+      return getBootstrap({
         store: {
           id: store.id,
           slug: store.slug,
@@ -626,8 +648,13 @@ export default async function StoreHomePage({
           default_currency: store.default_currency ?? null,
         },
         seoMode,
-      }),
-    );
+        themeOptions,
+        version_id:
+          (previewTheme as any)?.version_id ??
+          (ctx.theme as any)?.version_id ??
+          "published",
+      });
+    });
 
     const [seoMode, seo, homeData, bootstrap] = await Promise.all([
       seoModePromise,
@@ -693,21 +720,31 @@ export default async function StoreHomePage({
       initialCartCount: 0,
 
       theme: {
-        key: "malak",
+        key: activeThemeKey,
+        theme_key: activeThemeKey,
         version_id: ctx.theme?.version_id ?? "published",
         options: themeOptions,
       },
     };
+    const ActiveTheme = activeThemeKey === "basit" ? BasitTheme : MalakTheme;
 
     return (
       <>
         <HomeJsonLdScripts entries={jsonLdEntries} />
-        <MalakTheme ctx={appCtx as any} />
+        <ActiveTheme ctx={appCtx as any} />
       </>
     );
   }
 
-  const theme = await resolveTheme({ store_id: store.id, preview });
+  const theme = previewTheme ?? (await resolveTheme({ store_id: store.id, preview }));
+
+  const resolvedThemeOptions = safeObject(
+    (theme as any)?.settings ?? ctx.theme?.options,
+  );
+  const basitHomeData =
+    (theme as any)?.code === "basit"
+      ? await loadHomePageCached(store.id, resolvedThemeOptions)
+      : null;
 
   const [layout, custom, seo, origin] = await Promise.all([
     loadPageLayout({
@@ -761,6 +798,14 @@ export default async function StoreHomePage({
         store,
         theme,
         sections: layout.sections,
+        data: basitHomeData
+          ? {
+              ...basitHomeData,
+              route: "home",
+              themeOptions: resolvedThemeOptions,
+              theme_options: resolvedThemeOptions,
+            }
+          : undefined,
       })}
     </>
   );

@@ -46,9 +46,25 @@ const MALAK_THEME: ThemeDefinition = {
   sections: {},
 };
 
+const BASIT_THEME: ThemeDefinition = {
+  code: "basit",
+  default_settings: {
+    primary_color: "#111827",
+    announcement_enabled: false,
+    announcement_text: "",
+    announcement_link: "",
+    show_rating: true,
+    show_discount: true,
+    show_add_to_cart: true,
+  },
+  templates: {},
+  sections: {},
+};
+
 const THEMES: Partial<Record<ThemeCode, ThemeDefinition>> = {
   classic: CLASSIC_THEME,
   malak: MALAK_THEME,
+  basit: BASIT_THEME,
 };
 
 export const themeRegistry = {

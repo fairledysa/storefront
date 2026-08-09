@@ -45,11 +45,17 @@ export async function renderCategoryPage(args: {
     preview: args.preview,
   });
 
-  // ✅ إذا malak (app-shell) لازم نحقن شاشة القسم كـ children
+  const inputData = args.data as any;
+  const pageData = {
+    ...(args.data || {}),
+    route: inputData?.route || (inputData?.tag ? "tag" : "category"),
+  };
+
+  // ملاك ما زال يملك شاشتين منفصلتين. بسيط يختار شاشته Responsive من داخله.
   const kind = THEME_KIND[theme.code as ThemeCode] || "legacy";
   let injected: any = null;
 
-  if (kind === "app-shell") {
+  if (kind === "app-shell" && theme.code === "malak") {
     const h = await headers();
     const ua = h.get("user-agent") || "";
     const device = detectDeviceFromUA(ua);
@@ -57,9 +63,9 @@ export async function renderCategoryPage(args: {
 
     injected =
       device === "mobile" ? (
-        <CategoryMobileScreen data={args.data} mode={seoMode} />
+        <CategoryMobileScreen data={pageData} mode={seoMode} />
       ) : (
-        <CategoryScreen data={args.data} mode={seoMode} />
+        <CategoryScreen data={pageData} mode={seoMode} />
       );
   }
 
@@ -86,7 +92,7 @@ export async function renderCategoryPage(args: {
         store: args.store,
         theme,
         sections: layout.sections,
-        data: args.data,
+        data: pageData,
         children: injected, // ✅ هذا اللي كان ناقص
       })}
     </>

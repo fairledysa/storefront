@@ -1,0 +1,310 @@
+/* FILE: apps/storefront/src/themes/basit/styles/screens-desktop/account/account.modal-final.css */
+
+/* ADD AT VERY END - Account modal final fix */
+
+.mk-root[data-theme-code="basit"] .mk-account-modal{
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: var(--mk-z-modal, 700) !important;
+  display: grid !important;
+  place-items: center !important;
+  padding: 24px !important;
+  isolation: isolate !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal__overlay{
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 0 !important;
+  background: rgba(10, 10, 10, 0.52) !important;
+  backdrop-filter: blur(5px) !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal__card{
+  position: relative !important;
+  inset: auto !important;
+  left: auto !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  z-index: 1 !important;
+
+  width: min(94vw, 560px) !important;
+  max-height: min(88vh, 760px) !important;
+  transform: none !important;
+
+  display: flex !important;
+  flex-direction: column !important;
+
+  overflow: hidden !important;
+  border-radius: 28px !important;
+  border: 1px solid color-mix(in srgb, var(--mk-color-primary, #b28a52) 16%, rgba(15, 15, 15, 0.1)) !important;
+  background: #ffffff !important;
+  padding: 0 !important;
+  box-shadow:
+    0 34px 90px rgba(0, 0, 0, 0.24),
+    0 1px 0 rgba(255, 255, 255, 0.9) inset !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal__head{
+  margin: 0 !important;
+  padding: 20px 22px 18px !important;
+  border-radius: 0 !important;
+  border-bottom: 1px solid rgba(15, 15, 15, 0.07) !important;
+  background:
+    radial-gradient(
+      circle at 14% 0%,
+      color-mix(in srgb, var(--mk-color-primary, #b28a52) 9%, transparent) 0,
+      transparent 32%
+    ),
+    linear-gradient(180deg, #ffffff 0%, #fafafa 100%) !important;
+
+  display: flex !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 16px !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal__title{
+  color: #0b0b0b !important;
+  font-size: 20px !important;
+  font-weight: 1000 !important;
+  line-height: 1.25 !important;
+  letter-spacing: -0.025em !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal__head .mk-account-subtitle{
+  margin-top: 6px !important;
+  color: #7a7a7a !important;
+  font-size: 13px !important;
+  font-weight: 750 !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal__close{
+  width: 38px !important;
+  height: 38px !important;
+  flex: 0 0 38px !important;
+  border-radius: 999px !important;
+  border: 1px solid rgba(15, 15, 15, 0.1) !important;
+  background: #ffffff !important;
+  color: #525252 !important;
+  display: grid !important;
+  place-items: center !important;
+  padding: 0 !important;
+  font-size: 16px !important;
+  font-weight: 900 !important;
+  cursor: pointer !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal__close:hover{
+  background: #f7f7f7 !important;
+  color: #0b0b0b !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal__body{
+  padding: 18px 22px 22px !important;
+  display: grid !important;
+  gap: 12px !important;
+  overflow: auto !important;
+  max-height: calc(88vh - 84px) !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal__body::-webkit-scrollbar{
+  width: 8px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal__body::-webkit-scrollbar-thumb{
+  border-radius: 999px;
+  background: rgba(15, 15, 15, 0.18);
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-alert{
+  margin: 14px 22px 0 !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-input,
+.mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-select{
+  height: 52px !important;
+  border-radius: 16px !important;
+  border: 1px solid rgba(15, 15, 15, 0.1) !important;
+  background: #ffffff !important;
+  color: #111111 !important;
+  padding: 0 16px !important;
+  font-size: 14px !important;
+  font-weight: 800 !important;
+  box-shadow: 0 1px 0 rgba(15, 15, 15, 0.02) !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-input:focus,
+.mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-select:focus,
+.mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-city__btn:focus,
+.mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-cityPop__search:focus{
+  border-color: color-mix(in srgb, var(--mk-color-primary, #b28a52) 42%, transparent) !important;
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--mk-color-primary, #b28a52) 10%, transparent) !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-input:disabled{
+  background: #f5f5f5 !important;
+  color: #555555 !important;
+  opacity: 1 !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-dateGrid{
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-city{
+  position: relative !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-city__btn{
+  width: 100% !important;
+  min-height: 52px !important;
+  border-radius: 16px !important;
+  border: 1px solid rgba(15, 15, 15, 0.1) !important;
+  background: #ffffff !important;
+  padding: 0 16px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  cursor: pointer !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-city__value{
+  color: #111111 !important;
+  font-size: 14px !important;
+  font-weight: 850 !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-city__placeholder,
+.mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-city__chev{
+  color: #737373 !important;
+  font-size: 14px !important;
+  font-weight: 800 !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-cityPop{
+  position: absolute !important;
+  inset-inline: 0 !important;
+  top: calc(100% + 8px) !important;
+  z-index: 20 !important;
+
+  width: 100% !important;
+  overflow: hidden !important;
+  border-radius: 18px !important;
+  border: 1px solid rgba(15, 15, 15, 0.1) !important;
+  background: #ffffff !important;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.14) !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-cityPop__searchWrap{
+  padding: 10px !important;
+  border-bottom: 1px solid rgba(15, 15, 15, 0.06) !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-cityPop__search{
+  width: 100% !important;
+  height: 42px !important;
+  border-radius: 13px !important;
+  border: 1px solid rgba(15, 15, 15, 0.1) !important;
+  background: #fafafa !important;
+  padding: 0 12px !important;
+  font-size: 13px !important;
+  font-weight: 750 !important;
+  outline: none !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-cityPop__list{
+  max-height: 230px !important;
+  overflow: auto !important;
+  padding: 8px !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-cityPop__item{
+  width: 100% !important;
+  min-height: 42px !important;
+  border: 0 !important;
+  border-radius: 12px !important;
+  background: transparent !important;
+  padding: 0 12px !important;
+  text-align: right !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+  cursor: pointer !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-cityPop__item:hover,
+.mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-cityPop__item.is-active{
+  background: color-mix(in srgb, var(--mk-color-primary, #b28a52) 8%, #ffffff 92%) !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-cityPop__ar{
+  color: #111111 !important;
+  font-size: 14px !important;
+  font-weight: 850 !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-cityPop__en{
+  color: #858585 !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-btn{
+  width: 100% !important;
+  min-height: 52px !important;
+  border-radius: 16px !important;
+  font-size: 14px !important;
+  font-weight: 950 !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-btn--primary{
+  border: 0 !important;
+  background: var(--mk-color-primary, #0b0b0b) !important;
+  color: var(--mk-primary-contrast, #ffffff) !important;
+  box-shadow: 0 12px 26px color-mix(in srgb, var(--mk-color-primary, #0b0b0b) 20%, transparent) !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-btn--primary:hover:not(:disabled){
+  background: var(--mk-primary-hover, var(--mk-color-primary, #0b0b0b)) !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-btn--soft{
+  border: 1px solid rgba(15, 15, 15, 0.1) !important;
+  background: #ffffff !important;
+  color: #111111 !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-btn--soft:hover:not(:disabled){
+  background: #f7f7f7 !important;
+}
+
+@media (max-width: 640px) {
+  .mk-root[data-theme-code="basit"] .mk-account-modal{
+    align-items: end !important;
+    padding: 10px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-account-modal__card{
+    width: 100% !important;
+    max-height: 92vh !important;
+    border-radius: 24px 24px 18px 18px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-account-modal__head{
+    padding: 18px 18px 15px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-account-modal__body{
+    padding: 16px 18px 18px !important;
+    max-height: calc(92vh - 80px) !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-account-modal .mk-account-dateGrid{
+    grid-template-columns: 1fr !important;
+  }
+}

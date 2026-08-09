@@ -11,8 +11,10 @@ import { toProductCardVM } from "@/data/viewmodels/product.vm";
 import { buildProductHref } from "@/lib/seo/build-store-href";
 import { buildProductHref as buildStoreProductHref } from "@/lib/seo/build-store-href";
 import MalakTheme from "@/themes/malak";
+import BasitTheme from "@/themes/basit";
 import MarketingCollectionScreen from "@/themes/malak/screens/marketing-collection/MarketingCollectionScreen";
 import MarketingCollectionMobileScreen from "@/themes/malak/screens-mobile/marketing/MarketingCollectionMobileScreen";
+import BasitMarketingCollectionScreen from "@/themes/basit/screens/marketing-collection/MarketingCollectionScreen";
 
 function text(value: unknown) {
   return String(value ?? "").trim();
@@ -155,6 +157,7 @@ export default async function MarketingCollectionPage({
     h.get("sec-ch-ua-mobile"),
   );
   const seoMode = await getSeoUrlMode(storeId);
+  const useBasit = text(ctx?.theme?.theme_key || ctx?.theme?.key) === "basit";
   const [bootstrap, initialCartCount] = await Promise.all([
     getMalakBootstrap({
       store: {
@@ -197,20 +200,22 @@ export default async function MarketingCollectionPage({
     data: { route: "marketing_collection", collection: normalizedCollection, bootstrap },
     theme: {
       ...(ctx?.theme ?? {}),
-      key: "malak",
-      theme_key: "malak",
+      key: useBasit ? "basit" : "malak",
+      theme_key: useBasit ? "basit" : "malak",
       version_id: ctx?.theme?.version_id ?? "published",
       options: ctx?.theme?.options ?? {},
     },
   };
+  const ActiveTheme = useBasit ? BasitTheme : MalakTheme;
+  const Screen = useBasit
+    ? BasitMarketingCollectionScreen
+    : device === "mobile"
+      ? MarketingCollectionMobileScreen
+      : MarketingCollectionScreen;
 
   return (
-    <MalakTheme ctx={appCtx}>
-      {device === "mobile" ? (
-        <MarketingCollectionMobileScreen collection={normalizedCollection} />
-      ) : (
-        <MarketingCollectionScreen collection={normalizedCollection} />
-      )}
-    </MalakTheme>
+    <ActiveTheme ctx={appCtx}>
+      <Screen collection={normalizedCollection} />
+    </ActiveTheme>
   );
 }

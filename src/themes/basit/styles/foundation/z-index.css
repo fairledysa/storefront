@@ -1,0 +1,68 @@
+/* FILE: apps/storefront/src/themes/basit/styles/foundation/z-index.css */
+
+.mk-root[data-theme-code="basit"] .mk-overlay{
+  z-index: var(--mk-z-overlay);
+}
+
+.mk-root[data-theme-code="basit"] footer,
+.mk-root[data-theme-code="basit"] .mk-footer{
+  position: relative;
+  z-index: var(--mk-z-footer);
+}
+
+.mk-root[data-theme-code="basit"] .mk-header{
+  z-index: var(--mk-z-header);
+}
+
+.mk-root[data-theme-code="basit"] .mk-popover,
+.mk-root[data-theme-code="basit"] .mk-mega{
+  z-index: var(--mk-z-popover);
+}
+
+.mk-root[data-theme-code="basit"] .mk-home-topbar{
+  z-index: var(--mk-z-topbar);
+}
+
+.mk-root[data-theme-code="basit"] .mk-tabbar{
+  z-index: var(--mk-z-tabbar);
+}
+
+.mk-root[data-theme-code="basit"] .mk-search-ov{
+  z-index: var(--mk-z-search-overlay, 600);
+}
+
+/* Full-screen surfaces use the shared scale instead of unrelated large numbers. */
+.mk-root[data-theme-code="basit"] .mk-auth,
+.mk-root[data-theme-code="basit"] .mk-account-modal,
+.mk-root[data-theme-code="basit"] .mk-dcart-modal,
+.mk-root[data-theme-code="basit"] .mk-cod-help-overlay,
+.mk-root[data-theme-code="basit"] .mk-dynamic-testimonials-modal,
+.mk-root[data-theme-code="basit"] .mk-sizeGuideModalOverlay,
+.mk-root[data-theme-code="basit"] .mk-addr-deleteModal,
+.mk-root[data-theme-code="basit"] .wallet-withdrawal-overlay,
+.mk-root[data-theme-code="basit"] .mk-topup-overlay{
+  z-index: var(--mk-z-modal, 700);
+}
+
+.mk-root[data-theme-code="basit"] .mk-dcat-filterOverlay{
+  z-index: var(--mk-z-drawer-backdrop, 500);
+}
+
+.mk-root[data-theme-code="basit"] .mk-dcat-filterPanel{
+  z-index: var(--mk-z-drawer, 510);
+}
+
+.mk-root[data-theme-code="basit"] .mkpg-lightbox,
+.mk-root[data-theme-code="basit"] .mk-prev-lightbox,
+.mk-root[data-theme-code="basit"] .mk-dcart-attPreview,
+.mk-root[data-theme-code="basit"] .mk-dcart-imagePreview{
+  z-index: var(--mk-z-media-overlay, 760);
+}
+
+.mk-root[data-theme-code="basit"] .mk-product-shorts{
+  z-index: var(--mk-z-shorts, 800);
+}
+
+.mk-root[data-theme-code="basit"] .mk-cart-fly-ghost{
+  z-index: var(--mk-z-cart-fly, 980);
+}

@@ -1,0 +1,93 @@
+/* FILE: apps/storefront/src/themes/basit/styles/screens-desktop/account/account.shared.css */
+
+/* =========================================================
+   Shared Account Elements
+   ========================================================= */
+
+.mk-root[data-theme-code="basit"] .mk-account-state{
+  background: var(--mk-acc-surface);
+  border: 1px solid var(--mk-acc-line);
+  border-radius: var(--mk-acc-radius-xl);
+  padding: 24px;
+  font-size: 15px;
+  font-weight: 750;
+  color: var(--mk-acc-muted);
+  box-shadow: var(--mk-acc-shadow);
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-state--error{
+  color: var(--mk-acc-danger);
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-grid{
+  display: grid;
+  gap: 18px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-headRow{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-subtitle{
+  margin-top: 6px;
+  color: var(--mk-acc-muted);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-titleMd{
+  font-size: 22px;
+  font-weight: 950;
+  color: var(--mk-acc-text);
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-card{
+  background: var(--mk-acc-surface);
+  border: 1px solid var(--mk-acc-line);
+  border-radius: var(--mk-acc-radius-xl);
+  padding: 24px;
+  box-shadow: var(--mk-acc-shadow);
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-card--sm{
+  max-width: 680px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-emptyCard{
+  min-height: 260px;
+  border-radius: var(--mk-acc-radius-xl);
+  border: 1px solid var(--mk-acc-line);
+  background: var(--mk-acc-surface);
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--mk-acc-soft);
+  font-size: 24px;
+  font-weight: 850;
+  text-align: center;
+  box-shadow: var(--mk-acc-shadow);
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-warning{
+  background: color-mix(in srgb, #f59e0b 9%, var(--mk-acc-surface) 91%);
+  border: 1px solid rgba(154, 100, 15, 0.16);
+  border-radius: var(--mk-acc-radius-lg);
+  padding: 16px;
+  color: var(--mk-acc-warning);
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-warning__title{
+  font-size: 15px;
+  font-weight: 900;
+  margin-bottom: 6px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-account-warning__text{
+  font-size: 14px;
+  line-height: 1.8;
+  font-weight: 650;
+}

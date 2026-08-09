@@ -1,13 +1,18 @@
 // FILE: apps/storefront/src/theme-engine/runtime/pages/render-cart.tsx
 
 import { resolveStoreContext } from "@/theme-engine/store-context/resolve-store";
-import { renderTemplate, type StorefrontTemplate } from "@/theme-engine/runtime/render-template";
+import { resolveTheme } from "@/theme-engine/runtime/resolve-theme";
+import {
+  renderTemplate,
+  type StorefrontTemplate,
+} from "@/theme-engine/runtime/render-template";
 import type { ThemeCode } from "@/theme-engine/types";
 
 function normalizeThemeCode(value: any): ThemeCode {
   const code = String(value ?? "").trim();
 
   if (code === "malak") return "malak";
+  if (code === "basit") return "basit";
   if (code === "classic") return "classic";
 
   return "classic";
@@ -64,14 +69,26 @@ export async function renderCartPage(args: {
 }) {
   const ctx = await resolveStoreContext();
 
-  const themeCode = normalizeThemeCode(
+  let themeCode = normalizeThemeCode(
     ctx?.theme?.theme_key || (ctx as any)?.theme?.key || "classic",
   );
 
-  const themeSettings =
+  let themeSettings =
     ctx?.theme?.options && typeof ctx.theme.options === "object"
       ? ctx.theme.options
       : {};
+
+  if (args.preview) {
+    const previewTheme = await resolveTheme({
+      store_id: args.store_id,
+      preview: true,
+    });
+
+    if (previewTheme.code === "basit") {
+      themeCode = "basit";
+      themeSettings = previewTheme.settings;
+    }
+  }
 
   const route = String(args.data?.route ?? "cart").trim() || "cart";
   const template = resolveTemplateFromRoute(route);

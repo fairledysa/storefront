@@ -1,0 +1,156 @@
+.mk-root[data-theme-code="basit"] .mk-video-hub{
+  width:min(1480px, calc(100% - 40px));
+  margin:0 auto;
+  padding:56px 0 90px;
+  color:var(--mk-text-main, #111);
+}
+.mk-root[data-theme-code="basit"] .mk-video-hub__header{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,520px);gap:40px;align-items:end;margin-bottom:30px}
+.mk-root[data-theme-code="basit"] .mk-video-hub__eyebrow{display:inline-block;margin-bottom:8px;font-size:13px;font-weight:900;color:var(--mk-primary,#111)}
+.mk-root[data-theme-code="basit"] .mk-video-hub h1{margin:0;font-size:clamp(30px,4vw,54px);line-height:1.05;font-weight:950}
+.mk-root[data-theme-code="basit"] .mk-video-hub__header p{max-width:720px;margin:14px 0 0;color:var(--mk-text-muted,#6b7280);font-size:15px;line-height:1.9}
+.mk-root[data-theme-code="basit"] .mk-video-hub__search{height:52px;border:1px solid rgba(17,24,39,.14);border-radius:999px;background:#fff;display:flex;align-items:center;gap:10px;padding:0 18px;color:#64748b}
+.mk-root[data-theme-code="basit"] .mk-video-hub__search input{border:0;outline:0;background:transparent;width:100%;height:100%;font:inherit;text-align:right;color:#111}
+.mk-root[data-theme-code="basit"] .mk-video-hub__tabs{display:flex;gap:8px;overflow:auto;padding:0 0 22px;margin-bottom:8px;border-bottom:1px solid rgba(17,24,39,.1);scrollbar-width:none}
+.mk-root[data-theme-code="basit"] .mk-video-hub__tabs::-webkit-scrollbar{display:none}
+.mk-root[data-theme-code="basit"] .mk-video-hub__tabs button{border:1px solid rgba(17,24,39,.12);background:#fff;color:#111;border-radius:999px;min-height:40px;padding:0 18px;font:inherit;font-weight:850;white-space:nowrap;cursor:pointer}
+.mk-root[data-theme-code="basit"] .mk-video-hub__tabs button.is-active{background:#111;color:#fff;border-color:#111}
+.mk-root[data-theme-code="basit"] .mk-video-hub__grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:26px 14px;padding-top:24px}
+.mk-root[data-theme-code="basit"] .mk-video-hub__card{min-width:0}
+.mk-root[data-theme-code="basit"] .mk-video-hub__thumb{position:relative;display:block;width:100%;aspect-ratio:9/16;overflow:hidden;border:0;border-radius:16px;background:#111;padding:0;cursor:pointer}
+.mk-root[data-theme-code="basit"] .mk-video-hub__thumb img,.mk-root[data-theme-code="basit"] .mk-video-hub__thumb video{width:100%;height:100%;display:block;object-fit:cover}
+.mk-root[data-theme-code="basit"] .mk-video-hub__thumb::after{content:"";position:absolute;inset:45% 0 0;background:linear-gradient(180deg,transparent,rgba(0,0,0,.55));pointer-events:none}
+.mk-root[data-theme-code="basit"] .mk-video-hub__play{position:absolute;inset:50% auto auto 50%;transform:translate(-50%,-50%);width:48px;height:48px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.92);color:#111;z-index:2;padding-inline-start:3px;opacity:0;transition:.2s}
+.mk-root[data-theme-code="basit"] .mk-video-hub__thumb:hover .mk-video-hub__play{opacity:1}
+.mk-root[data-theme-code="basit"] .mk-video-hub__count{position:absolute;z-index:2;inset-inline-start:10px;bottom:10px;color:#fff;font-size:11px;font-weight:850;background:rgba(0,0,0,.5);padding:5px 8px;border-radius:999px;backdrop-filter:blur(8px)}
+.mk-root[data-theme-code="basit"] .mk-video-hub__info>a,.mk-root[data-theme-code="basit"] .mk-video-hub__info>strong{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;color:inherit;text-decoration:none;font-size:14px;font-weight:900;line-height:1.55}
+.mk-root[data-theme-code="basit"] .mk-video-hub__info span{font-weight:950;font-size:13px}
+.mk-root[data-theme-code="basit"] .mk-video-hub__info small{color:#f59e0b;font-weight:900}
+.mk-root[data-theme-code="basit"] .mk-video-hub__empty{padding:80px 20px;text-align:center;color:#64748b}
+@media(max-width:1250px){.mk-root[data-theme-code="basit"] .mk-video-hub__grid{grid-template-columns:repeat(5,minmax(0,1fr))}}
+@media(max-width:1024px){.mk-root[data-theme-code="basit"] .mk-video-hub__grid{grid-template-columns:repeat(4,minmax(0,1fr))}.mk-root[data-theme-code="basit"] .mk-video-hub__header{grid-template-columns:1fr}}
+@media(max-width:767px){.mk-root[data-theme-code="basit"] .mk-video-hub{width:calc(100% - 24px);padding:28px 0 110px}.mk-root[data-theme-code="basit"] .mk-video-hub__header{gap:22px;margin-bottom:20px}.mk-root[data-theme-code="basit"] .mk-video-hub h1{font-size:30px}.mk-root[data-theme-code="basit"] .mk-video-hub__header p{font-size:13px}.mk-root[data-theme-code="basit"] .mk-video-hub__search{height:46px}.mk-root[data-theme-code="basit"] .mk-video-hub__grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:22px 10px;padding-top:18px}.mk-root[data-theme-code="basit"] .mk-video-hub__thumb{border-radius:13px}.mk-root[data-theme-code="basit"] .mk-video-hub__play{opacity:1;width:40px;height:40px}.mk-root[data-theme-code="basit"] .mk-video-hub__info>a,.mk-root[data-theme-code="basit"] .mk-video-hub__info>strong{font-size:12px;min-height:38px}.mk-root[data-theme-code="basit"] .mk-video-hub__tabs{margin-inline:-12px;padding-inline:12px}}
+
+.mk-root[data-theme-code="basit"] .mk-video-hub__categories{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  overflow-x:auto;
+  padding:14px 0 4px;
+  margin-bottom:4px;
+  scrollbar-width:none;
+  overscroll-behavior-inline:contain;
+}
+.mk-root[data-theme-code="basit"] .mk-video-hub__categories::-webkit-scrollbar{display:none}
+.mk-root[data-theme-code="basit"] .mk-video-hub__categories button{
+  min-height:38px;
+  padding:0 17px;
+  border:1px solid rgba(17,24,39,.12);
+  border-radius:999px;
+  background:transparent;
+  color:var(--mk-text-main,#111);
+  font:inherit;
+  font-size:13px;
+  font-weight:850;
+  white-space:nowrap;
+  cursor:pointer;
+  transition:background .18s ease,color .18s ease,border-color .18s ease;
+}
+.mk-root[data-theme-code="basit"] .mk-video-hub__categories button:hover{
+  border-color:rgba(17,24,39,.28);
+}
+.mk-root[data-theme-code="basit"] .mk-video-hub__categories button.is-active{
+  background:var(--mk-text-main,#111);
+  border-color:var(--mk-text-main,#111);
+  color:var(--mk-bg-page,#fff);
+}
+@media(max-width:767px){
+  .mk-root[data-theme-code="basit"] .mk-video-hub__categories{
+    margin-inline:-12px;
+    padding-inline:12px;
+    padding-top:10px;
+  }
+  .mk-root[data-theme-code="basit"] .mk-video-hub__categories button{
+    min-height:36px;
+    padding-inline:15px;
+    font-size:12px;
+  }
+}
+
+/* Videos cards: keep the price attached directly below the product title. */
+.mk-root[data-theme-code="basit"] .mk-video-hub__info{
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  gap:4px;
+  padding:10px 3px 0;
+}
+
+.mk-root[data-theme-code="basit"] .mk-video-hub__info>a,
+.mk-root[data-theme-code="basit"] .mk-video-hub__info>strong{
+  min-height:0;
+  margin:0;
+}
+
+.mk-root[data-theme-code="basit"] .mk-video-hub__info>div{
+  display:flex;
+  align-items:center;
+  justify-content:flex-start;
+  gap:8px;
+  margin-top:0;
+  min-height:24px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-video-hub__info>div>span{
+  display:inline-flex;
+  align-items:center;
+  min-height:24px;
+  padding:3px 9px;
+  border-radius:999px;
+  background:rgba(17,24,39,.06);
+  color:var(--mk-text-main,#111);
+  line-height:1;
+}
+
+@media(max-width:767px){
+  .mk-root[data-theme-code="basit"] .mk-video-hub__info{
+    gap:3px;
+    padding-top:8px;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-video-hub__info>div>span{
+    min-height:22px;
+    padding:3px 8px;
+    font-size:12px;
+  }
+}
+
+/* Batch 3: progressive rendering and lightweight media loading. */
+.mk-root[data-theme-code="basit"] .mk-video-hub__load-more{
+  min-height:74px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:24px 0 4px;
+  color:var(--mk-text-muted,#64748b);
+  font-size:13px;
+  font-weight:800;
+  text-align:center;
+}
+
+.mk-root[data-theme-code="basit"] .mk-video-hub__load-more span{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:34px;
+  padding:7px 14px;
+  border-radius:999px;
+  background:rgba(17,24,39,.05);
+}
+
+@media(max-width:767px){
+  .mk-root[data-theme-code="basit"] .mk-video-hub__load-more{
+    min-height:64px;
+    padding-top:18px;
+    font-size:12px;
+  }
+}

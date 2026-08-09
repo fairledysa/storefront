@@ -1,0 +1,67 @@
+/* FILE: apps/storefront/src/themes/basit/styles/screens-desktop/account/account.base.css */
+
+/* =========================================================
+   Account Theme Tokens
+   Connected to Storefront Theme Variables
+   ========================================================= */
+
+.mk-root[data-theme-code="basit"] .mk-account{
+  --mk-acc-primary: var(--mk-primary, var(--mk-color-primary, #0b0b0b));
+  --mk-acc-primary-contrast: var(--mk-primary-contrast, #ffffff);
+  --mk-acc-primary-soft: var(
+    --mk-primary-soft,
+    color-mix(in srgb, var(--mk-acc-primary) 10%, transparent)
+  );
+  --mk-acc-primary-border: var(
+    --mk-primary-border,
+    color-mix(in srgb, var(--mk-acc-primary) 24%, transparent)
+  );
+  --mk-acc-primary-hover: var(
+    --mk-primary-hover,
+    color-mix(in srgb, var(--mk-acc-primary) 88%, #000000 12%)
+  );
+
+  --mk-acc-surface: var(--mk-bg-card, var(--mk-bg-surface, #ffffff));
+  --mk-acc-surface-soft: color-mix(
+    in srgb,
+    var(--mk-bg-page-secondary, #f7f7f7) 86%,
+    #ffffff 14%
+  );
+  --mk-acc-surface-warm: color-mix(
+    in srgb,
+    var(--mk-acc-primary) 7%,
+    var(--mk-acc-surface) 93%
+  );
+
+  --mk-acc-line: var(--mk-border-soft, rgba(15, 15, 15, 0.08));
+  --mk-acc-line-strong: var(--mk-border-medium, rgba(15, 15, 15, 0.14));
+
+  --mk-acc-text: var(--mk-text-main, #0b0b0b);
+  --mk-acc-muted: var(--mk-text-muted, #6f6f6f);
+  --mk-acc-soft: color-mix(
+    in srgb,
+    var(--mk-acc-muted) 72%,
+    var(--mk-acc-surface) 28%
+  );
+
+  --mk-acc-gold: var(--mk-acc-primary);
+  --mk-acc-danger: #b42318;
+  --mk-acc-success: #15803d;
+  --mk-acc-warning: #9a640f;
+  --mk-acc-blue: #1d5f9f;
+
+  --mk-acc-radius-xl: 24px;
+  --mk-acc-radius-lg: 18px;
+  --mk-acc-radius-md: 14px;
+
+  --mk-acc-shadow: 0 1px 2px rgba(15, 15, 15, 0.03);
+  --mk-acc-shadow-hover: 0 16px 42px rgba(15, 15, 15, 0.07);
+
+  direction: rtl;
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  align-items: start;
+  gap: 30px;
+  padding: 34px 0 56px;
+  color: var(--mk-acc-text);
+}

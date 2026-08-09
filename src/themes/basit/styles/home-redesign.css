@@ -1,0 +1,937 @@
+/*
+ * BASIT HOME V2
+ * Full visual and layout redesign for the storefront homepage.
+ * No data, events, API calls, sliders, links, cart, favourites or search logic
+ * is changed here. This file only restyles the existing shared components.
+ */
+
+.mk-root[data-theme-code="basit"]{
+  --b2-bg: #ffffff;
+  --b2-soft: #f7f7f5;
+  --b2-soft-2: #f1f1ed;
+  --b2-text: #171717;
+  --b2-muted: #74746d;
+  --b2-border: #e9e9e4;
+  --b2-border-dark: #d8d8d1;
+  --b2-radius: 18px;
+  --b2-radius-sm: 12px;
+  --b2-container: 1320px;
+  --b2-section-space: clamp(34px, 5vw, 76px);
+  background: var(--b2-bg) !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-desktop-shell,
+.mk-root[data-theme-code="basit"] .mk-desktop-main,
+.mk-root[data-theme-code="basit"] .mk-screen-container,
+.mk-root[data-theme-code="basit"] .bs-home-v2{
+  background: var(--b2-bg) !important;
+}
+
+/* =========================================================
+   HEADER — new quiet retail structure
+   ========================================================= */
+.mk-root[data-theme-code="basit"] .mk-announcement{
+  min-height: 30px !important;
+  background: #f5f5f2 !important;
+  color: var(--b2-text) !important;
+  border-bottom: 1px solid var(--b2-border) !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-announcement__container,
+.mk-root[data-theme-code="basit"] .mk-announcement__contentWrap{
+  min-height: 30px !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-announcement__contentWrap{
+  padding-block: 4px !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-announcement__icon{
+  display: none !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-announcement__title,
+.mk-root[data-theme-code="basit"] .mk-announcement__body{
+  font-size: 11px !important;
+  font-weight: 600 !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-announcement__linkText{
+  padding: 0 !important;
+  min-height: auto !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-bottom: 1px solid currentColor !important;
+  border-radius: 0 !important;
+  font-size: 10px !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-header{
+  position: relative;
+  background: #fff !important;
+  border-bottom: 1px solid var(--b2-border) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-header__container{
+  width: min(100%, var(--b2-container)) !important;
+  padding-inline: clamp(16px, 3vw, 42px) !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-header__wrap--top{
+  border: 0 !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-header__top{
+  position: relative;
+  display: grid !important;
+  grid-template-columns: minmax(230px, 1fr) auto minmax(230px, 1fr) !important;
+  grid-template-areas: "search logo slogan" !important;
+  align-items: center !important;
+  min-height: 84px !important;
+  padding-block: 14px !important;
+  column-gap: 28px !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-header__logoBox{
+  grid-area: logo !important;
+  justify-self: center !important;
+  min-width: 150px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-header__logoLink{
+  display: flex !important;
+  justify-content: center !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-header__logoImg{
+  width: auto !important;
+  max-width: 168px !important;
+  max-height: 52px !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-header__searchBox{
+  grid-area: search !important;
+  justify-self: start !important;
+  width: min(100%, 360px) !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-header__sloganBox{
+  grid-area: slogan !important;
+  justify-self: end !important;
+  max-width: 280px !important;
+  color: var(--b2-muted) !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-header__sloganIcon{
+  width: 34px !important;
+  height: 34px !important;
+  border: 1px solid var(--b2-border) !important;
+  background: #fff !important;
+  box-shadow: none !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-header__sloganText{
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  line-height: 1.55 !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-desktop-search__bar{
+  min-height: 42px !important;
+  padding-inline: 14px !important;
+  border: 1px solid var(--b2-border-dark) !important;
+  border-radius: 999px !important;
+  background: #fff !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-desktop-search__bar:hover,
+.mk-root[data-theme-code="basit"] .mk-desktop-search[data-open="true"] .mk-desktop-search__bar{
+  border-color: var(--b2-text) !important;
+  background: #fff !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-header__wrap--bottom{
+  border-top: 1px solid var(--b2-border) !important;
+  background: #fff !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-header__bottom,
+.mk-root[data-theme-code="basit"] .mk-header__bottomRow{
+  min-height: 50px !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-header__bottomRow{
+  justify-content: center !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-desktop-nav__rootLink,
+.mk-root[data-theme-code="basit"] .mk-desktop-nav__linkButton{
+  font-size: 12px !important;
+  font-weight: 650 !important;
+  padding-inline: 11px !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-desktop-nav__iconLink,
+.mk-root[data-theme-code="basit"] .mk-desktop-nav__iconButton,
+.mk-root[data-theme-code="basit"] .mk-desktop-nav__menuButton{
+  border: 0 !important;
+  background: transparent !important;
+  border-radius: 50% !important;
+  box-shadow: none !important;
+}
+
+/* =========================================================
+   HOMEPAGE FRAME
+   ========================================================= */
+.mk-root[data-theme-code="basit"] .bs-home-v2{
+  overflow: clip;
+  color: var(--b2-text);
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 > section{
+  margin: 0;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 > section > div,
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-products-tabs-section,
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-advanced-products-section{
+  width: min(100%, var(--b2-container));
+  margin-inline: auto;
+}
+
+/* HERO — full-width editorial banner, no card look */
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-responsive-hero-slider-section{
+  padding: 18px clamp(12px, 2.6vw, 34px) 0 !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-responsive-hero-slider-section > div{
+  width: min(100%, var(--b2-container)) !important;
+  max-width: none !important;
+  padding: 0 !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-responsive-hero-slider,
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-responsive-hero-slider .swiper,
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-responsive-hero-slider .swiper-slide > div{
+  overflow: hidden !important;
+  border-radius: 4px !important;
+  background: var(--b2-soft) !important;
+  box-shadow: none !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-responsive-hero-picture{
+  display: block;
+  aspect-ratio: 16 / 5.25;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-responsive-hero-img{
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-responsive-hero-slider .swiper-button-prev,
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-responsive-hero-slider .swiper-button-next{
+  width: 38px !important;
+  height: 38px !important;
+  margin-top: -19px !important;
+  border: 0 !important;
+  border-radius: 50% !important;
+  background: rgba(255, 255, 255, .9) !important;
+  color: #111 !important;
+  box-shadow: 0 5px 20px rgba(0,0,0,.1) !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-responsive-hero-slider .swiper-button-prev::after,
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-responsive-hero-slider .swiper-button-next::after{
+  font-size: 13px !important;
+  font-weight: 900 !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-responsive-hero-slider .swiper-pagination{
+  bottom: 13px !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-responsive-hero-slider .swiper-pagination-bullet{
+  width: 6px !important;
+  height: 6px !important;
+  margin: 0 3px !important;
+  background: rgba(255,255,255,.75) !important;
+  opacity: 1 !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-responsive-hero-slider .swiper-pagination-bullet-active{
+  width: 22px !important;
+  border-radius: 999px !important;
+  background: #fff !important;
+}
+
+/* Shared section rhythm */
+.mk-root[data-theme-code="basit"] .bs-home-v2 :where(
+  .mk-circle-links-section,
+  .mk-square-links-section,
+  .mk-products-tabs-section,
+  .mk-advanced-products-section,
+  .mk-banners-slider-section,
+  .mk-dynamic-testimonials-section,
+  .mk-dynamic-faq-section,
+  .mk-features-product-showcase,
+  .mk-featured-mosaic-offer,
+  .mk-simple-stats-section
+){
+  padding: var(--b2-section-space) clamp(12px, 2.6vw, 34px) 0 !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 :where(
+  .mk-circle-links-section,
+  .mk-square-links-section,
+  .mk-banners-slider-section,
+  .mk-featured-mosaic-offer,
+  .mk-features-product-showcase
+) > div{
+  width: min(100%, var(--b2-container)) !important;
+  max-width: none !important;
+  padding-inline: 0 !important;
+}
+
+/* Section headings — one restrained visual language */
+.mk-root[data-theme-code="basit"] .bs-home-v2 :where(
+  .mk-products-tabs-single-head,
+  .mk-home-product-head,
+  .mk-circle-links-header,
+  .mk-square-links-header,
+  .mk-fps-header
+){
+  margin: 0 0 20px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  text-align: start !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 :where(
+  .mk-products-tabs-single-title,
+  .mk-home-product-head h2,
+  .mk-circle-links-section h2,
+  .mk-square-links-section h2,
+  .mk-dynamic-testimonials-title,
+  .mk-dynamic-faq-section h2,
+  .mk-fps-title
+){
+  margin: 0 !important;
+  color: var(--b2-text) !important;
+  font-size: clamp(20px, 2vw, 28px) !important;
+  font-weight: 750 !important;
+  line-height: 1.25 !important;
+  letter-spacing: 0 !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 :where(
+  .mk-products-tabs-single-desc,
+  .mk-home-product-head p,
+  .mk-circle-links-section p,
+  .mk-square-links-section p,
+  .mk-dynamic-testimonials-description
+){
+  max-width: 700px !important;
+  margin-top: 6px !important;
+  color: var(--b2-muted) !important;
+  font-size: 12px !important;
+  line-height: 1.7 !important;
+}
+
+/* CATEGORIES — horizontal clean catalog tiles */
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-circle-links-grid{
+  display: grid !important;
+  grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+  gap: clamp(12px, 1.7vw, 24px) !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-circle-link-card{
+  min-width: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-circle-link-img-wrap{
+  aspect-ratio: 1 / 1 !important;
+  width: 100% !important;
+  border: 0 !important;
+  border-radius: 50% !important;
+  background: var(--b2-soft) !important;
+  box-shadow: none !important;
+  transition: transform .22s ease !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-circle-link-card:hover .mk-circle-link-img-wrap{
+  transform: translateY(-3px) !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-circle-link-title{
+  margin-top: 10px !important;
+  color: var(--b2-text) !important;
+  font-size: 12px !important;
+  font-weight: 650 !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-circle-link-desc{
+  display: none !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-square-links-grid{
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 14px !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-square-link-card{
+  overflow: hidden !important;
+  border: 0 !important;
+  border-radius: 4px !important;
+  background: var(--b2-soft) !important;
+  box-shadow: none !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-square-link-img-wrap{
+  border-radius: 0 !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-square-link-title{
+  padding: 11px 12px 13px !important;
+  font-size: 12px !important;
+  font-weight: 650 !important;
+}
+
+/* PRODUCTS — real retail grid feeling rather than floating cards */
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-products-slider{
+  width: min(100%, var(--b2-container));
+  margin-inline: auto;
+  padding: var(--b2-section-space) clamp(12px, 2.6vw, 34px) 0;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-products-tabs-section .mk-products-slider,
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-advanced-products-section .mk-products-slider{
+  width: 100%;
+  padding: 0;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-ps-head{
+  min-height: auto !important;
+  margin: 0 0 18px !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-ps-title{
+  color: var(--b2-text) !important;
+  font-size: clamp(20px, 2vw, 28px) !important;
+  font-weight: 750 !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-ps-viewall{
+  gap: 5px !important;
+  padding: 5px 0 !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--b2-text) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: var(--b2-text) !important;
+  font-size: 11px !important;
+  font-weight: 650 !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-ps-shell,
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-ps-wrap,
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-ps-swiper{
+  overflow: visible !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-ps-swiper{
+  clip-path: inset(-20px 0 -30px 0);
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-ps-nav{
+  top: 42% !important;
+  z-index: 5 !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-ps-nav-pill{
+  width: 36px !important;
+  height: 36px !important;
+  border: 1px solid var(--b2-border) !important;
+  border-radius: 50% !important;
+  background: rgba(255,255,255,.96) !important;
+  color: var(--b2-text) !important;
+  box-shadow: 0 5px 20px rgba(0,0,0,.08) !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-card-inner{
+  overflow: visible !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-media{
+  overflow: hidden !important;
+  aspect-ratio: 4 / 5 !important;
+  border: 0 !important;
+  border-radius: 4px !important;
+  background: var(--b2-soft) !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-media-img{
+  transition: transform .45s cubic-bezier(.2,.7,.2,1) !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-card:hover .mkpc-media-img--main{
+  transform: scale(1.025) !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-actions{
+  top: 9px !important;
+  inset-inline-end: 9px !important;
+  gap: 6px !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-action{
+  width: 32px !important;
+  height: 32px !important;
+  border: 0 !important;
+  border-radius: 50% !important;
+  background: rgba(255,255,255,.92) !important;
+  box-shadow: 0 4px 14px rgba(0,0,0,.07) !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-action--quick,
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-action--cart{
+  display: none !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-body{
+  padding: 10px 0 0 !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-marketing-row{
+  margin-bottom: 5px !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-marketing-name{
+  display: none !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-title{
+  min-height: 0 !important;
+  color: var(--b2-text) !important;
+  font-size: 12px !important;
+  font-weight: 550 !important;
+  line-height: 1.55 !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-subtitle{
+  margin-top: 3px !important;
+  color: var(--b2-muted) !important;
+  font-size: 10px !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-footer{
+  margin-top: 8px !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-bottom-row{
+  align-items: center !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-price-label,
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-tax-label{
+  display: none !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-now,
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-cur--main{
+  color: var(--b2-text) !important;
+  font-size: 14px !important;
+  font-weight: 750 !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-cart-inline{
+  width: 34px !important;
+  height: 34px !important;
+  border: 1px solid var(--b2-border-dark) !important;
+  border-radius: 50% !important;
+  background: #fff !important;
+  color: var(--b2-text) !important;
+  box-shadow: none !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-cart-inline:hover{
+  border-color: var(--b2-text) !important;
+  background: var(--b2-text) !important;
+  color: #fff !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-top-badge-pill,
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-marketing-badge,
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-off{
+  min-height: 20px !important;
+  padding: 3px 7px !important;
+  border: 0 !important;
+  border-radius: 2px !important;
+  font-size: 9px !important;
+  font-weight: 700 !important;
+  box-shadow: none !important;
+}
+
+/* Promotional media */
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-banners-slider-wrap,
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-countdown-offer,
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-fmo-main,
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-fmo-side-card{
+  overflow: hidden !important;
+  border: 0 !important;
+  border-radius: 4px !important;
+  box-shadow: none !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-countdown-offer-section{
+  padding: var(--b2-section-space) clamp(12px, 2.6vw, 34px) 0 !important;
+}
+
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-countdown-offer-section > div{
+  width: min(100%, var(--b2-container)) !important;
+  max-width: none !important;
+  padding: 0 !important;
+}
+
+/* Keep the page ending clean */
+.mk-root[data-theme-code="basit"] .bs-home-v2{
+  padding-bottom: clamp(54px, 7vw, 96px);
+}
+
+/* =========================================================
+   TABLET
+   ========================================================= */
+@media (max-width: 1024px) {
+  .mk-root[data-theme-code="basit"] .mk-header__top{
+    grid-template-columns: minmax(180px, 1fr) auto minmax(180px, 1fr) !important;
+    min-height: 74px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-header__sloganText{
+    display: none !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-header__sloganBox{
+    max-width: none !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-home-v2 .mk-circle-links-grid{
+    grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-home-v2 .mk-square-links-grid{
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+/* =========================================================
+   MOBILE — same DOM, same data, purpose-built layout
+   ========================================================= */
+@media (max-width: 767px) {
+  .mk-root[data-theme-code="basit"]{
+    --b2-section-space: 34px;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-announcement{
+    min-height: 28px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-announcement__container,
+.mk-root[data-theme-code="basit"] .mk-announcement__contentWrap{
+    min-height: 28px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-announcement__title,
+.mk-root[data-theme-code="basit"] .mk-announcement__body{
+    font-size: 10px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-header__container{
+    padding-inline: 12px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-header__top{
+    display: grid !important;
+    grid-template-columns: 1fr auto 1fr !important;
+    grid-template-areas:
+      "slogan logo spacer"
+      "search search search" !important;
+    min-height: auto !important;
+    padding: 10px 0 11px !important;
+    row-gap: 9px !important;
+    column-gap: 10px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-header__logoBox{
+    grid-area: logo !important;
+    min-width: 0 !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-header__logoImg{
+    max-width: 126px !important;
+    max-height: 38px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-header__searchBox{
+    grid-area: search !important;
+    justify-self: stretch !important;
+    width: 100% !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-header__sloganBox{
+    grid-area: slogan !important;
+    justify-self: start !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-header__sloganIcon{
+    width: 34px !important;
+    height: 34px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-desktop-search__bar{
+    min-height: 39px !important;
+    border-color: var(--b2-border) !important;
+    background: var(--b2-soft) !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-header__wrap--bottom{
+    display: none !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-home-v2 .mk-responsive-hero-slider-section{
+    padding: 10px 10px 0 !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-home-v2 .mk-responsive-hero-slider,
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-responsive-hero-slider .swiper,
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-responsive-hero-slider .swiper-slide > div{
+    border-radius: 3px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-home-v2 .mk-responsive-hero-picture{
+    aspect-ratio: 4 / 4.65;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-home-v2 .mk-responsive-hero-slider .swiper-button-prev,
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mk-responsive-hero-slider .swiper-button-next{
+    display: none !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-home-v2 :where(
+    .mk-circle-links-section,
+    .mk-square-links-section,
+    .mk-products-tabs-section,
+    .mk-advanced-products-section,
+    .mk-banners-slider-section,
+    .mk-dynamic-testimonials-section,
+    .mk-dynamic-faq-section,
+    .mk-features-product-showcase,
+    .mk-featured-mosaic-offer,
+    .mk-simple-stats-section
+  ){
+    padding-inline: 10px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-home-v2 .mk-products-slider{
+    padding-inline: 10px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-home-v2 :where(
+    .mk-products-tabs-single-head,
+    .mk-home-product-head,
+    .mk-circle-links-header,
+    .mk-square-links-header,
+    .mk-fps-header
+  ){
+    margin-bottom: 14px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-home-v2 :where(
+    .mk-products-tabs-single-title,
+    .mk-home-product-head h2,
+    .mk-circle-links-section h2,
+    .mk-square-links-section h2,
+    .mk-dynamic-testimonials-title,
+    .mk-dynamic-faq-section h2,
+    .mk-fps-title,
+    .mk-ps-title
+  ){
+    font-size: 18px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-home-v2 .mk-circle-links-grid{
+    display: flex !important;
+    gap: 13px !important;
+    overflow-x: auto !important;
+    padding: 1px 1px 7px !important;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-home-v2 .mk-circle-links-grid::-webkit-scrollbar{
+    display: none;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-home-v2 .mk-circle-link-card{
+    flex: 0 0 76px !important;
+    scroll-snap-align: start;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-home-v2 .mk-circle-link-title{
+    margin-top: 7px !important;
+    font-size: 10px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-home-v2 .mk-square-links-grid{
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-home-v2 .mk-square-link-title{
+    padding: 8px 9px 10px !important;
+    font-size: 10px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-home-v2 .mk-ps-head{
+    margin-bottom: 12px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-home-v2 .mk-ps-viewall{
+    font-size: 10px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-home-v2 .mk-ps-nav{
+    display: none !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-media{
+    aspect-ratio: 4 / 5 !important;
+    border-radius: 3px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-body{
+    padding-top: 8px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-title{
+    font-size: 11px !important;
+    line-height: 1.45 !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-now,
+.mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-cur--main{
+    font-size: 13px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-home-v2 .mkpc-cart-inline{
+    width: 31px !important;
+    height: 31px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-home-v2 .mk-countdown-offer-section{
+    padding-inline: 10px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .bs-home-v2{
+    padding-bottom: 78px;
+  }
+}
+
+/* =========================================================
+   Basit — Features with product: permanent transparent surfaces
+   This file is imported last, so later home.css replacements cannot
+   restore the legacy white section/list backgrounds.
+   ========================================================= */
+.mk-root[data-theme-code="basit"] .mk-features-product-showcase,
+.mk-root[data-theme-code="basit"] .mk-features-product-showcase > div,
+.mk-root[data-theme-code="basit"] .mk-features-product-showcase .mk-fps-layout,
+.mk-root[data-theme-code="basit"] .mk-features-product-showcase .mk-fps-features,
+.mk-root[data-theme-code="basit"] .mk-features-product-showcase .mk-fps-feature,
+.mk-root[data-theme-code="basit"] .mk-features-product-showcase .mk-fps-feature-content {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-features-product-showcase .mk-fps-features {
+  border: 0 !important;
+  padding: 0 !important;
+}
+
+
+/* =========================================================
+   Basit — Featured mosaic offer: centered content group
+   Keep the eyebrow, title, subtitle and CTA together in the
+   exact horizontal and vertical center of the main image.
+   ========================================================= */
+.mk-root[data-theme-code="basit"] .mk-featured-mosaic-offer .mk-fmo-content--centered {
+  top: 50% !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: 50% !important;
+  width: min(680px, calc(100% - 48px)) !important;
+  max-width: min(680px, calc(100% - 48px)) !important;
+  transform: translate(-50%, -50%) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  text-align: center !important;
+  direction: rtl !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-featured-mosaic-offer .mk-fmo-content--centered .mk-fmo-eyebrow,
+.mk-root[data-theme-code="basit"] .mk-featured-mosaic-offer .mk-fmo-content--centered .mk-fmo-title,
+.mk-root[data-theme-code="basit"] .mk-featured-mosaic-offer .mk-fmo-content--centered .mk-fmo-subtitle {
+  width: 100% !important;
+  margin-inline: auto !important;
+  text-align: center !important;
+}
+
+.mk-root[data-theme-code="basit"] .mk-featured-mosaic-offer .mk-fmo-content--centered .mk-fmo-button {
+  position: static !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  width: min(420px, 82%) !important;
+  min-height: 46px !important;
+  margin-top: 18px !important;
+  transform: none !important;
+  flex: 0 0 auto !important;
+}
+
+@media (max-width: 767px) {
+  .mk-root[data-theme-code="basit"] .mk-featured-mosaic-offer .mk-fmo-content--centered {
+    width: calc(100% - 28px) !important;
+    max-width: calc(100% - 28px) !important;
+    gap: 5px !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-featured-mosaic-offer .mk-fmo-content--centered .mk-fmo-title {
+    font-size: clamp(24px, 7.5vw, 34px) !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-featured-mosaic-offer .mk-fmo-content--centered .mk-fmo-subtitle {
+    font-size: clamp(20px, 6.5vw, 29px) !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-featured-mosaic-offer .mk-fmo-content--centered .mk-fmo-button {
+    width: min(320px, 86%) !important;
+    min-height: 42px !important;
+    margin-top: 13px !important;
+  }
+}

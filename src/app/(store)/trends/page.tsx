@@ -9,8 +9,10 @@ import { loadLiveTrendCollections } from "@/data/marketing/trends.server";
 import { toProductCardVM } from "@/data/viewmodels/product.vm";
 import { buildProductHref as buildStoreProductHref } from "@/lib/seo/build-store-href";
 import MalakTheme from "@/themes/malak";
+import BasitTheme from "@/themes/basit";
 import TrendsScreen from "@/themes/malak/screens/trends/TrendsScreen";
 import TrendsMobileScreen from "@/themes/malak/screens-mobile/marketing/TrendsMobileScreen";
+import BasitTrendsScreen from "@/themes/basit/screens/trends/TrendsScreen";
 
 function text(value: unknown) {
   return String(value ?? "").trim();
@@ -83,6 +85,7 @@ export default async function TrendsPage() {
     h.get("sec-ch-ua-mobile"),
   );
   const seoMode = await getSeoUrlMode(storeId);
+  const useBasit = text(ctx?.theme?.theme_key || ctx?.theme?.key) === "basit";
 
   const [bootstrap, initialCartCount, rawTrends] = await Promise.all([
     getMalakBootstrap({
@@ -122,16 +125,22 @@ export default async function TrendsPage() {
     data: { route: "trends", trends, bootstrap },
     theme: {
       ...(ctx?.theme ?? {}),
-      key: "malak",
-      theme_key: "malak",
+      key: useBasit ? "basit" : "malak",
+      theme_key: useBasit ? "basit" : "malak",
       version_id: ctx?.theme?.version_id ?? "published",
       options: ctx?.theme?.options ?? {},
     },
   };
+  const ActiveTheme = useBasit ? BasitTheme : MalakTheme;
+  const Screen = useBasit
+    ? BasitTrendsScreen
+    : device === "mobile"
+      ? TrendsMobileScreen
+      : TrendsScreen;
 
   return (
-    <MalakTheme ctx={appCtx}>
-      {device === "mobile" ? <TrendsMobileScreen trends={trends} /> : <TrendsScreen trends={trends} />}
-    </MalakTheme>
+    <ActiveTheme ctx={appCtx}>
+      <Screen trends={trends} />
+    </ActiveTheme>
   );
 }

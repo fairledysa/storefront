@@ -1,0 +1,21 @@
+/* FILE: apps/storefront/src/themes/basit/styles/components/empty.css */
+
+.mk-root[data-theme-code="basit"] .mk-empty{
+  padding: 18px;
+  text-align: center;
+}
+
+.mk-root[data-theme-code="basit"] .mk-empty__title{
+  font-weight: 900;
+  font-size: 16px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-empty__desc{
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--mk-text-muted);
+}
+
+.mk-root[data-theme-code="basit"] .mk-empty__actions{
+  margin-top: 12px;
+}

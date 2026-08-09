@@ -1,0 +1,20 @@
+/* themes/malak/styles/typography.css */
+.mk-root[data-theme-code="basit"]{
+  font-family: var(--mk-font);
+  background: var(--mk-bg);
+  color: var(--mk-text);
+}
+
+.mk-root[data-theme-code="basit"] .mk-h1{
+  font-size: 18px;
+  font-weight: 900;
+}
+.mk-root[data-theme-code="basit"] .mk-h2{
+  font-size: 16px;
+  font-weight: 800;
+}
+.mk-root[data-theme-code="basit"] .mk-p{
+  font-size: 13px;
+  color: var(--mk-muted);
+  line-height: 1.7;
+}

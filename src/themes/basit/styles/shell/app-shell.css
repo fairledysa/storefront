@@ -1,0 +1,98 @@
+/* FILE: apps/storefront/src/themes/basit/styles/shell/app-shell.css */
+
+.mk-root[data-theme-code="basit"] .mk-app-shell{
+  min-height: 100dvh;
+  background: var(--mk-bg-page);
+  color: var(--mk-text-main);
+  font-family: var(--mk-font-family, system-ui);
+}
+
+.mk-root[data-theme-code="basit"] .mk-app-shell *,
+.mk-root[data-theme-code="basit"] .mk-app-shell *::before,
+.mk-root[data-theme-code="basit"] .mk-app-shell *::after{
+  box-sizing: border-box;
+}
+
+.mk-root[data-theme-code="basit"] .mk-app-shell a{
+  color: inherit;
+}
+
+.mk-root[data-theme-code="basit"] .mk-app-shell button,
+.mk-root[data-theme-code="basit"] .mk-app-shell input,
+.mk-root[data-theme-code="basit"] .mk-app-shell textarea,
+.mk-root[data-theme-code="basit"] .mk-app-shell select{
+  font-family: inherit;
+}
+
+.mk-root[data-theme-code="basit"] .mk-app-shell input,
+.mk-root[data-theme-code="basit"] .mk-app-shell textarea,
+.mk-root[data-theme-code="basit"] .mk-app-shell select{
+  color: inherit;
+}
+
+.mk-root[data-theme-code="basit"] .mk-app-shell input::placeholder,
+.mk-root[data-theme-code="basit"] .mk-app-shell textarea::placeholder{
+  color: color-mix(in srgb, currentColor 45%, transparent);
+}
+
+.mk-root[data-theme-code="basit"] .mk-app-shell[data-theme-mode="dark"]{
+  color-scheme: dark;
+}
+
+.mk-root[data-theme-code="basit"] .mk-app-shell[data-theme-mode="light"]{
+  color-scheme: light;
+}
+
+/* =========================================================
+   Mobile Route Transition
+   شريط تحميل علوي فقط بدون Skeleton فوق المحتوى
+   ========================================================= */
+
+.mk-root[data-theme-code="basit"] .mk-mobile-route-progress{
+  position: fixed;
+  inset-inline: 0;
+  top: 0;
+  z-index: var(--mk-z-route-progress, 970);
+  height: 3px;
+  pointer-events: none;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--mk-color-primary) 10%, transparent);
+  opacity: 1;
+  transform: translateZ(0);
+  transition: opacity 180ms ease;
+}
+
+.mk-root[data-theme-code="basit"] .mk-mobile-route-progress--leaving{
+  opacity: 0;
+}
+
+.mk-root[data-theme-code="basit"] .mk-mobile-route-progress__bar{
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: 42%;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--mk-color-primary),
+    transparent
+  );
+  animation: mkMobileRouteProgress 760ms cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes mkMobileRouteProgress {
+  0% {
+    transform: translateX(-130%);
+  }
+
+  100% {
+    transform: translateX(280%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mk-root[data-theme-code="basit"] .mk-mobile-route-progress__bar{
+    animation: none;
+  }
+}
