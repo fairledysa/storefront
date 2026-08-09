@@ -1381,3 +1381,51 @@
     overflow: hidden !important;
   }
 }
+
+/* =========================================================
+   Mobile search must own the whole viewport
+   ========================================================= */
+@media (max-width: 767px) {
+  html.mk-search-open .mk-root[data-theme-code="basit"] .mk-tabbar {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-desktop-search[data-open="true"] {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100dvh !important;
+    max-width: none !important;
+    z-index: 950 !important;
+    overflow: hidden !important;
+  }
+
+  .mk-root[data-theme-code="basit"]
+    .mk-desktop-search[data-open="true"]
+    .mk-desktop-search__overlay {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 0 !important;
+  }
+
+  .mk-root[data-theme-code="basit"]
+    .mk-desktop-search[data-open="true"]
+    .mk-desktop-search__box {
+    position: relative !important;
+    z-index: 1 !important;
+    width: 100% !important;
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    border-radius: 0 !important;
+  }
+
+  .mk-root[data-theme-code="basit"]
+    .mk-desktop-search[data-open="true"]
+    .mk-desktop-search__dropdown {
+    max-height: calc(100dvh - 72px) !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  }
+}
+

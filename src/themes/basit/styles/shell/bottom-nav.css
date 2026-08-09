@@ -228,3 +228,9 @@
     animation: none;
   }
 }
+/* عند فتح مشغل الفيديو القصير يجب ألا تغطي قائمة الجوال عناصر الفيديو. */
+html.mk-shorts-open .mk-root[data-theme-code="basit"] .mk-tabbar{
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}

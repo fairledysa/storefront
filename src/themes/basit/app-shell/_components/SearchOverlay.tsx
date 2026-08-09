@@ -10,6 +10,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Icon from "@/components/icon/Icon";
@@ -1399,8 +1400,11 @@ export default function SearchOverlay({
   }, [open]);
 
   useEffect(() => {
+    const root = document.documentElement;
+
     if (!open) {
       document.body.style.overflow = "";
+      root.classList.remove("mk-search-open");
       return;
     }
 
@@ -1409,14 +1413,16 @@ export default function SearchOverlay({
     }, 0);
 
     document.body.style.overflow = "hidden";
+    root.classList.add("mk-search-open");
 
     return () => {
       window.clearTimeout(timer);
       document.body.style.overflow = "";
+      root.classList.remove("mk-search-open");
     };
   }, [open]);
 
-  return (
+  const searchNode = (
     <div
       ref={rootRef}
       className={["mk-desktop-search", className].filter(Boolean).join(" ")}
@@ -1622,4 +1628,15 @@ export default function SearchOverlay({
       </div>
     </div>
   );
+
+  if (open && typeof document !== "undefined") {
+    const portalHost =
+      document.querySelector<HTMLElement>(
+        '.mk-root[data-theme-code="basit"]',
+      ) ?? document.body;
+
+    return createPortal(searchNode, portalHost);
+  }
+
+  return searchNode;
 }

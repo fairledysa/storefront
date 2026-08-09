@@ -545,8 +545,13 @@ export default function DesktopShell({
       vars["--mk-bg-footer-bottom"] = bottomFooterBg;
     }
 
-    vars["--mk-bottom-nav-bg"] = bottomNavBg;
-    vars["--mk-bottom-nav-text-color"] = bottomNavTextColor;
+    // The admin-selected mobile navigation colors are defined on the home
+    // bootstrap. Keep them inherited on inner routes instead of replacing
+    // them with the bootstrap defaults (#fff / #111).
+    if (isHome) {
+      vars["--mk-bottom-nav-bg"] = bottomNavBg;
+      vars["--mk-bottom-nav-text-color"] = bottomNavTextColor;
+    }
 
     if (logoWidth > 0) {
       vars["--mk-header-logo-width"] = `${logoWidth}px`;
@@ -582,6 +587,7 @@ export default function DesktopShell({
     bottomFooterBg,
     bottomNavBg,
     bottomNavTextColor,
+    isHome,
     logoWidth,
     logoHeight,
   ]);
@@ -899,6 +905,40 @@ export default function DesktopShell({
       },
     };
   }, [data, bootstrap, runtime]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const storageKey = "basit:bottom-nav-appearance";
+
+    if (isHome) {
+      root.style.setProperty("--mk-bottom-nav-bg", bottomNavBg);
+      root.style.setProperty("--mk-bottom-nav-text-color", bottomNavTextColor);
+
+      try {
+        window.sessionStorage.setItem(
+          storageKey,
+          JSON.stringify({ bg: bottomNavBg, text: bottomNavTextColor }),
+        );
+      } catch {
+        // Storage may be unavailable in privacy mode. CSS variables still work.
+      }
+
+      return;
+    }
+
+    try {
+      const saved = JSON.parse(
+        window.sessionStorage.getItem(storageKey) || "null",
+      ) as { bg?: string; text?: string } | null;
+
+      if (saved?.bg) root.style.setProperty("--mk-bottom-nav-bg", saved.bg);
+      if (saved?.text) {
+        root.style.setProperty("--mk-bottom-nav-text-color", saved.text);
+      }
+    } catch {
+      // Keep the current inherited values.
+    }
+  }, [isHome, bottomNavBg, bottomNavTextColor]);
 
   const showBreadcrumbs = boolValue(
     firstDefined(

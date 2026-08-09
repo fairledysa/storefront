@@ -120,20 +120,61 @@ function readMuxPlaybackId(src: string) {
   return match?.[1] ? decodeURIComponent(match[1]) : "";
 }
 
-function VideoMedia({ item, active, controls = false }: { item: ProductShortItem; active: boolean; controls?: boolean }) {
+function VideoMedia({
+  item,
+  active,
+  controls = false,
+  muted = true,
+}: {
+  item: ProductShortItem;
+  active: boolean;
+  controls?: boolean;
+  muted?: boolean;
+}) {
   const ref = useRef<HTMLVideoElement | null>(null);
   const muxPlaybackId = useMemo(() => readMuxPlaybackId(item.videoSrc), [item.videoSrc]);
 
   useEffect(() => {
-    if (!ref.current) return;
-    if (active) void ref.current.play().catch(() => undefined);
-    else ref.current.pause();
-  }, [active]);
+    const video = ref.current;
+    if (!video) return;
+
+    video.defaultMuted = muted;
+    video.muted = muted;
+
+    if (!active) {
+      video.pause();
+      return;
+    }
+
+    let cancelled = false;
+    let retryTimer: number | null = null;
+
+    const startPlayback = () => {
+      if (cancelled || !ref.current) return;
+      const currentVideo = ref.current;
+      currentVideo.defaultMuted = muted;
+      currentVideo.muted = muted;
+      const attempt = currentVideo.play();
+      if (attempt && typeof attempt.catch === "function") {
+        void attempt.catch(() => {
+          if (cancelled) return;
+          retryTimer = window.setTimeout(startPlayback, 180);
+        });
+      }
+    };
+
+    startPlayback();
+
+    return () => {
+      cancelled = true;
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+    };
+  }, [active, muted, item.videoSrc]);
 
   if (muxPlaybackId) {
     return (
       <iframe
-        src={`https://player.mux.com/${encodeURIComponent(muxPlaybackId)}?autoplay=${active ? "muted" : "false"}&muted=1&loop=1`}
+        src={`https://player.mux.com/${encodeURIComponent(muxPlaybackId)}?autoplay=${active ? "true" : "false"}&muted=${muted ? "true" : "false"}&loop=true&playsinline=true`}
         title={item.title || "فيديو المنتج"}
         allow="autoplay; fullscreen; picture-in-picture"
         allowFullScreen
@@ -148,10 +189,28 @@ function VideoMedia({ item, active, controls = false }: { item: ProductShortItem
       poster={item.poster || undefined}
       controls={controls}
       playsInline
-      muted
+      muted={muted}
       autoPlay={active}
       loop
-      preload="metadata"
+      preload={active ? "auto" : "metadata"}
+      onCanPlay={() => {
+        if (!active || !ref.current) return;
+        ref.current.defaultMuted = muted;
+        ref.current.muted = muted;
+        void ref.current.play().catch(() => undefined);
+      }}
+      onLoadedData={() => {
+        if (!active || !ref.current) return;
+        ref.current.defaultMuted = muted;
+        ref.current.muted = muted;
+        void ref.current.play().catch(() => undefined);
+      }}
+      onLoadedMetadata={() => {
+        if (!active || !ref.current) return;
+        ref.current.defaultMuted = muted;
+        ref.current.muted = muted;
+        void ref.current.play().catch(() => undefined);
+      }}
     />
   );
 }
@@ -162,6 +221,20 @@ function ReviewCommentIcon() {
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path d="M7.5 18.25 4 20l.85-3.75A8 8 0 1 1 7.5 18.25Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M8 10.5h8M8 13.5h5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function VolumeIcon({ muted }: { muted: boolean }) {
+  return muted ? (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M5 9v6h4l5 4V5L9 9H5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="m17 9 4 4m0-4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  ) : (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M5 9v6h4l5 4V5L9 9H5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M17 8.5a5 5 0 0 1 0 7M19.5 6a8.5 8.5 0 0 1 0 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   );
 }
@@ -290,6 +363,7 @@ export default function ProductFloatingVideo({
   const [sendingComment, setSendingComment] = useState(false);
   const [commentMessage, setCommentMessage] = useState("");
   const [shareMessage, setShareMessage] = useState("");
+  const [shortsMuted, setShortsMuted] = useState(true);
   const shareMessageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const shortsFeedRef = useRef<HTMLDivElement | null>(null);
@@ -562,6 +636,23 @@ export default function ProductFloatingVideo({
     }
   };
 
+  const toggleShortsSound = () => {
+    const nextMuted = !shortsMuted;
+    setShortsMuted(nextMuted);
+
+    // Keep playback running when sound state changes. Calling play from the
+    // actual user click avoids mobile browsers pausing the video on unmute.
+    const activeSlide = shortsFeedRef.current?.querySelector<HTMLElement>(
+      `[data-short-index="${activeIndex}"]`,
+    );
+    const activeVideo = activeSlide?.querySelector<HTMLVideoElement>("video");
+    if (activeVideo) {
+      activeVideo.defaultMuted = nextMuted;
+      activeVideo.muted = nextMuted;
+      void activeVideo.play().catch(() => undefined);
+    }
+  };
+
   const addToCart = (item: ProductShortItem) => {
     const raw = item.raw ?? {};
     const hasOptions = Boolean(
@@ -579,7 +670,18 @@ export default function ProductFloatingVideo({
     <>
       {!hideFloatingLauncher ? (
         <aside className="mk-product-floating-video" aria-label={text(title) || "فيديو المنتج"}>
-          <button type="button" className="mk-product-floating-video__close" onClick={() => setOpen(false)} aria-label="إغلاق فيديو المنتج">×</button>
+          <button
+            type="button"
+            className="mk-product-floating-video__close"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              setOpen(false);
+            }}
+            aria-label="إغلاق فيديو المنتج"
+          >
+            ×
+          </button>
           <div className="mk-product-floating-video__media">
             <VideoMedia item={feed[0]} active={!shortsOpen} controls={!shortsEnabled} />
             {shortsEnabled ? (
@@ -602,7 +704,7 @@ export default function ProductFloatingVideo({
           <div className="mk-product-shorts__feed" ref={shortsFeedRef}>
             {feed.map((item, index) => (
               <article className="mk-product-shorts__slide" data-short-index={index} key={`${item.id}-${item.videoSrc}`}>
-                <div className="mk-product-shorts__video"><VideoMedia item={item} active={activeIndex === index} /></div>
+                <div className="mk-product-shorts__video"><VideoMedia item={item} active={activeIndex === index} muted={shortsMuted} /></div>
                 <div className="mk-product-shorts__shade" />
                 <div className="mk-product-shorts__product" dir="rtl">
                   {item.image ? (
@@ -625,6 +727,16 @@ export default function ProductFloatingVideo({
                   </div>
                   <button type="button" onClick={() => addToCart(item)}>أضف للسلة</button>
                 </div>
+                <button
+                  className={`mk-product-shorts__soundBtn${commentsEnabled ? "" : " mk-product-shorts__soundBtn--solo"}`}
+                  type="button"
+                  onClick={toggleShortsSound}
+                  aria-label={shortsMuted ? "تشغيل صوت الفيديو" : "كتم صوت الفيديو"}
+                  aria-pressed={!shortsMuted}
+                >
+                  <span className="mk-product-shorts__soundIcon"><VolumeIcon muted={shortsMuted} /></span>
+                  <small>{shortsMuted ? "الصوت" : "كتم"}</small>
+                </button>
                 <button
                   className={`mk-product-shorts__shareBtn${commentsEnabled ? "" : " mk-product-shorts__shareBtn--solo"}`}
                   type="button"

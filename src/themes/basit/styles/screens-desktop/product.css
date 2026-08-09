@@ -5243,7 +5243,7 @@ body > .mk-sizeGuideModalOverlay .mk-sizeGuideModal__empty{
   position: absolute;
   inset-inline-start: -10px;
   top: -10px;
-  z-index: 2;
+  z-index: 10;
   width: 34px;
   height: 34px;
   border: 1px solid rgba(15,23,42,.12);
@@ -5257,6 +5257,8 @@ body > .mk-sizeGuideModalOverlay .mk-sizeGuideModal__empty{
   font-size: 24px;
   line-height: 1;
   cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
   box-shadow: 0 10px 24px rgba(15,23,42,.18);
 }
 
@@ -6139,5 +6141,78 @@ html.mk-shorts-open body{
 
   .mk-root[data-theme-code="basit"] .mk-ptabs-descriptionClean__title::after{
     width: 40px;
+  }
+}
+
+/* Shorts sound control — placed directly above sharing */
+.mk-root[data-theme-code="basit"] .mk-product-shorts__soundBtn{
+  position: absolute;
+  z-index: 6;
+  inset-inline-end: max(20px, calc((100vw - 560px) / 2 + 16px));
+  bottom: 266px;
+  width: 46px;
+  min-height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  cursor: pointer;
+}
+
+.mk-root[data-theme-code="basit"] .mk-product-shorts__soundBtn--solo{
+  bottom: 192px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-product-shorts__soundIcon{
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,.28);
+  border-radius: 999px;
+  background: rgba(18,18,20,.48);
+  box-shadow: 0 4px 14px rgba(0,0,0,.18);
+  backdrop-filter: blur(6px);
+}
+
+.mk-root[data-theme-code="basit"] .mk-product-shorts__soundIcon svg{
+  width: 22px;
+  height: 22px;
+}
+
+.mk-root[data-theme-code="basit"] .mk-product-shorts__soundBtn small{
+  color: #fff;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+  text-shadow: 0 1px 3px rgba(0,0,0,.6);
+}
+
+@media (max-width: 767px){
+  .mk-root[data-theme-code="basit"] .mk-product-shorts__soundBtn{
+    inset-inline-end: 14px;
+    bottom: calc(224px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .mk-root[data-theme-code="basit"] .mk-product-shorts__soundBtn--solo{
+    bottom: calc(158px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+
+/* Hide the regular mobile purchase bar while the Shorts player is open.
+   The player has its own product add-to-cart control. */
+@media (max-width: 767px){
+  html.mk-shorts-open .mk-root[data-theme-code="basit"] .mk-pcart--mobile-sticky{
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
   }
 }
